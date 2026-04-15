@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  database:
+    image: postgres:15-alpine
+    container_name: facturacion_db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: mysecretpassword # ¡CAMBIAR ESTA CONTRASEÑA EN PRODUCCIÓN!
+      POSTGRES_DB: facturacion
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Este script se ejecutará automáticamente la primera vez que se cree el contenedor
+      - ./modelo_facturacion_gpt.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+volumes:
+  postgres_data:

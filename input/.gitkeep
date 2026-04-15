@@ -1,0 +1,3 @@
+# Directorio de descarga de adjuntos ZIP de facturas electrónicas.
+# Los archivos se organizan en: {YYYY}/{MM}/{DD}/{nit_proveedor}/
+# Este archivo .gitkeep mantiene el directorio en el repositorio.

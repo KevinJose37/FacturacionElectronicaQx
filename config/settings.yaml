@@ -1,0 +1,50 @@
+# =============================================================
+# Configuración del sistema de facturación electrónica
+# =============================================================
+
+# ──────────────────────────────────────────────
+# Servidor de correo IMAP
+# ──────────────────────────────────────────────
+email:
+  host: imap.gmail.com
+  port: 993
+  usuario: facturacionelectronicaqx@gmail.com
+  carpeta: INBOX          # Bandeja a monitorear
+  use_ssl: true
+
+# ──────────────────────────────────────────────
+# Cola de eventos
+# ──────────────────────────────────────────────
+queue:
+  # "local"    → guarda events.json localmente (solo dev)
+  # "sqs"      → publica a AWS SQS
+  # "postgres" → inserta en FACTURACION.EVENTO_INGESTA
+  backend: postgres
+  local_path: queue/events.json
+  sqs_url: ""             # URL de la cola SQS (solo si backend = "sqs")
+  postgres:               # Conexión a PostgreSQL (solo si backend = "postgres")
+    host: localhost
+    port: 5432
+    dbname: facturacion
+    user: admin
+    # La contraseña se lee de la variable de entorno POSTGRES_PASSWORD en el .env
+
+# ──────────────────────────────────────────────
+# Almacenamiento de adjuntos
+# ──────────────────────────────────────────────
+downloads:
+  base_path: input
+
+# ──────────────────────────────────────────────
+# Política de reintentos (IMAP)
+# ──────────────────────────────────────────────
+retry:
+  max_attempts: 3
+  backoff_base_seconds: 2   # Backoff exponencial: 2^intento segundos
+
+# ──────────────────────────────────────────────
+# Logging
+# ──────────────────────────────────────────────
+logging:
+  level: INFO               # DEBUG | INFO | WARNING | ERROR | CRITICAL
+  format: "%(asctime)s [%(levelname)s] %(name)s - %(message)s"

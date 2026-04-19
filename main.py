@@ -1,15 +1,32 @@
+"""Punto de entrada principal para la API de Facturación Electrónica."""
+
 import logging
+import uvicorn
+from fastapi import FastAPI
 from dotenv import load_dotenv
 
-from core.email_listener import EmailListener
+load_dotenv()
 
-def main() -> None:
-    """Punto de entrada principal de la aplicación."""
-    # Cargar variables de entorno (como EMAIL_PASSWORD y credenciales AWS)
-    load_dotenv()
-    
-    listener = EmailListener()
-    listener.run()
+from routers import ingesta
+
+# Configuración de logging base
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s"
+)
+logger = logging.getLogger("api")
+
+app = FastAPI(
+    title="Facturacion Electronica API",
+    version="1.0.0"
+)
+
+app.include_router(ingesta.router)
+
+@app.get("/")
+async def root():
+    """Endpoint de salud del servicio."""
+    return {"status": "online"}
 
 if __name__ == "__main__":
-    main()
+    uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -1,0 +1,42 @@
+# =============================================================
+# Configuración del sistema de facturación electrónica
+# =============================================================
+
+# ──────────────────────────────────────────────
+# Servidor de correo IMAP
+# ──────────────────────────────────────────────
+email:
+  host: imap.gmail.com
+  port: 993
+  # El usuario y la contraseña se leen de variables de entorno (EMAIL_USER, EMAIL_PASSWORD)
+  carpeta: INBOX          # Bandeja a monitorear
+  use_ssl: true
+
+# ──────────────────────────────────────────────
+# Cola de eventos
+# ──────────────────────────────────────────────
+queue:
+  # "local"    → guarda events.json localmente (solo dev)
+  # "postgres" → inserta en FACTURACION.EVENTO_INGESTA
+  backend: postgres
+  local_path: queue/events.json
+
+# ──────────────────────────────────────────────
+# Almacenamiento de adjuntos
+# ──────────────────────────────────────────────
+downloads:
+  base_path: input
+
+# ──────────────────────────────────────────────
+# Política de reintentos (IMAP)
+# ──────────────────────────────────────────────
+retry:
+  max_attempts: 3
+  backoff_base_seconds: 2   # Backoff exponencial: 2^intento segundos
+
+# ──────────────────────────────────────────────
+# Logging
+# ──────────────────────────────────────────────
+logging:
+  level: INFO               # DEBUG | INFO | WARNING | ERROR | CRITICAL
+  format: "%(asctime)s [%(levelname)s] %(name)s - %(message)s"

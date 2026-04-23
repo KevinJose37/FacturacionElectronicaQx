@@ -1,120 +1,129 @@
-import os
 import logging
+from typing import Any
+
 import psycopg2
-import psycopg2.extras
 from psycopg2 import sql
-from typing import Any, Dict, List, Optional
+import psycopg2.extras
+
+from config import create_postgres_connection, get_postgres_config
 
 logger = logging.getLogger(__name__)
 
-class DatabaseManager:
-    """Clase general para gestionar la conexión y operaciones con la base de datos PostgreSQL."""
 
-    def __init__(self):
-        self.host = os.getenv("DB_HOST", "localhost")
-        self.port = os.getenv("DB_PORT", "5432")
-        self.dbname = os.getenv("DB_NAME", "postgres")
-        self.user = os.getenv("DB_USER", "postgres")
-        self.password = os.getenv("DB_PASSWORD", "postgres")
-        self.connection = None
+def obtener_conexion() -> Any:
+    """Obtiene una conexión activa a la base de datos PostgreSQL.
 
-    def connect(self):
-        """Establece la conexión con la base de datos."""
-        if not self.connection or self.connection.closed:
-            try:
-                self.connection = psycopg2.connect(
-                    host=self.host,
-                    port=self.port,
-                    dbname=self.dbname,
-                    user=self.user,
-                    password=self.password
-                )
-                self.connection.autocommit = True
-            except Exception as e:
-                logger.error(f"Error conectando a la base de datos: {e}")
-                raise
+    Returns:
+        Conexión activa a PostgreSQL.
+    """
+    configuracion = get_postgres_config()
+    conexion = create_postgres_connection(configuracion)
+    return conexion
 
-    def disconnect(self):
-        """Cierra la conexión con la base de datos."""
-        if self.connection and not self.connection.closed:
-            self.connection.close()
 
-    def insert_data(self, schema: str, table: str, data: Dict[str, Any]) -> Optional[Any]:
-        """
-        Inserta datos en cualquier tabla.
-        
-        Args:
-            schema: Nombre del esquema.
-            table: Nombre de la tabla.
-            data: Diccionario con los nombres de las columnas y sus valores.
-            
-        Returns:
-            El ID del registro insertado si la tabla tiene una llave primaria serial/identity.
-        """
-        self.connect()
-        if not self.connection:
-            raise Exception("No se pudo establecer la conexión a la base de datos.")
-            
-        columns = list(data.keys())
-        values = [data[column] for column in columns]
-        
-        query = sql.SQL("INSERT INTO {schema}.{table} ({fields}) VALUES ({values}) RETURNING *").format(
-            schema=sql.Identifier(schema),
-            table=sql.Identifier(table),
-            fields=sql.SQL(', ').join(map(sql.Identifier, columns)),
-            values=sql.SQL(', ').join([sql.Placeholder()] * len(values))
-        )
-        
-        try:
-            with self.connection.cursor() as cursor:
-                cursor.execute(query, values)
-                result = cursor.fetchone()
-                return result[0] if result else None
-        except Exception as e:
-            logger.error(f"Error insertando datos en {schema}.{table}: {e}")
-            raise
+def insertar_datos(conexion: Any, esquema: str, tabla: str, datos: dict) -> Any:
+    """Inserta datos en una tabla específica y retorna el ID generado.
 
-    def execute_query(self, query: str, params: Optional[tuple] = None) -> List[Any]:
-        """
-        Ejecuta una consulta general y devuelve los resultados como una lista de diccionarios.
-        """
-        self.connect()
-        if not self.connection:
-            raise Exception("No se pudo establecer la conexión a la base de datos.")
-            
-        try:
-            with self.connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
-                cursor.execute(query, params)
-                if cursor.description:
-                    return list(cursor.fetchall())
-                return []
-        except Exception as e:
-            logger.error(f"Error ejecutando consulta: {e}")
-            raise
+    Función pura respecto a la conexión (la recibe por inyección).
 
-    def update_data(self, schema: str, table: str, data: Dict[str, Any], condition: Dict[str, Any]) -> None:
-        """
-        Actualiza datos en cualquier tabla bajo una condición.
-        """
-        self.connect()
-        if not self.connection:
-            raise Exception("No se pudo establecer la conexión a la base de datos.")
-        
-        set_parts = [sql.SQL("{} = {}").format(sql.Identifier(k), sql.Placeholder()) for k in data.keys()]
-        where_parts = [sql.SQL("{} = {}").format(sql.Identifier(k), sql.Placeholder()) for k in condition.keys()]
-        
-        query = sql.SQL("UPDATE {schema}.{table} SET {set} WHERE {where}").format(
-            schema=sql.Identifier(schema),
-            table=sql.Identifier(table),
-            set=sql.SQL(', ').join(set_parts),
-            where=sql.SQL(' AND ').join(where_parts)
-        )
-        
-        values = list(data.values()) + list(condition.values())
-        
-        try:
-            with self.connection.cursor() as cursor:
-                cursor.execute(query, values)
-        except Exception as e:
-            logger.error(f"Error actualizando datos en {schema}.{table}: {e}")
-            raise
+    Args:
+        conexion: Conexión activa a PostgreSQL.
+        esquema: Nombre del esquema en la base de datos.
+        tabla: Nombre de la tabla donde se insertarán los datos.
+        datos: Diccionario con los nombres de las columnas y sus valores.
+
+    Returns:
+        El ID del registro insertado, o None si no hubo retorno.
+
+    Raises:
+        Exception: Si ocurre un error al ejecutar la consulta SQL.
+    """
+    columnas = list(datos.keys())
+    valores = [datos[col] for col in columnas]
+
+    query = sql.SQL('INSERT INTO {esquema}.{tabla} ({campos}) VALUES ({valores_placeholder}) RETURNING *').format(
+        esquema=sql.Identifier(esquema),
+        tabla=sql.Identifier(tabla),
+        campos=sql.SQL(', ').join(map(sql.Identifier, columnas)),
+        valores_placeholder=sql.SQL(', ').join([sql.Placeholder()] * len(valores))
+    )
+
+    id_insertado = None
+
+    try:
+        with conexion.cursor() as cursor:
+            cursor.execute(query, valores)
+            resultado = cursor.fetchone()
+            conexion.commit()
+
+            if resultado:
+                id_insertado = resultado[0]
+    except Exception as e:
+        conexion.rollback()
+        logger.error(f'Error insertando datos en {esquema}.{tabla}: {e}')
+        raise
+
+    return id_insertado
+
+
+def ejecutar_consulta(conexion: Any, query_str: str, params: tuple | None = None) -> list:
+    """Ejecuta una consulta general de lectura en la base de datos.
+
+    Args:
+        conexion: Conexión activa a PostgreSQL.
+        query_str: Consulta SQL a ejecutar.
+        params: Tupla de parámetros para la consulta, opcional.
+
+    Returns:
+        Lista de diccionarios con los resultados de la consulta.
+
+    Raises:
+        Exception: Si ocurre un error al ejecutar la consulta.
+    """
+    resultados_finales = []
+
+    try:
+        with conexion.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+            cursor.execute(query_str, params)
+            if cursor.description:
+                resultados_finales = list(cursor.fetchall())
+    except Exception as e:
+        logger.error(f'Error ejecutando consulta: {e}')
+        raise
+
+    return resultados_finales
+
+
+def actualizar_datos(conexion: Any, esquema: str, tabla: str, datos: dict, condicion: dict) -> None:
+    """Actualiza datos en una tabla bajo condiciones específicas.
+
+    Args:
+        conexion: Conexión activa a PostgreSQL.
+        esquema: Nombre del esquema en la base de datos.
+        tabla: Nombre de la tabla a actualizar.
+        datos: Diccionario con los campos y valores nuevos.
+        condicion: Diccionario con los campos y valores de la condición.
+
+    Raises:
+        Exception: Si ocurre un error al ejecutar la actualización.
+    """
+    partes_set = [sql.SQL('{} = {}').format(sql.Identifier(k), sql.Placeholder()) for k in datos.keys()]
+    partes_where = [sql.SQL('{} = {}').format(sql.Identifier(k), sql.Placeholder()) for k in condicion.keys()]
+
+    query = sql.SQL('UPDATE {esquema}.{tabla} SET {set_expr} WHERE {where_expr}').format(
+        esquema=sql.Identifier(esquema),
+        tabla=sql.Identifier(tabla),
+        set_expr=sql.SQL(', ').join(partes_set),
+        where_expr=sql.SQL(' AND ').join(partes_where)
+    )
+
+    valores = list(datos.values()) + list(condicion.values())
+
+    try:
+        with conexion.cursor() as cursor:
+            cursor.execute(query, valores)
+            conexion.commit()
+    except Exception as e:
+        conexion.rollback()
+        logger.error(f'Error actualizando datos en {esquema}.{tabla}: {e}')
+        raise

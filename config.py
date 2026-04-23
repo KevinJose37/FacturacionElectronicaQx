@@ -71,3 +71,36 @@ def create_postgres_connection(config: dict) -> Any:
     import psycopg2
     conexion = psycopg2.connect(**config)
     return conexion
+
+
+@lru_cache(maxsize=1)
+def load_yaml_config(file_name: str) -> dict:
+    """Carga un archivo YAML de la carpeta config.
+    
+    Args:
+        file_name: Nombre del archivo .yml o .yaml.
+        
+    Returns:
+        Diccionario con la configuración cargada.
+    """
+    import yaml
+    
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(base_path, 'config', file_name)
+    
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            config_data = yaml.safe_load(f)
+        return config_data or {}
+    except Exception:
+        return {}
+
+
+def get_queries_trazabilidad() -> dict:
+    """Obtiene las consultas SQL para trazabilidad desde el archivo YAML.
+    
+    Returns:
+        Diccionario con las consultas SQL.
+    """
+    queries = load_yaml_config('queries_trazabilidad.yml')
+    return queries

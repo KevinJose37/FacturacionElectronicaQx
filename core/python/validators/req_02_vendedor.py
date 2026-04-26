@@ -4,8 +4,8 @@
 from lxml import etree
 
 # Local application imports
-from core.utils.validacion import calcular_dv_nit_v1
-from core.utils.validacion import validar_datos_persona
+from core.python.utils.validacion import calcular_dv_nit_v1
+from core.python.utils.validacion import validar_datos_persona
 
 
 def validar_emisor_v1(xml_factura: etree._Element) -> bool:

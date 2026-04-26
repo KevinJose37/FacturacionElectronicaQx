@@ -1,6 +1,10 @@
 """Módulo que contiene funciones de validación de la fecha de generación de la factura
  electrónica."""
 
+# Standard library imports
+from datetime import datetime
+from datetime import timezone
+
 # Third-party imports
 from lxml import etree
 
@@ -37,23 +41,31 @@ def validar_fecha_generacion_v1(xml_factura: etree._Element) -> bool:
 
     else:
         try:
-            datetime.strptime(fecha, '%Y-%m-%d')
+            dt_str = f'{fecha}T{hora}'
 
-            hora_normalizada = hora
-            if hora[-3] == ':' and (hora[-6] == '+' or hora[-6] == '-'):
-                # Convierte -05:00 -> -0500
-                hora_normalizada = hora[:-3] + hora[-2:]
+            # Normalizar timezone: -05:00 → -0500
+            if dt_str[-3] == ':' and (dt_str[-6] == '+' or dt_str[-6] == '-'):
+                dt_str = dt_str[:-3] + dt_str[-2:]
 
-            datetime.strptime(hora_normalizada, '%H:%M:%S%z')
+            fecha_hora_dt = datetime.strptime(dt_str, '%Y-%m-%dT%H:%M:%S%z')
+
+            ahora_utc = datetime.now(timezone.utc)
+
+            fecha_hora_utc = fecha_hora_dt.astimezone(timezone.utc)
+
+            if fecha_hora_utc > ahora_utc:
+                mensaje = (
+                    f'Fecha y hora de generación futura '
+                    f'(IssueDate="{fecha}", IssueTime="{hora}").'
+                )
+            else:
+                mensaje = f'Fecha y hora de generación válidas: {fecha} {hora}.'
+                resultado_validacion = True
 
         except Exception:
             mensaje = (
                 f'Fecha u hora inválida (IssueDate="{fecha}", IssueTime="{hora}").'
             )
-
-        else:
-            mensaje = f'Fecha y hora de generación válidas: {fecha} {hora}.'
-            resultado_validacion = True
 
     enviar_log_validacion(mensaje)
 

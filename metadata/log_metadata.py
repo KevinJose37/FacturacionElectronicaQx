@@ -75,3 +75,7 @@ class EstructurasDetalle:
 
     recepcion_email = '{{"uid": "{uid}", "host": "{host}"}}'
     """Detalle para la etapa de recepción de correo."""
+
+    verificacion_adjuntos = '{{"archivo_zip": "{archivo_zip}"}}'
+    """Detalle para la etapa de verificación de adjuntos."""
+

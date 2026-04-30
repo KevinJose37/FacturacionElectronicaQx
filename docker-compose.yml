@@ -1,21 +1,4 @@
 services:
-  # ── Reverse Proxy (SSL automático via Let's Encrypt) ──
-  caddy:
-    image: caddy:2-alpine
-    container_name: facturacion_proxy
-    restart: unless-stopped
-    depends_on:
-      - frontend
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    environment:
-      - DOMAIN=${DOMAIN:-localhost}
-
   # ── Base de Datos ──
   database:
     image: postgres:15-alpine
@@ -62,10 +45,8 @@ services:
     restart: unless-stopped
     depends_on:
       - api
-    expose:
-      - "80"
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
 
 volumes:
   postgres_data:
-  caddy_data:
-  caddy_config:

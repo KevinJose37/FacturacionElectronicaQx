@@ -51,10 +51,10 @@ services:
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
 
-  # ── Frontend ──
+  # ── Frontend (se clona y construye desde GitHub automáticamente) ──
   frontend:
     build:
-      context: ${FRONTEND_PATH:-../quipuxaiprueba}
+      context: ${FRONTEND_REPO:-https://github.com/KevinJose37/quipuxaiprueba.git}
       dockerfile: Dockerfile
       args:
         VITE_API_URL: ""

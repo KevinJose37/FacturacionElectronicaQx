@@ -66,3 +66,37 @@ def registrar_log_etapa(
         conexion.close()
 
     return id_log
+
+def iniciar_proceso_ingesta(codigo_estado: str) -> int | None:
+    """Inicia un nuevo proceso de ingesta en la base de datos.
+    
+    Args:
+        codigo_estado: Código de referencia del estado inicial (ej: 'RECIBIDO').
+        
+    Returns:
+        El ID del proceso generado o None si falló.
+    """
+    id_proceso_generado = None
+    
+    try:
+        conexion = obtener_conexion()
+    except Exception as e:
+        logger.error(f"No se pudo establecer conexión para iniciar proceso: {e}")
+        conexion = None
+
+    if conexion:
+        try:
+            id_estado = obtener_id_estado(conexion, codigo_estado)
+            id_proceso_generado = insertar_datos(
+                conexion=conexion,
+                esquema="facturacion",
+                tabla="proceso_ingesta",
+                datos={"id_estado_proceso": id_estado}
+            )
+            logger.info(f"Proceso de ingesta iniciado con ID: {id_proceso_generado}")
+        except Exception as e:
+            logger.error(f"Error al iniciar proceso de ingesta: {e}")
+        finally:
+            conexion.close()
+            
+    return id_proceso_generado

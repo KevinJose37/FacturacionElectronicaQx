@@ -14,13 +14,12 @@ import yaml
 from dotenv import load_dotenv
 
 from core.queue_publisher import get_publisher
-from core.trazabilidad_core import registrar_log_etapa
+from core.trazabilidad_core import registrar_log_etapa, iniciar_proceso_ingesta
 from metadata.log_metadata import (
     EstadosProceso,
     EstructurasDetalle,
     EtapasProceso,
-    MensajesError,
-    IdProceso,
+    MensajesError
 )
 from utils.attachment_handler import AttachmentHandler
 from utils.email_parser import EmailParser
@@ -111,7 +110,7 @@ class EmailListener:
         Returns:
             bool: True si procesó correctamente.
         """
-        id_proceso_actual = IdProceso.ingesta_correos
+        id_proceso_actual = iniciar_proceso_ingesta(EstadosProceso.recibido)
 
         status, data = conn.uid("fetch", uid, "(RFC822)")
         if status != "OK" or not data:

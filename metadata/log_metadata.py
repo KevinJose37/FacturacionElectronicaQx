@@ -75,3 +75,13 @@ class EstructurasDetalle:
 
     recepcion_email = '{{"uid": "{uid}", "host": "{host}"}}'
     """Detalle para la etapa de recepción de correo."""
+
+    verificacion_adjuntos = '{{"archivo_zip": "{archivo_zip}"}}'
+    """Detalle para la etapa de verificación de adjuntos."""
+
+
+class IdProceso:
+    """IDs de proceso fijos o de prueba para trazabilidad."""
+
+    ingesta_correos = 1
+    """ID de proceso para registrar logs de ingesta."""

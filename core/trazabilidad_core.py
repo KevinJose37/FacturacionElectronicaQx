@@ -1,5 +1,6 @@
 """Lógica principal para el registro de trazabilidad en los procesos de facturación."""
 
+import json
 import logging
 from typing import Any
 
@@ -14,7 +15,8 @@ def registrar_log_etapa(
     codigo_etapa: str,
     codigo_estado: str,
     detalle_json: dict | None = None,
-    detalle_error: str | None = None
+    detalle_error: str | None = None,
+    marcar_fin: bool = False,
 ) -> int | None:
     """Registra un nuevo evento de log en la trazabilidad del proceso.
 
@@ -30,31 +32,35 @@ def registrar_log_etapa(
     """
     conexion = obtener_conexion()
     if not conexion:
-        logger.error('No se pudo establecer conexión para registrar log.')
+        logger.error("No se pudo establecer conexión para registrar log.")
         return None
 
     secuencia = obtener_siguiente_secuencia(conexion, id_proceso)
     id_estado = obtener_id_estado(conexion, codigo_estado)
 
     datos_log = {
-        'ID_PROCESO': id_proceso,
-        'NUMERO_SECUENCIA': secuencia,
-        'CODIGO_ETAPA': codigo_etapa,
-        'ID_ESTADO_PROCESO': id_estado,
-        'DETALLE_JSON': detalle_json,
-        'DETALLE_ERROR': detalle_error
+        "id_proceso": id_proceso,
+        "numero_secuencia": secuencia,
+        "codigo_etapa": codigo_etapa,
+        "id_estado_proceso": id_estado,
+        "detalle_json": json.dumps(detalle_json) if detalle_json is not None else None,
+        "detalle_error": detalle_error,
     }
+
+    if marcar_fin:
+        from datetime import datetime
+        datos_log["fecha_fin"] = datetime.now()
 
     try:
         id_log = insertar_datos(
             conexion=conexion,
-            esquema='FACTURACION',
-            tabla='LOG_PROCESO',
-            datos=datos_log
+            esquema="facturacion",
+            tabla="log_proceso",
+            datos=datos_log,
         )
-        logger.info(f'Log registrado: Proceso {id_proceso}, Etapa {codigo_etapa}')
+        logger.info(f"Log registrado: Proceso {id_proceso}, Etapa {codigo_etapa}")
     except Exception as e:
-        logger.error(f'Error al registrar log de trazabilidad: {e}')
+        logger.error(f"Error al registrar log de trazabilidad: {e}")
         id_log = None
     finally:
         conexion.close()

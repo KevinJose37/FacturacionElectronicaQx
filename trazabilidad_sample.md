@@ -28,7 +28,7 @@ uid_correo = "789"
 host_servidor = "imap.empresa.com"
 
 # 1. Preparar el detalle JSON usando la estructura de metadatos
-detalle_json_str = EstructurasDetalle.recepcion_email.format(
+detalle_recepcion = EstructurasDetalle.recepcion_email.format(
     uid=uid_correo,
     host=host_servidor
 )
@@ -38,7 +38,7 @@ registrar_log_etapa(
     id_proceso=id_proceso_actual,
     codigo_etapa=EtapasProceso.recepcion_email,
     codigo_estado=EstadosProceso.recibido,
-    detalle_json=json.loads(detalle_json_str)
+    detalle_json=json.loads(detalle_recepcion)
 )
 ```
 

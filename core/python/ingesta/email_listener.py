@@ -13,8 +13,8 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 
-from core.queue_publisher import get_publisher
-from core.trazabilidad_core import registrar_log_etapa, iniciar_proceso_ingesta
+from core.python.ingesta.queue_publisher import get_publisher
+from core.python.trazabilidad import registrar_log_etapa, iniciar_proceso_ingesta
 from metadata.log_metadata import (
     EstadosProceso,
     EstructurasDetalle,
@@ -26,14 +26,10 @@ from utils.email_parser import EmailParser
 
 load_dotenv()
 
-_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "settings.yaml"
+_CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "settings.yaml"
 
 def _load_config() -> dict:
-    """Carga la configuración desde el archivo YAML.
-
-    Returns:
-        dict: Configuración cargada.
-    """
+    """Carga la configuración desde el archivo YAML."""
     if not _CONFIG_PATH.exists():
         raise FileNotFoundError(f"Configuración no encontrada en {_CONFIG_PATH}")
     with _CONFIG_PATH.open("r", encoding="utf-8") as fh:
@@ -64,14 +60,7 @@ class EmailListener:
         self._publisher = get_publisher(_CONFIG)
 
     def _conectar(self) -> imaplib.IMAP4_SSL:
-        """Establece conexión IMAP con reintentos.
-
-        Returns:
-            imaplib.IMAP4_SSL: Conexión establecida.
-
-        Raises:
-            ConnectionError: Si agota los reintentos.
-        """
+        """Establece conexión IMAP con reintentos."""
         for intento in range(1, self.max_attempts + 1):
             try:
                 conn = imaplib.IMAP4_SSL(self.host, self.port)
@@ -101,15 +90,7 @@ class EmailListener:
         return zip_filename
 
     def _procesar_correo(self, conn: imaplib.IMAP4_SSL, uid: bytes) -> bool:
-        """Procesa un correo individual.
-
-        Args:
-            conn: Conexión IMAP.
-            uid: UID del correo.
-
-        Returns:
-            bool: True si procesó correctamente.
-        """
+        """Procesa un correo individual."""
         id_proceso_actual = iniciar_proceso_ingesta(EstadosProceso.recibido)
 
         status, data = conn.uid("fetch", uid, "(RFC822)")
@@ -124,10 +105,9 @@ class EmailListener:
             return False
 
         raw = data[0][1]
-        
+
         detalle_recepcion = EstructurasDetalle.recepcion_email.format(
-            uid=uid.decode('utf-8', errors='ignore'),
-            host=self.host
+            uid=uid.decode('utf-8', errors='ignore'), host=self.host
         )
         registrar_log_etapa(
             id_proceso=id_proceso_actual,

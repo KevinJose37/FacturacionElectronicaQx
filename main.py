@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
-from core.db import close_pool, init_pool
+from core import close_pool, init_pool
 from routers import (
     chat,
     dashboard,

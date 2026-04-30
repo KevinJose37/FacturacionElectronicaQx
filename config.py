@@ -137,3 +137,65 @@ def get_queries_trazabilidad() -> dict:
     """
     queries = load_yaml_config('queries_trazabilidad.yml')
     return queries
+
+
+def get_tool_definitions() -> list:
+    """Obtiene las definiciones de tools del LLM desde el archivo YAML.
+
+    Carga las definiciones de function calling (OpenAI format) desde
+    ``config/tool_definitions.yml``.
+
+    Returns:
+        Lista de diccionarios con las definiciones de cada tool.
+    """
+    data = load_yaml_config('tool_definitions.yml')
+    resultado = data.get('tools', [])
+    return resultado
+
+
+def load_yaml_queries(ruta_relativa: str) -> dict:
+    """Carga un archivo YAML de queries desde la carpeta input/queries.
+
+    Args:
+        ruta_relativa:
+            Ruta relativa dentro de input/queries (ej: 'chat/queries_chat.yml').
+
+    Returns:
+        Diccionario con las queries cargadas.
+    """
+    import yaml
+
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(base_path, 'input', 'queries', ruta_relativa)
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            queries_data = yaml.safe_load(f)
+        resultado = queries_data or {}
+    except Exception:
+        resultado = {}
+    return resultado
+
+
+def get_queries_chat() -> dict:
+    """Obtiene las consultas SQL del chatbot desde el archivo YAML.
+
+    Carga queries desde ``input/queries/chat/queries_chat.yml``.
+
+    Returns:
+        Diccionario con las queries SQL y fragmentos de filtros.
+    """
+    queries = load_yaml_queries('chat/queries_chat.yml')
+    return queries
+
+
+def get_queries_services() -> dict:
+    """Obtiene las consultas SQL de los servicios del frontend.
+
+    Carga queries desde ``input/queries/services/queries_services.yml``.
+
+    Returns:
+        Diccionario con las queries SQL organizadas por servicio.
+    """
+    queries = load_yaml_queries('services/queries_services.yml')
+    return queries

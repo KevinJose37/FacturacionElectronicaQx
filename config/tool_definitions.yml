@@ -1,0 +1,111 @@
+# ──────────────────────────────────────────────
+# Definiciones de Tools para el LLM (OpenAI function calling format)
+#
+# Cada tool describe una función que el modelo puede invocar
+# para consultar datos en la base de datos del sistema.
+# ──────────────────────────────────────────────
+
+tools:
+
+  - type: function
+    function:
+      name: buscar_facturas
+      description: >
+        Busca facturas en la base de datos. Permite filtrar por estado,
+        proveedor, tipo de documento, o número de factura.
+        Usar cuando el usuario pregunta por facturas específicas, las últimas facturas,
+        facturas de un proveedor, facturas rechazadas, etc.
+      parameters:
+        type: object
+        properties:
+          estado:
+            type: string
+            enum: [validada, rechazada, pendiente, error, todas]
+            description: Filtrar por estado de la factura.
+          proveedor:
+            type: string
+            description: Nombre (parcial) del proveedor emisor.
+          tipo_documento:
+            type: string
+            enum: [FE, NC, ND, DS]
+            description: "Tipo: FE=Factura, NC=Nota crédito, ND=Nota débito, DS=Doc soporte."
+          numero_factura:
+            type: string
+            description: Número o prefijo de la factura a buscar.
+          limite:
+            type: string
+            description: 'Máximo de resultados (default "10", max "25").'
+          ordenar_por:
+            type: string
+            enum: [reciente, antiguo, monto_alto, monto_bajo]
+            description: Criterio de ordenamiento.
+        required: []
+
+  - type: function
+    function:
+      name: listar_proveedores
+      description: >
+        Lista los proveedores registrados con estadísticas.
+        Usar cuando preguntan por proveedores, emisores, empresas, o datos de contacto.
+      parameters:
+        type: object
+        properties:
+          nombre:
+            type: string
+            description: Filtrar por nombre (parcial) del proveedor.
+          limite:
+            type: string
+            description: 'Máximo de resultados (default "10").'
+        required: []
+
+  - type: function
+    function:
+      name: detalle_factura
+      description: >
+        Obtiene el detalle completo de una factura específica.
+        Usar cuando preguntan por el detalle de una factura en particular.
+      parameters:
+        type: object
+        properties:
+          numero_factura:
+            type: string
+            description: "Número de factura (ej: SETT-990, FE-001)."
+          cufe:
+            type: string
+            description: CUFE de la factura.
+        required: []
+
+  - type: function
+    function:
+      name: buscar_rechazos
+      description: >
+        Busca facturas rechazadas con motivos.
+        Usar cuando preguntan por rechazos, errores o causas de rechazo.
+      parameters:
+        type: object
+        properties:
+          proveedor:
+            type: string
+            description: Filtrar rechazos por proveedor (nombre parcial).
+          limite:
+            type: string
+            description: 'Máximo de resultados (default "10").'
+        required: []
+
+  - type: function
+    function:
+      name: ver_logs_recientes
+      description: >
+        Consulta los logs más recientes del sistema.
+        Usar cuando preguntan por actividad reciente, errores del sistema o eventos.
+      parameters:
+        type: object
+        properties:
+          solo_errores:
+            type: string
+            enum: ["true", "false"]
+            description: '"true" para solo errores, "false" para todos.'
+          limite:
+            type: string
+            description: 'Máximo de logs (default "10").'
+        required: []

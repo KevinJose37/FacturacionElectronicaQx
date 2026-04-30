@@ -14,8 +14,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from core import dashboard_service, facturas_service, rechazos_service, chat_tools
-from core.cache import cached
+from core import dashboard_service, facturas_service, rechazos_service, chat_tools, cached
 
 logger = logging.getLogger(__name__)
 

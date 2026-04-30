@@ -78,4 +78,3 @@ class EstructurasDetalle:
 
     verificacion_adjuntos = '{{"archivo_zip": "{archivo_zip}"}}'
     """Detalle para la etapa de verificación de adjuntos."""
-

@@ -3,7 +3,7 @@
 import os
 import logging
 from fastapi import APIRouter, Header, HTTPException, BackgroundTasks
-from core.email_listener import EmailListener
+from core import EmailListener
 
 router = APIRouter(
     prefix="/webhook",

@@ -40,3 +40,52 @@ retry:
 logging:
   level: INFO               # DEBUG | INFO | WARNING | ERROR | CRITICAL
   format: "%(asctime)s [%(levelname)s] %(name)s - %(message)s"
+
+# ──────────────────────────────────────────────
+# Cache en memoria (TTL)
+# ──────────────────────────────────────────────
+cache:
+  default_ttl_seconds: 30
+
+# ──────────────────────────────────────────────
+# Pool de conexiones async (psycopg)
+# ──────────────────────────────────────────────
+database:
+  pool:
+    min_size: 5
+    max_size: 15
+
+# ──────────────────────────────────────────────
+# Dashboard
+# ──────────────────────────────────────────────
+dashboard:
+  capacity_max_epm: 200     # Threshold máximo de eventos por minuto
+  factor_pipeline_warn: 0.9 # Factor para warning en etapa de procesamiento
+
+# ──────────────────────────────────────────────
+# Proveedores
+# ──────────────────────────────────────────────
+proveedores:
+  umbral_activo: 90         # Tasa de validación % para estado 'active'
+  umbral_revision: 70       # Tasa de validación % para estado 'review'
+
+# ──────────────────────────────────────────────
+# Configuración del LLM para el chatbot Innti
+# ──────────────────────────────────────────────
+llm:
+  default_model: gpt-4o-mini
+  timeout_seconds: 45
+  max_tool_iterations: 3
+  temperature: 0.4
+  max_tokens: 1024
+
+# ──────────────────────────────────────────────
+# Procesamiento de facturas (ZIP → S3)
+# ──────────────────────────────────────────────
+processor:
+  extensiones_permitidas:
+    - .xml
+    - .pdf
+  s3_prefijo_zip: facturas
+  s3_prefijo_extraidos: facturas_descomprimidas
+  cabecera_bytes: 100

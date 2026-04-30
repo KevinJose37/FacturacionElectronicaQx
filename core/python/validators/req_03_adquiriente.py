@@ -9,9 +9,12 @@ from core.python.utils.validacion import calcular_dv_nit_v1
 from core.python.utils.validacion import validar_datos_persona
 
 
-def validar_adquiriente_v1(xml_factura: etree._Element) -> bool:
-    """Valida el los datos del adquiriente (nombre/razón social y NIT) según la resolución
+def validar_adquiriente_v1(xml_raw: etree._Element) -> bool:
+    """Valida los datos del adquiriente (nombre/razón social y NIT) según la resolución
      000165 de 2023.
+     
+    Args:
+        xml_raw: Elemento raíz del XML de la factura electrónica.
 
     Reglas:
     - Siempre requiere nombre
@@ -31,19 +34,19 @@ def validar_adquiriente_v1(xml_factura: etree._Element) -> bool:
 
     XPATH_BASE = './cac:AccountingCustomerParty/cac:Party'
 
-    nodos_nombre = xml_factura.xpath(
+    nodos_nombre = xml_raw.xpath(
         XPATH_BASE + '/cac:PartyName/cbc:Name', namespaces=NAMESPACES
     )
 
     if not nodos_nombre:
-        nodos_nombre = xml_factura.xpath(
+        nodos_nombre = xml_raw.xpath(
             XPATH_BASE + '/cac:PartyLegalEntity/cbc:RegistrationName',
             namespaces=NAMESPACES
         )
 
     nombre = (nodos_nombre[0].text or '').strip() if nodos_nombre else None
 
-    nodos_nit = xml_factura.xpath(
+    nodos_nit = xml_raw.xpath(
         XPATH_BASE + '/cac:PartyTaxScheme/cbc:CompanyID', namespaces=NAMESPACES
     )
 

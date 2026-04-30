@@ -7,6 +7,9 @@ from lxml import etree
 def validar_numeracion_dian_v1(xml_factura: etree._Element) -> bool:
     """Valida la numeración DIAN de la factura electrónica según la resolución
     000165 de 2023.
+    
+    Args:
+        xml_factura: Árbol XML de la factura electrónica a validar.
 
     Reglas:
     - Debe existir número de factura

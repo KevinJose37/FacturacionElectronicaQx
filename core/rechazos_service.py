@@ -58,20 +58,19 @@ async def obtener_estadisticas() -> dict:
 
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
+            # Todos los conteos de factura en una query
             await cur.execute(
-                'SELECT COUNT(*) FROM facturacion.factura '
-                'WHERE id_estado_proceso IN (8, 10) AND fecha_creacion >= %s',
+                'SELECT '
+                'COUNT(*) FILTER (WHERE id_estado_proceso IN (8, 10) AND fecha_creacion >= %s) as rechazos_hoy, '
+                'COUNT(*) FILTER (WHERE id_estado_proceso = 10) as severidad_alta, '
+                'COUNT(*) as total '
+                'FROM facturacion.factura',
                 (inicio_hoy,),
             )
-            rechazos_hoy = (await cur.fetchone())[0]
-
-            await cur.execute(
-                'SELECT COUNT(*) FROM facturacion.factura WHERE id_estado_proceso = 10'
-            )
-            severidad_alta = (await cur.fetchone())[0]
-
-            await cur.execute('SELECT COUNT(*) FROM facturacion.factura')
-            total = (await cur.fetchone())[0]
+            row = await cur.fetchone()
+            rechazos_hoy = row[0]
+            severidad_alta = row[1]
+            total = row[2]
 
             await cur.execute(
                 'SELECT COUNT(*) FROM facturacion.proceso_ingesta '
@@ -79,8 +78,7 @@ async def obtener_estadisticas() -> dict:
             )
             reintentos = (await cur.fetchone())[0]
 
-    rechazos_total = rechazos_hoy
-    tasa = round((rechazos_total / max(total, 1)) * 100, 1)
+    tasa = round((rechazos_hoy / max(total, 1)) * 100, 1)
 
     estadisticas = {
         'rechazos_hoy': rechazos_hoy,

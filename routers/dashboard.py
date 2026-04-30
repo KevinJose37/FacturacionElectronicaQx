@@ -1,5 +1,7 @@
 """Endpoints del dashboard principal."""
 
+import asyncio
+
 from fastapi import APIRouter
 
 from core import dashboard_service
@@ -9,23 +11,37 @@ router = APIRouter(prefix='/api/dashboard', tags=['dashboard'])
 
 @router.get('')
 async def obtener_dashboard() -> dict:
-    """Obtiene todos los datos del dashboard en una sola llamada."""
-    kpis = await dashboard_service.obtener_kpis()
-    flow = await dashboard_service.obtener_etapas_flujo()
-    proveedores = await dashboard_service.obtener_facturas_por_proveedor()
-    tendencia = await dashboard_service.obtener_tendencia()
-    facturas = await dashboard_service.obtener_ultimas_facturas()
-    actividad = await dashboard_service.obtener_actividad_reciente()
+    """Obtiene todos los datos del dashboard en una sola llamada.
+
+    Ejecuta todas las consultas en paralelo con asyncio.gather.
+    """
+    (
+        kpis, flow, proveedores, tendencia, facturas,
+        actividad, tipos_doc, heatmap, indicadores, eventos_min,
+    ) = await asyncio.gather(
+        dashboard_service.obtener_kpis(),
+        dashboard_service.obtener_etapas_flujo(),
+        dashboard_service.obtener_facturas_por_proveedor(),
+        dashboard_service.obtener_tendencia(),
+        dashboard_service.obtener_ultimas_facturas(),
+        dashboard_service.obtener_actividad_reciente(),
+        dashboard_service.obtener_tipos_documento(),
+        dashboard_service.obtener_heatmap_errores(),
+        dashboard_service.obtener_indicadores_pipeline(),
+        dashboard_service.obtener_eventos_por_minuto(),
+    )
 
     respuesta = {
         'kpis': kpis,
         'flow_stages': flow,
+        'flow_indicators': indicadores,
         'provider_data': proveedores,
-        'doc_type_data': [],
+        'doc_type_data': tipos_doc,
         'trend_data': tendencia,
-        'heatmap_data': [],
+        'heatmap_data': heatmap,
         'invoices': facturas,
         'activity': actividad,
+        'events_per_min': eventos_min,
     }
     return respuesta
 

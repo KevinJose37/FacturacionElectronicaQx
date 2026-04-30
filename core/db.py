@@ -33,8 +33,8 @@ async def init_pool() -> None:
 
     _pool = AsyncConnectionPool(
         conninfo=conninfo,
-        min_size=2,
-        max_size=10,
+        min_size=5,
+        max_size=15,
         open=False,
     )
     await _pool.open()

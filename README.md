@@ -61,3 +61,113 @@ Si estás subiendo esto a un VPS en producción y lo dejas abierto al internet:
 - **Reiniciar el servicio:** `docker-compose start`
 - **Borrar contenedor (Mantiene la Data):** `docker-compose down`
 - **Borrar contenedor y resetear TODA la base de datos (Peligro):** `docker-compose down -v`
+
+---
+
+## API — Facturación Electrónica
+
+### Requisitos
+
+- Python 3.11+
+- PostgreSQL corriendo (ver sección anterior)
+
+### Instalación
+
+```bash
+# Crear entorno virtual
+python -m venv venv
+
+# Activar (Linux/Mac)
+source venv/bin/activate
+
+# Activar (Windows)
+.\venv\Scripts\activate
+
+# Instalar dependencias
+pip install -r requirements.txt
+```
+
+### Configuración `.env`
+
+Crea un archivo `.env` en la raíz del proyecto (usa `.env.example` como referencia):
+
+```env
+POSTGRES_HOST=127.0.0.1
+POSTGRES_PORT=5432
+POSTGRES_DB=facturacion
+POSTGRES_USER=admin
+POSTGRES_PASSWORD=mysecretpassword
+WEBHOOK_SECRET=tu_secreto_aqui
+EMAIL_USER=tu_email@gmail.com
+EMAIL_PASSWORD=tu_app_password
+CORS_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost:8080
+```
+
+### Migraciones de Base de Datos
+
+Las migraciones SQL se encuentran en `scripts/` con el formato `migration_NNN_descripcion.sql`.
+
+**Migraciones disponibles:**
+
+| Archivo | Descripción | Idempotente |
+|---------|-------------|:-----------:|
+| `modelo_facturacion_gpt.sql` | Schema inicial completo (se ejecuta auto con Docker) | ✅ |
+| `scripts/migration_001_tipo_documento.sql` | Agrega columna `tipo_documento` a `factura` | ✅ |
+
+#### Correr migraciones en el VPS
+
+```bash
+# Opción 1: Desde el VPS con psql (recomendado)
+psql -h 127.0.0.1 -p 5432 -U admin -d facturacion -f scripts/migration_001_tipo_documento.sql
+
+# Opción 2: Desde el VPS usando Docker exec
+docker exec -i facturacion_db psql -U admin -d facturacion < scripts/migration_001_tipo_documento.sql
+
+# Opción 3: Desde tu máquina local apuntando al VPS
+psql -h <IP_DEL_VPS> -p 5432 -U admin -d facturacion -f scripts/migration_001_tipo_documento.sql
+```
+
+> **Nota:** Todas las migraciones usan `IF NOT EXISTS` o son idempotentes, por lo que se pueden ejecutar múltiples veces sin riesgo.
+
+#### Correr TODAS las migraciones de una vez
+
+```bash
+# Desde el VPS
+for f in scripts/migration_*.sql; do
+  echo "Ejecutando $f..."
+  psql -h 127.0.0.1 -p 5432 -U admin -d facturacion -f "$f"
+done
+```
+
+### Datos de Prueba (Seed)
+
+Para poblar la base de datos con datos de ejemplo:
+
+```bash
+python scripts/seed.py
+```
+
+> ⚠️ **El seed borra todos los datos existentes** antes de insertar los nuevos. No ejecutar en producción con datos reales.
+
+### Iniciar la API
+
+```bash
+python main.py
+```
+
+La API estará disponible en `http://0.0.0.0:8888`.
+
+- **Documentación Swagger:** `http://<HOST>:8888/docs`
+- **Health check:** `GET /` → `{"status": "online"}`
+
+### Endpoints Disponibles
+
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `/api/dashboard` | GET | Dashboard completo (KPIs, gráficos, pipeline) |
+| `/api/facturas` | GET | Listado de facturas con filtros y estadísticas |
+| `/api/proveedores` | GET | Listado de proveedores con métricas |
+| `/api/validaciones` | GET | Reglas de validación con conteos |
+| `/api/rechazos` | GET | Rechazos con causas frecuentes |
+| `/api/logs` | GET | Logs del sistema con conteos por nivel |
+| `/webhook/gmail` | POST | Webhook para ingesta desde Gmail |

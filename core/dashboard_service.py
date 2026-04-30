@@ -21,36 +21,25 @@ async def obtener_kpis() -> list:
             inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
             inicio_ayer = inicio_hoy - timedelta(days=1)
 
+            # Una sola query con todos los conteos
             await cur.execute(
-                'SELECT COUNT(*) FROM facturacion.factura WHERE fecha_creacion >= %s',
-                (inicio_hoy,),
+                'SELECT '
+                'COUNT(*) FILTER (WHERE fecha_creacion >= %s) as hoy, '
+                'COUNT(*) FILTER (WHERE fecha_creacion >= %s) as ayer, '
+                'COUNT(*) FILTER (WHERE id_estado_proceso = 7) as validadas, '
+                'COUNT(*) FILTER (WHERE id_estado_proceso IN (8, 10)) as rechazadas, '
+                'COUNT(DISTINCT id_tercero_emisor) as proveedores '
+                'FROM facturacion.factura',
+                (inicio_hoy, inicio_ayer),
             )
-            procesadas_hoy = (await cur.fetchone())[0]
+            row = await cur.fetchone()
+            procesadas_hoy = row[0]
+            procesadas_ayer = row[1] or 1
+            validadas = row[2]
+            rechazadas = row[3]
+            proveedores = row[4]
 
-            await cur.execute(
-                'SELECT COUNT(*) FROM facturacion.factura WHERE fecha_creacion >= %s',
-                (inicio_ayer,),
-            )
-            procesadas_ayer = (await cur.fetchone())[0] or 1
-
-            await cur.execute(
-                'SELECT COUNT(*) FROM facturacion.factura WHERE id_estado_proceso = 7'
-            )
-            validadas = (await cur.fetchone())[0]
-
-            await cur.execute(
-                'SELECT COUNT(*) FROM facturacion.factura WHERE id_estado_proceso IN (8, 10)'
-            )
-            rechazadas = (await cur.fetchone())[0]
-
-            await cur.execute(
-                'SELECT COUNT(DISTINCT id_tercero_emisor) FROM facturacion.factura'
-            )
-            proveedores = (await cur.fetchone())[0]
-
-            total_facturas = procesadas_hoy or 1
             pct_auto = round((validadas / max(validadas + rechazadas, 1)) * 100, 1)
-
             delta_proc = round(((procesadas_hoy - procesadas_ayer) / max(procesadas_ayer, 1)) * 100, 1)
 
     spark_base = [max(1, procesadas_hoy - i * 3) for i in range(12, 0, -1)]
@@ -75,28 +64,17 @@ async def obtener_etapas_flujo() -> list:
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute('SELECT COUNT(*) FROM facturacion.factura')
-            total = (await cur.fetchone())[0]
-
             await cur.execute(
-                'SELECT COUNT(*) FROM facturacion.factura WHERE id_estado_proceso >= 2'
+                'SELECT '
+                'COUNT(*) as total, '
+                'COUNT(*) FILTER (WHERE id_estado_proceso >= 2) as validacion, '
+                'COUNT(*) FILTER (WHERE id_estado_proceso >= 6) as procesamiento, '
+                'COUNT(*) FILTER (WHERE id_estado_proceso IN (7, 9)) as erp, '
+                'COUNT(*) FILTER (WHERE id_estado_proceso = 9) as finalizado '
+                'FROM facturacion.factura'
             )
-            validacion = (await cur.fetchone())[0]
-
-            await cur.execute(
-                'SELECT COUNT(*) FROM facturacion.factura WHERE id_estado_proceso >= 6'
-            )
-            procesamiento = (await cur.fetchone())[0]
-
-            await cur.execute(
-                'SELECT COUNT(*) FROM facturacion.factura WHERE id_estado_proceso IN (7, 9)'
-            )
-            erp = (await cur.fetchone())[0]
-
-            await cur.execute(
-                'SELECT COUNT(*) FROM facturacion.factura WHERE id_estado_proceso = 9'
-            )
-            finalizado = (await cur.fetchone())[0]
+            row = await cur.fetchone()
+            total, validacion, procesamiento, erp, finalizado = row
 
     etapas = [
         {'id': 'intake', 'label': 'Entrada', 'count': total, 'status': 'ok'},
@@ -250,3 +228,143 @@ async def obtener_actividad_reciente(limite: int = 8) -> list:
 
         resultado.append({'type': tipo, 'text': texto, 'time': tiempo_texto})
     return resultado
+
+
+async def obtener_tipos_documento() -> list:
+    """Conteo de documentos agrupados por tipo_documento.
+
+    Usa la columna tipo_documento de la tabla factura para generar
+    datos para el gráfico de torta (DocTypePie).
+
+    Returns:
+        Lista de diccionarios con nombre del tipo y conteo.
+    """
+    pool = get_pool()
+    mapa_nombres = {
+        'FE': 'Factura electrónica',
+        'NC': 'Nota crédito',
+        'ND': 'Nota débito',
+        'DS': 'Documento soporte',
+    }
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                'SELECT tipo_documento, COUNT(*) '
+                'FROM facturacion.factura '
+                'GROUP BY tipo_documento '
+                'ORDER BY COUNT(*) DESC'
+            )
+            filas = await cur.fetchall()
+
+    resultado = [
+        {'name': mapa_nombres.get(r[0], r[0]), 'value': r[1]}
+        for r in filas
+    ]
+    return resultado
+
+
+async def obtener_heatmap_errores(dias: int = 7) -> list:
+    """Genera datos para el heatmap de errores por día de la semana y hora.
+
+    Cuenta registros en log_proceso donde detalle_error IS NOT NULL,
+    agrupados por día de la semana (0=Lun..6=Dom) y hora del día.
+
+    Args:
+        dias: Cantidad de días hacia atrás a considerar.
+
+    Returns:
+        Lista de celdas con day (str), hour (int) y value (int).
+    """
+    pool = get_pool()
+    dias_nombre = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT EXTRACT(DOW FROM fecha_inicio)::int as dia, "
+                "EXTRACT(HOUR FROM fecha_inicio)::int as hora, "
+                "COUNT(*) as total "
+                "FROM facturacion.log_proceso "
+                "WHERE detalle_error IS NOT NULL "
+                "AND fecha_inicio >= NOW() - make_interval(days => %s) "
+                "GROUP BY dia, hora "
+                "ORDER BY dia, hora",
+                (dias,),
+            )
+            filas = await cur.fetchall()
+
+    resultado = [
+        {'day': dias_nombre[r[0]], 'hour': r[1], 'value': r[2]}
+        for r in filas
+    ]
+    return resultado
+
+
+async def obtener_indicadores_pipeline() -> dict:
+    """Calcula indicadores del pie del pipeline de flujo.
+
+    - SLA cumplido: % de procesos finalizados en < 5 minutos.
+    - Facturas atascadas: procesos sin fecha_fin con > 1 hora.
+    - Cola interna: eventos pendientes en evento_ingesta.
+
+    Returns:
+        Diccionario con sla, atascadas, cola.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            # Atascadas + SLA en una sola query sobre proceso_ingesta
+            await cur.execute(
+                "SELECT "
+                "COUNT(*) FILTER (WHERE fecha_fin IS NULL "
+                "AND fecha_inicio < NOW() - INTERVAL '1 hour') as atascadas, "
+                "COUNT(*) FILTER (WHERE fecha_fin IS NOT NULL "
+                "AND fecha_fin - fecha_inicio < INTERVAL '5 minutes') as sla_ok, "
+                "COUNT(*) FILTER (WHERE fecha_fin IS NOT NULL) as sla_total "
+                "FROM facturacion.proceso_ingesta"
+            )
+            row = await cur.fetchone()
+            atascadas = row[0]
+            sla = round((row[1] / max(row[2], 1)) * 100, 1)
+
+            # Cola interna (tabla distinta)
+            await cur.execute(
+                "SELECT COUNT(*) FROM facturacion.evento_ingesta "
+                "WHERE estado = 'PENDIENTE'"
+            )
+            cola = (await cur.fetchone())[0]
+
+    indicadores = {
+        'sla': f'{sla}%',
+        'atascadas': str(atascadas),
+        'cola': f'{cola} jobs',
+    }
+    return indicadores
+
+
+async def obtener_eventos_por_minuto(ventana_minutos: int = 10) -> dict:
+    """Calcula eventos procesados por minuto y porcentaje de capacidad.
+
+    Cuenta registros en log_proceso dentro de una ventana de tiempo
+    y calcula la tasa por minuto.
+
+    Args:
+        ventana_minutos: Ventana de tiempo en minutos para el cálculo.
+
+    Returns:
+        Diccionario con events_per_min (float) y capacity_pct (int).
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "SELECT COUNT(*) FROM facturacion.log_proceso "
+                "WHERE fecha_inicio >= NOW() - make_interval(mins => %s)",
+                (ventana_minutos,),
+            )
+            eventos = (await cur.fetchone())[0]
+
+    epm = round(eventos / max(ventana_minutos, 1), 1)
+    capacidad_max = 200  # threshold configurable
+    pct = min(round((epm / capacidad_max) * 100), 100)
+
+    return {'events_per_min': epm, 'capacity_pct': pct}

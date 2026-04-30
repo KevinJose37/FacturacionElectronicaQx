@@ -88,26 +88,22 @@ async def obtener_estadisticas() -> dict:
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute('SELECT COUNT(*) FROM facturacion.factura')
-            total = (await cur.fetchone())[0]
-
-            await cur.execute('SELECT COUNT(*) FROM facturacion.factura WHERE id_estado_proceso IN (7, 9)')
-            validadas = (await cur.fetchone())[0]
-
-            await cur.execute('SELECT COUNT(*) FROM facturacion.factura WHERE id_estado_proceso IN (5, 6)')
-            pendientes = (await cur.fetchone())[0]
-
-            await cur.execute('SELECT COUNT(*) FROM facturacion.factura WHERE id_estado_proceso IN (8, 10)')
-            rechazadas = (await cur.fetchone())[0]
-
-            await cur.execute('SELECT COALESCE(SUM(valor_total), 0) FROM facturacion.factura')
-            monto = float((await cur.fetchone())[0])
+            await cur.execute(
+                'SELECT '
+                'COUNT(*) as total, '
+                'COUNT(*) FILTER (WHERE id_estado_proceso IN (7, 9)) as validadas, '
+                'COUNT(*) FILTER (WHERE id_estado_proceso IN (5, 6)) as pendientes, '
+                'COUNT(*) FILTER (WHERE id_estado_proceso IN (8, 10)) as rechazadas, '
+                'COALESCE(SUM(valor_total), 0) as monto '
+                'FROM facturacion.factura'
+            )
+            row = await cur.fetchone()
 
     estadisticas = {
-        'total': total,
-        'validadas': validadas,
-        'pendientes': pendientes,
-        'rechazadas': rechazadas,
-        'monto_total': monto,
+        'total': row[0],
+        'validadas': row[1],
+        'pendientes': row[2],
+        'rechazadas': row[3],
+        'monto_total': float(row[4]),
     }
     return estadisticas

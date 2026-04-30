@@ -98,24 +98,17 @@ async def obtener_conteos() -> dict:
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                'SELECT COUNT(*) FROM facturacion.log_proceso WHERE fecha_inicio >= %s',
+                'SELECT '
+                'COUNT(*) as total, '
+                'COUNT(*) FILTER (WHERE detalle_error IS NOT NULL) as errores, '
+                "COUNT(*) FILTER (WHERE detalle_json::text ILIKE '%%warn%%') as warnings "
+                'FROM facturacion.log_proceso WHERE fecha_inicio >= %s',
                 (inicio,),
             )
-            total = (await cur.fetchone())[0]
-
-            await cur.execute(
-                'SELECT COUNT(*) FROM facturacion.log_proceso '
-                'WHERE fecha_inicio >= %s AND detalle_error IS NOT NULL',
-                (inicio,),
-            )
-            errores = (await cur.fetchone())[0]
-
-            await cur.execute(
-                "SELECT COUNT(*) FROM facturacion.log_proceso "
-                "WHERE fecha_inicio >= %s AND detalle_json::text ILIKE '%%warn%%'",
-                (inicio,),
-            )
-            warnings = (await cur.fetchone())[0]
+            row = await cur.fetchone()
+            total = row[0]
+            errores = row[1]
+            warnings = row[2]
 
     conteos = {
         'total_24h': total,

@@ -1,4 +1,9 @@
-"""Servicio de consultas para la página de proveedores."""
+"""Servicio de consultas para la página de proveedores.
+
+NOTA: No existe tabla de integraciones ERP en la BD.
+La stat card 'Integraciones ERP' del frontend debe eliminarse.
+El campo 'erp' en los proveedores se ha removido del response.
+"""
 
 import logging
 
@@ -61,26 +66,40 @@ async def listar_proveedores() -> list:
             'invoices': total,
             'validRate': tasa,
             'status': estado,
-            'erp': 'SAP',
             'lastSync': sync_texto,
         })
     return resultado
 
 
 async def obtener_estadisticas() -> dict:
-    """Calcula estadísticas agregadas de proveedores.
+    """Calcula estadísticas agregadas de proveedores con una sola query SQL.
 
     Returns:
         Diccionario con total, activos y tasa promedio de validación.
     """
-    proveedores = await listar_proveedores()
-    total = len(proveedores)
-    activos = sum(1 for p in proveedores if p['status'] == 'active')
-    tasa_promedio = round(sum(p['validRate'] for p in proveedores) / max(total, 1), 1)
+    pool = get_pool()
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                'SELECT '
+                'COUNT(*) as total, '
+                'COUNT(*) FILTER (WHERE validadas * 100.0 / GREATEST(total_f, 1) >= 90) as activos, '
+                'COALESCE(AVG(validadas * 100.0 / GREATEST(total_f, 1)), 0) as tasa_prom '
+                'FROM ('
+                '  SELECT t.id_tercero, '
+                '  COUNT(f.id_factura) as total_f, '
+                '  COUNT(f.id_factura) FILTER (WHERE f.id_estado_proceso IN (7, 9)) as validadas '
+                '  FROM facturacion.tercero t '
+                '  LEFT JOIN facturacion.factura f ON t.id_tercero = f.id_tercero_emisor '
+                '  WHERE t.id_rol_tercero = 1 '
+                '  GROUP BY t.id_tercero'
+                ') sub'
+            )
+            row = await cur.fetchone()
 
     estadisticas = {
-        'total': total,
-        'activos': activos,
-        'tasa_promedio': tasa_promedio,
+        'total': row[0],
+        'activos': row[1],
+        'tasa_promedio': round(float(row[2]), 1),
     }
     return estadisticas

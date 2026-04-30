@@ -1,0 +1,74 @@
+# ──────────────────────────────────────────────
+# Queries SQL del chatbot Innti
+#
+# Cada clave corresponde al nombre de una tool del LLM.
+# Los queries usan placeholders {where}, {order}, {where_extra},
+# {ids_validadas}, {ids_rechazadas}, {ids_rechazados}
+# que se interpolan en tiempo de ejecución.
+# ──────────────────────────────────────────────
+
+buscar_facturas: >
+  SELECT f.prefijo_facturacion, f.numero_factura,
+  t.nombre_comercial, ep.descripcion,
+  f.valor_total, f.fecha_expedicion, f.tipo_documento, f.cufe
+  FROM facturacion.factura f
+  JOIN facturacion.tercero t ON f.id_tercero_emisor = t.id_tercero
+  JOIN facturacion.tipo_estado_proceso ep ON f.id_estado_proceso = ep.id_estado_proceso
+  {where} ORDER BY {order} LIMIT %s
+
+listar_proveedores: >
+  SELECT t.nombre_comercial, t.numero_documento,
+  t.correo_contacto, t.telefono_contacto,
+  COUNT(f.id_factura) as total_facturas,
+  COUNT(f.id_factura) FILTER (WHERE f.id_estado_proceso IN ({ids_validadas})) as validadas,
+  COUNT(f.id_factura) FILTER (WHERE f.id_estado_proceso IN ({ids_rechazadas})) as rechazadas
+  FROM facturacion.tercero t
+  LEFT JOIN facturacion.factura f ON t.id_tercero = f.id_tercero_emisor
+  {where}
+  GROUP BY t.id_tercero, t.nombre_comercial, t.numero_documento,
+  t.correo_contacto, t.telefono_contacto
+  ORDER BY total_facturas DESC LIMIT %s
+
+detalle_factura: >
+  SELECT f.prefijo_facturacion, f.numero_factura, f.cufe,
+  f.tipo_documento, f.valor_total, f.codigo_moneda,
+  f.fecha_generacion, f.fecha_expedicion, f.fecha_vencimiento,
+  te.nombre_comercial as emisor, te.numero_documento as nit_emisor,
+  ta.nombre_comercial as adquiriente, ta.numero_documento as nit_adquiriente,
+  ep.descripcion as estado,
+  f.fecha_creacion, f.fecha_actualizacion
+  FROM facturacion.factura f
+  JOIN facturacion.tercero te ON f.id_tercero_emisor = te.id_tercero
+  LEFT JOIN facturacion.tercero ta ON f.id_tercero_adquiriente = ta.id_tercero
+  JOIN facturacion.tipo_estado_proceso ep ON f.id_estado_proceso = ep.id_estado_proceso
+  {where} LIMIT 1
+
+buscar_rechazos: >
+  SELECT f.prefijo_facturacion, f.numero_factura,
+  t.nombre_comercial, ep.descripcion,
+  f.valor_total, f.fecha_creacion
+  FROM facturacion.factura f
+  JOIN facturacion.tercero t ON f.id_tercero_emisor = t.id_tercero
+  JOIN facturacion.tipo_estado_proceso ep ON f.id_estado_proceso = ep.id_estado_proceso
+  WHERE f.id_estado_proceso IN ({ids_rechazados}) {where_extra}
+  ORDER BY f.fecha_creacion DESC LIMIT %s
+
+ver_logs_recientes: >
+  SELECT lp.codigo_etapa, lp.detalle_error, lp.fecha_inicio,
+  lp.fecha_fin
+  FROM facturacion.log_proceso lp
+  {where}
+  ORDER BY lp.fecha_inicio DESC LIMIT %s
+
+# ──────────────────────────────────────────────
+# Fragmentos de condiciones reutilizables
+# ──────────────────────────────────────────────
+
+filtros:
+  estado: "f.id_estado_proceso IN ({placeholders})"
+  proveedor: "t.nombre_comercial ILIKE %s"
+  tipo_documento: "f.tipo_documento = %s"
+  numero_factura: "(f.numero_factura ILIKE %s OR f.prefijo_facturacion ILIKE %s)"
+  cufe: "f.cufe ILIKE %s"
+  numero_factura_detalle: "(f.prefijo_facturacion || '-' || f.numero_factura ILIKE %s OR f.numero_factura ILIKE %s)"
+  solo_errores: "WHERE lp.detalle_error IS NOT NULL"

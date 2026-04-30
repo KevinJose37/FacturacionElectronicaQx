@@ -1,27 +1,45 @@
 services:
+  # ── Reverse Proxy (SSL automático via Let's Encrypt) ──
+  caddy:
+    image: caddy:2-alpine
+    container_name: facturacion_proxy
+    restart: unless-stopped
+    depends_on:
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+
+  # ── Base de Datos ──
   database:
     image: postgres:15-alpine
     container_name: facturacion_db
     restart: unless-stopped
     ports:
-      - "5433:5432"
+      - "${DB_EXTERNAL_PORT:-5433}:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Este script se ejecutará automáticamente la primera vez que se cree el contenedor
       - ./modelo_facturacion_gpt.sql:/docker-entrypoint-initdb.d/init.sql:ro
 
+  # ── Backend API ──
   api:
     build: .
     container_name: facturacion_api
     restart: unless-stopped
     depends_on:
       - database
-    ports:
-      - "8888:8888"
+    expose:
+      - "8888"
     env_file:
       - .env
     environment:
@@ -31,20 +49,23 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://frontend
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
 
+  # ── Frontend ──
   frontend:
     build:
-      context: ../quipuxaiprueba
+      context: ${FRONTEND_PATH:-../quipuxaiprueba}
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: http://localhost:8888
+        VITE_API_URL: ""
     container_name: facturacion_frontend
     restart: unless-stopped
     depends_on:
       - api
-    ports:
-      - "3000:80"
+    expose:
+      - "80"
 
 volumes:
   postgres_data:
+  caddy_data:
+  caddy_config:

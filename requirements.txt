@@ -13,3 +13,6 @@ psycopg2-binary==2.9.11
 
 # === Configuración ===
 PyYAML==6.0.2
+
+# === Chatbot (HTTP client para LLM API) ===
+httpx>=0.27.0

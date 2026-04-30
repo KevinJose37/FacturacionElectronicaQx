@@ -19,6 +19,7 @@ load_dotenv()
 
 from core.db import close_pool, init_pool
 from routers import (
+    chat,
     dashboard,
     facturas,
     ingesta,
@@ -70,6 +71,7 @@ app.include_router(proveedores.router)
 app.include_router(validaciones.router)
 app.include_router(rechazos.router)
 app.include_router(logs_router.router)
+app.include_router(chat.router)
 
 
 @app.get("/")

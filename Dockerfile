@@ -33,7 +33,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
 # Puerto en el que corre FastAPI
-EXPOSE 8000
+EXPOSE 8888
 
 # Comando para iniciar la aplicación (vía main.py que inicia uvicorn)
 CMD ["python", "main.py"]

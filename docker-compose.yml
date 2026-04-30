@@ -4,7 +4,7 @@ services:
     container_name: facturacion_db
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -21,16 +21,30 @@ services:
     depends_on:
       - database
     ports:
-      - "8000:8000"
+      - "8888:8888"
     env_file:
       - .env
     environment:
-      - POSTGRES_HOST=${POSTGRES_HOST}
-      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_HOST=database
+      - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://frontend
+
+  frontend:
+    build:
+      context: ../quipuxaiprueba
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8888
+    container_name: facturacion_frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3000:80"
 
 volumes:
   postgres_data:

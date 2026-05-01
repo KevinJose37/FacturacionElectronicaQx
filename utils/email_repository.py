@@ -22,6 +22,7 @@ from typing import Optional, Any
 import psycopg
 from psycopg import Connection
 from config import get_postgres_config
+from metadata.path_s3 import RutasS3
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +162,7 @@ class EmailRepository:
         id_tipo_archivo: int,
         adjunto_padre_id: Optional[int] = None,
         archivo_seguro: bool = True,
+        fecha_envio: Optional[datetime] = None,
     ) -> int:
         """Guarda un adjunto en la tabla ADJUNTOS_CORREO.
 
@@ -182,8 +184,21 @@ class EmailRepository:
         try:
             # Cálculo de metadatos del archivo
             sha256_hash = self.calcular_hash_sha256(ruta_archivo)
-            uri_almacenamiento = str(ruta_archivo)
             nombre_archivo = ruta_archivo.name
+            
+            fecha_ref = fecha_envio if fecha_envio else datetime.now(tz=timezone.utc)
+            year = fecha_ref.strftime("%Y")
+            month = fecha_ref.strftime("%m")
+            day = fecha_ref.strftime("%d")
+            
+            if id_tipo_archivo == 1:
+                uri_almacenamiento = RutasS3.zip.format(year=year, month=month, day=day, nombre_descarga=nombre_archivo)
+            elif id_tipo_archivo == 2:
+                uri_almacenamiento = RutasS3.xml.format(year=year, month=month, day=day, nombre_descarga=nombre_archivo)
+            elif id_tipo_archivo == 3:
+                uri_almacenamiento = RutasS3.pdf.format(year=year, month=month, day=day, nombre_descarga=nombre_archivo)
+            else:
+                uri_almacenamiento = str(ruta_archivo)
 
             with conn.cursor() as cur:
                 # Intento de inserción respetando el esquema solicitado

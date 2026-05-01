@@ -122,21 +122,12 @@ def load_yaml_config(file_name: str) -> dict:
     file_path = os.path.join(base_path, 'config', file_name)
 
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             config_data = yaml.safe_load(f)
         return config_data or {}
     except Exception:
         return {}
 
-
-def get_queries_trazabilidad() -> dict:
-    """Obtiene las consultas SQL para trazabilidad desde el archivo YAML.
-
-    Returns:
-        Diccionario con las consultas SQL.
-    """
-    queries = load_yaml_config('queries_trazabilidad.yml')
-    return queries
 
 
 def get_tool_definitions() -> list:

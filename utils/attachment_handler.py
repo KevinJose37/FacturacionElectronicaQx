@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import email
 import logging
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -197,17 +198,13 @@ class AttachmentHandler:
                 logger.warning("Adjunto %r está vacío; se omite.", filename)
                 continue
 
-            destino = self.construir_ruta_destino(filename, parsed)
-            destino.parent.mkdir(parents=True, exist_ok=True)
+            # Prefijo único para evitar colisiones entre proveedores
+            # que envían ZIPs con el mismo nombre en la misma fecha
+            prefijo = uuid.uuid4().hex[:8]
+            nombre_unico = f"{prefijo}_{filename}"
 
-            # Evitar sobreescritura si ya existe un archivo con el mismo nombre
-            if destino.exists():
-                stem = destino.stem
-                suffix = destino.suffix
-                contador = 1
-                while destino.exists():
-                    destino = destino.with_name(f"{stem}_{contador}{suffix}")
-                    contador += 1
+            destino = self.construir_ruta_destino(nombre_unico, parsed)
+            destino.parent.mkdir(parents=True, exist_ok=True)
 
             destino.write_bytes(payload)
             logger.info(

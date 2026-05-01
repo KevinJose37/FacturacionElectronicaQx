@@ -10,6 +10,7 @@ Soporta:
 """
 
 import logging
+import re
 import zipfile
 import shutil
 from pathlib import Path
@@ -64,6 +65,9 @@ class ZipValidacionCompleta:
 class AttachmentValidator:
     """Valida y extrae contenido de adjuntos ZIP."""
 
+    # Profundidad máxima para ZIPs anidados (ZIP de ZIP de ZIP...)
+    MAX_DEPTH = 5
+
     def __init__(self, temp_dir: str = "temp"):
         """Inicializa el validador.
 
@@ -72,6 +76,23 @@ class AttachmentValidator:
         """
         self.temp_root = Path(temp_dir)
         self.temp_root.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _extraer_digitos(nombre: str) -> str:
+        """Extrae la secuencia de dígitos de un nombre de archivo.
+
+        Permite emparejar archivos como:
+            ad007126073200026000002fa.xml  ↔  fv007126073200026000002fa.pdf
+
+        La clave de emparejamiento es la concatenación de todos los dígitos.
+
+        Args:
+            nombre: Nombre del archivo (sin extensión).
+
+        Returns:
+            Cadena con todos los dígitos del nombre, o cadena vacía si no hay.
+        """
+        return ''.join(re.findall(r'\d+', nombre))
 
     def validar_zip(self, ruta_zip: Path) -> ValidationResult:
         """Valida que el ZIP contenga un XML y un PDF.
@@ -123,20 +144,30 @@ class AttachmentValidator:
             logger.error(f"Error procesando ZIP {ruta_zip}: {e}")
             return ValidationResult(es_valido=False, motivo_error=f"Error interno: {str(e)}")
 
-    def validar_zip_completo(self, ruta_zip: Path) -> ZipValidacionCompleta:
-        """Valida un ZIP con soporte para ZIPs anidados.
+    def validar_zip_completo(self, ruta_zip: Path, _depth: int = 0) -> ZipValidacionCompleta:
+        """Valida un ZIP con soporte para ZIPs anidados (multi-nivel).
 
         Analiza el contenido del ZIP buscando:
         1. XML+PDF directos → genera un par
         2. ZIPs internos → extrae y valida cada sub-ZIP recursivamente
         3. Mezcla de ambos
 
+        La recursión tiene un límite de MAX_DEPTH niveles para evitar
+        bucles infinitos con ZIPs malformados.
+
         Args:
             ruta_zip: Path al archivo ZIP.
+            _depth: Nivel actual de recursión (uso interno).
 
         Returns:
             ZipValidacionCompleta con todos los pares encontrados.
         """
+        if _depth >= self.MAX_DEPTH:
+            return ZipValidacionCompleta(
+                es_valido=False,
+                motivo_error=f"Profundidad máxima de ZIPs anidados excedida ({self.MAX_DEPTH})"
+            )
+
         if not zipfile.is_zipfile(ruta_zip):
             return ZipValidacionCompleta(
                 es_valido=False,
@@ -178,30 +209,45 @@ class AttachmentValidator:
                     for pf in pdf_files:
                         z.extract(pf, extract_dir)
 
-                    # Emparejar XMLs y PDFs por nombre de archivo (mismo stem)
+                    # Emparejar XMLs y PDFs:
+                    # 1° intento: por stem exacto (mismo nombre, diferente extensión)
+                    # 2° intento: por dígitos internos (ej: ad0071...xml ↔ fv0071...pdf)
                     pdf_por_stem = {Path(pf).stem.lower(): pf for pf in pdf_files}
+                    pdf_por_digitos = {}
+                    for pf in pdf_files:
+                        digitos = self._extraer_digitos(Path(pf).stem)
+                        if digitos:
+                            pdf_por_digitos[digitos] = pf
+
                     pdf_usados = set()
 
                     for xf in xml_files:
-                        stem = Path(xf).stem.lower()
-                        pdf_match = pdf_por_stem.get(stem)
+                        stem_xml = Path(xf).stem.lower()
+                        # Intento 1: match exacto por stem
+                        pdf_match = pdf_por_stem.get(stem_xml)
+                        if not pdf_match:
+                            # Intento 2: match por dígitos
+                            digitos_xml = self._extraer_digitos(stem_xml)
+                            if digitos_xml:
+                                pdf_match = pdf_por_digitos.get(digitos_xml)
+
                         if pdf_match:
                             pares.append(ParXmlPdf(
                                 xml_path=extract_dir / xf,
                                 pdf_path=extract_dir / pdf_match,
                                 zip_origen=ruta_zip,
                             ))
-                            pdf_usados.add(stem)
+                            pdf_usados.add(Path(pdf_match).stem.lower())
                         else:
                             logger.warning(
-                                "XML sin PDF con mismo nombre en ZIP %s: %s",
+                                "XML sin PDF correspondiente en ZIP %s: %s",
                                 ruta_zip.name, xf
                             )
 
                     for pf in pdf_files:
                         if Path(pf).stem.lower() not in pdf_usados:
                             logger.warning(
-                                "PDF sin XML con mismo nombre en ZIP %s: %s",
+                                "PDF sin XML correspondiente en ZIP %s: %s",
                                 ruta_zip.name, pf
                             )
 
@@ -214,8 +260,8 @@ class AttachmentValidator:
                         z.extract(zf_name, extract_dir)
                         sub_zip_path = extract_dir / zf_name
 
-                        # Validar recursivamente cada sub-ZIP
-                        sub_resultado = self.validar_zip_completo(sub_zip_path)
+                        # Validar recursivamente cada sub-ZIP (con control de profundidad)
+                        sub_resultado = self.validar_zip_completo(sub_zip_path, _depth=_depth + 1)
                         if sub_resultado.es_valido and sub_resultado.pares:
                             # Ajustar zip_origen al sub-ZIP
                             for par in sub_resultado.pares:
@@ -267,9 +313,9 @@ class AttachmentValidator:
     ) -> List[ParXmlPdf]:
         """Agrupa archivos XML y PDF sueltos en pares de factura.
 
-        Empareja XMLs y PDFs por nombre de archivo (mismo stem,
-        diferente extensión). Los archivos sin pareja se registran
-        como advertencia.
+        Empareja por nombre de archivo (mismo stem) o por dígitos
+        internos (ej: ad0071260732...xml ↔ fv0071260732...pdf).
+        Los archivos sin pareja se registran como advertencia.
 
         Args:
             xmls: Lista de rutas a archivos XML sueltos.
@@ -280,26 +326,39 @@ class AttachmentValidator:
         """
         pares: List[ParXmlPdf] = []
 
-        # Indexar PDFs por stem (nombre sin extensión)
+        # Indexar PDFs por stem y por dígitos
         pdf_por_stem = {p.stem.lower(): p for p in pdfs}
+        pdf_por_digitos = {}
+        for p in pdfs:
+            digitos = self._extraer_digitos(p.stem)
+            if digitos:
+                pdf_por_digitos[digitos] = p
+
         pdf_usados = set()
 
         for xml_path in xmls:
             stem = xml_path.stem.lower()
+            # Intento 1: match exacto por stem
             pdf_match = pdf_por_stem.get(stem)
+            if not pdf_match:
+                # Intento 2: match por dígitos
+                digitos = self._extraer_digitos(stem)
+                if digitos:
+                    pdf_match = pdf_por_digitos.get(digitos)
+
             if pdf_match:
                 pares.append(ParXmlPdf(
                     xml_path=xml_path,
                     pdf_path=pdf_match,
                     zip_origen=None,
                 ))
-                pdf_usados.add(stem)
+                pdf_usados.add(pdf_match.stem.lower())
             else:
-                logger.warning("XML sin PDF con mismo nombre (suelto): %s", xml_path.name)
+                logger.warning("XML sin PDF correspondiente (suelto): %s", xml_path.name)
 
         for pdf_path in pdfs:
             if pdf_path.stem.lower() not in pdf_usados:
-                logger.warning("PDF sin XML con mismo nombre (suelto): %s", pdf_path.name)
+                logger.warning("PDF sin XML correspondiente (suelto): %s", pdf_path.name)
 
         return pares
 

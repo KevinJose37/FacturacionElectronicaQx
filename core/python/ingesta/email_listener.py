@@ -137,14 +137,15 @@ class EmailListener:
         resultados = []
 
         for adj_zip in zips:
-            # Verificar hash duplicado
+            # Verificar hash duplicado (informativo, no bloquea)
+            # Permite reprocesar correcciones de facturas con distinto contenido
             sha256_zip = self._repository.calcular_hash_sha256(adj_zip.ruta)
             if self._repository.existe_adjunto_por_hash(conn_db, sha256_zip):
                 logger.warning(
-                    "ZIP ya existe en BD (hash=%s): %s. Omitiendo.",
+                    "ZIP con hash existente en BD (hash=%s): %s. "
+                    "Puede ser duplicado o corrección de factura. Continuando.",
                     sha256_zip[:8], adj_zip.nombre_original,
                 )
-                continue
 
             # Escanear el ZIP
             if not self._escanear_archivo(adj_zip.ruta):

@@ -20,29 +20,35 @@ _QUERIES = load_yaml_queries('log_proceso/queries_log_proceso.yml')
 
 
 def registrar_proceso_ingesta(
-    id_estado_proceso: int,
-    observaciones: str,
+    adjunto_id: int,
+    id_estado: int,
+    id_proceso: int,
+    observacion: str,
     fecha_inicio: datetime,
-    correo_id: int | None = None,
+    id_error: int | None = None,
 ) -> int:
     """Registra un nuevo proceso de ingesta en la base de datos.
 
-    Inserta un registro en FACTURACION.PROCESO_INGESTA con el estado,
-    la observación y la fecha de inicio proporcionados. La fecha de fin
-    se asigna automáticamente con NOW() al momento de la inserción.
+    Inserta un registro en FACTURACION.PROCESO_INGESTA con la totalidad de
+    sus campos correspondientes al modelo de datos actual. El único campo
+    que permite nulos es id_error.
 
     Args:
-        id_estado_proceso:
+        adjunto_id:
+            ID del adjunto asociado (referencia a ADJUNTOS_CORREO).
+        id_estado:
             ID del estado del proceso (referencia a TIPO_ESTADO_PROCESO).
-        observaciones:
-            Mensaje personalizado que describe la etapa o resultado del proceso.
+        id_proceso:
+            ID de proceso desde otras tablas (Obligatorio).
+        observacion:
+            Mensaje personalizado que describe la etapa o resultado del proceso (Obligatorio).
         fecha_inicio:
-            Timestamp que marca el inicio del proceso que se está registrando.
-        correo_id:
-            ID del correo asociado (referencia a CORREO_ENTRANTE). Opcional.
+            Timestamp que marca el inicio del proceso (Obligatorio).
+        id_error:
+            ID de error desde tabla de errores (Opcional, puede ser null).
 
     Returns:
-        El ID del proceso de ingesta recién creado.
+        El ID del proceso de ingesta recién creado (ID_PROCESO_INGESTA).
 
     Raises:
         DatabaseError: Si ocurre un error al insertar el registro.
@@ -57,11 +63,13 @@ def registrar_proceso_ingesta(
             with conexion.cursor() as cursor:
                 cursor.execute(
                     query,
-                    (correo_id, id_estado_proceso, observaciones, fecha_inicio),
+                    (adjunto_id, id_proceso, id_estado, id_error, observacion, fecha_inicio),
                 )
                 fila = cursor.fetchone()
                 id_generado = fila[0]
-        logger.info(MensajesLogProceso.registro_exitoso, id_generado, observaciones[:80])
+        
+        obs_log = observacion[:80] if observacion else "Sin observaciones"
+        logger.info(MensajesLogProceso.registro_exitoso, id_generado, obs_log)
 
     except Exception as exc:
         logger.error(MensajesLogProceso.error_registro, exc)

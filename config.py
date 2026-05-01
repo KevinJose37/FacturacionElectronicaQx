@@ -94,17 +94,16 @@ def get_aws_config() -> dict:
 
     if ruta_yml.exists():
         try:
-            with open(ruta_yml, "r", encoding="utf-8") as f:
+            with open(ruta_yml, 'r', encoding='utf-8') as f:
                 config_yaml = yaml.safe_load(f) or {}
         except Exception as e:
             import logging
-
             logging.getLogger(__name__).error(f"Error leyendo {ruta_yml}: {e}")
 
     return {
-        "access_key": config_yaml.get("access_key"),
-        "secret_key": config_yaml.get("secret_key"),
-        "bucket_name": config_yaml.get("bucket_s3", "facturacion-electronica-temporal"),
+        'access_key': config_yaml.get('access_key'),
+        'secret_key': config_yaml.get('secret_key'),
+        'bucket_name': config_yaml.get('bucket_s3', 'facturacion-electronica-temporal')
     }
 
 
@@ -120,7 +119,7 @@ def load_yaml_config(file_name: str) -> dict:
     import yaml
 
     base_path = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(base_path, "config", file_name)
+    file_path = os.path.join(base_path, 'config', file_name)
 
     try:
         with open(file_path, "r", encoding="utf-8") as f:
@@ -140,14 +139,63 @@ def get_queries_trazabilidad() -> dict:
     return queries
 
 
-@lru_cache(maxsize=1)
-def get_antivirus_config() -> dict:
-    """Devuelve la configuración para el motor de antivirus ClamAV.
+def get_tool_definitions() -> list:
+    """Obtiene las definiciones de tools del LLM desde el archivo YAML.
+
+    Carga las definiciones de function calling (OpenAI format) desde
+    ``config/tool_definitions.yml``.
 
     Returns:
-        Diccionario con el host y puerto del antivirus.
+        Lista de diccionarios con las definiciones de cada tool.
     """
-    return {
-        "host": get_config("ANTIVIRUS_HOST", "antivirus"),
-        "port": int(get_config("ANTIVIRUS_PORT", 3310)),
-    }
+    data = load_yaml_config('tool_definitions.yml')
+    resultado = data.get('tools', [])
+    return resultado
+
+
+def load_yaml_queries(ruta_relativa: str) -> dict:
+    """Carga un archivo YAML de queries desde la carpeta input/queries.
+
+    Args:
+        ruta_relativa:
+            Ruta relativa dentro de input/queries (ej: 'chat/queries_chat.yml').
+
+    Returns:
+        Diccionario con las queries cargadas.
+    """
+    import yaml
+
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(base_path, 'input', 'queries', ruta_relativa)
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            queries_data = yaml.safe_load(f)
+        resultado = queries_data or {}
+    except Exception:
+        resultado = {}
+    return resultado
+
+
+def get_queries_chat() -> dict:
+    """Obtiene las consultas SQL del chatbot desde el archivo YAML.
+
+    Carga queries desde ``input/queries/chat/queries_chat.yml``.
+
+    Returns:
+        Diccionario con las queries SQL y fragmentos de filtros.
+    """
+    queries = load_yaml_queries('chat/queries_chat.yml')
+    return queries
+
+
+def get_queries_services() -> dict:
+    """Obtiene las consultas SQL de los servicios del frontend.
+
+    Carga queries desde ``input/queries/services/queries_services.yml``.
+
+    Returns:
+        Diccionario con las queries SQL organizadas por servicio.
+    """
+    queries = load_yaml_queries('services/queries_services.yml')
+    return queries

@@ -1,44 +1,54 @@
 """Pool de conexiones asíncrono para PostgreSQL.
 
 Provee un AsyncConnectionPool gestionado por el lifespan de FastAPI.
+Los parámetros de conexión se leen de ``config.get_postgres_config()``
+y los tamaños del pool desde ``config/settings.yaml``.
 """
 
 import logging
-import os
 
 from psycopg_pool import AsyncConnectionPool
+
+from config import get_postgres_config, load_yaml_config
+from metadata.db_metadata import MensajesDB
 
 logger = logging.getLogger(__name__)
 
 _pool: AsyncConnectionPool | None = None
+_settings = load_yaml_config('settings.yaml')
+_pool_cfg = _settings.get('database', {}).get('pool', {})
 
 
 async def init_pool() -> None:
     """Inicializa el pool de conexiones asíncrono.
 
-    Lee la configuración de variables de entorno y crea el pool.
+    Lee la configuración de ``get_postgres_config()`` y crea el pool
+    con los tamaños definidos en ``config/settings.yaml``.
 
     Raises:
         RuntimeError: Si las variables de entorno requeridas no están definidas.
     """
     global _pool
 
-    host = os.environ.get('DB_HOST', os.environ.get('POSTGRES_HOST', 'localhost'))
-    port = os.environ.get('DB_PORT', os.environ.get('POSTGRES_PORT', '5432'))
-    dbname = os.environ.get('DB_NAME', os.environ.get('POSTGRES_DB', 'facturacion'))
-    user = os.environ.get('DB_USER', os.environ.get('POSTGRES_USER', 'admin'))
-    password = os.environ.get('DB_PASSWORD', os.environ.get('POSTGRES_PASSWORD', ''))
+    db_config = get_postgres_config()
+    host = db_config['host']
+    port = db_config['port']
+    dbname = db_config['dbname']
+    user = db_config['user']
+    password = db_config['password']
 
     conninfo = f'host={host} port={port} dbname={dbname} user={user} password={password}'
+    min_size = int(_pool_cfg.get('min_size', 5))
+    max_size = int(_pool_cfg.get('max_size', 15))
 
     _pool = AsyncConnectionPool(
         conninfo=conninfo,
-        min_size=2,
-        max_size=10,
+        min_size=min_size,
+        max_size=max_size,
         open=False,
     )
     await _pool.open()
-    logger.info('Pool de conexiones async inicializado (%s:%s/%s)', host, port, dbname)
+    logger.info(MensajesDB.pool_inicializado, host, port, dbname)
 
 
 async def close_pool() -> None:
@@ -47,18 +57,16 @@ async def close_pool() -> None:
     if _pool is not None:
         await _pool.close()
         _pool = None
-        logger.info('Pool de conexiones async cerrado.')
+        logger.info(MensajesDB.pool_cerrado)
 
 
 def get_pool() -> AsyncConnectionPool:
     """Retorna el pool de conexiones activo.
 
-    Returns:
-        Pool de conexiones asíncrono.
-
     Raises:
         RuntimeError: Si el pool no ha sido inicializado.
     """
     if _pool is None:
-        raise RuntimeError('El pool de conexiones no ha sido inicializado. Llama a init_pool() primero.')
-    return _pool
+        raise RuntimeError(MensajesDB.pool_no_inicializado)
+    resultado = _pool
+    return resultado

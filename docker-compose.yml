@@ -1,27 +1,28 @@
 services:
+  # ── Base de Datos ──
   database:
     image: postgres:15-alpine
     container_name: facturacion_db
     restart: unless-stopped
     ports:
-      - "5433:5432"
+      - "${DB_EXTERNAL_PORT:-5433}:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Este script se ejecutará automáticamente la primera vez que se cree el contenedor
       - ./modelo_facturacion_gpt.sql:/docker-entrypoint-initdb.d/init.sql:ro
 
+  # ── Backend API ──
   api:
     build: .
     container_name: facturacion_api
     restart: unless-stopped
     depends_on:
       - database
-    ports:
-      - "8888:8888"
+    expose:
+      - "8888"
     env_file:
       - .env
     environment:
@@ -31,20 +32,28 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://frontend
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
 
+  # ── Frontend (se clona y construye desde GitHub automáticamente) ──
   frontend:
     build:
-      context: ../quipuxaiprueba
+      context: ${FRONTEND_REPO:-https://github.com/KevinJose37/quipuxaiprueba.git}
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: http://localhost:8888
+        VITE_API_URL: ""
     container_name: facturacion_frontend
     restart: unless-stopped
     depends_on:
       - api
-    ports:
-      - "3000:80"
+    expose:
+      - "3000"
+    environment:
+      - VIRTUAL_HOST=${DOMAIN}
+      - VIRTUAL_PORT=3000
+      - LETSENCRYPT_HOST=${DOMAIN}
+    networks:
+      - default
+      - nginx-proxy
 
   antivirus:
     image: clamav/clamav:latest
@@ -55,3 +64,8 @@ services:
 
 volumes:
   postgres_data:
+
+networks:
+  nginx-proxy:
+    external: true
+    name: ${PROXY_NETWORK:-nginx-proxy_default}

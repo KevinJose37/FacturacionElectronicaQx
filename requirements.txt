@@ -1,0 +1,18 @@
+# === API Core ===
+fastapi==0.112.1
+uvicorn==0.30.6
+pydantic==2.7.1
+python-dotenv==1.0.1
+
+# === Base de datos (PostgreSQL async) ===
+psycopg[binary]==3.3.3
+psycopg-pool==3.3.0
+
+# === Conexión sync (usado por seed.py y trazabilidad_core) ===
+psycopg2-binary==2.9.11
+
+# === Configuración ===
+PyYAML==6.0.2
+
+# === Chatbot (HTTP client para LLM API) ===
+httpx>=0.27.0

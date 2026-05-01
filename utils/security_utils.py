@@ -11,6 +11,7 @@ import hashlib
 import clamd
 from pathlib import Path
 from config import get_antivirus_config
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

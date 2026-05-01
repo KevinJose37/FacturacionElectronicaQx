@@ -17,8 +17,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
-from core.db import close_pool, init_pool
+from core import close_pool, init_pool
 from routers import (
+    chat,
     dashboard,
     facturas,
     ingesta,
@@ -70,6 +71,7 @@ app.include_router(proveedores.router)
 app.include_router(validaciones.router)
 app.include_router(rechazos.router)
 app.include_router(logs_router.router)
+app.include_router(chat.router)
 
 
 @app.get("/")
@@ -78,4 +80,9 @@ async def root():
     return {"status": "online"}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8888)
+    if sys.platform == 'win32':
+        # Forzar SelectorEventLoop antes de que uvicorn cree su loop
+        import selectors
+        loop = asyncio.SelectorEventLoop(selectors.SelectSelector())
+        asyncio.set_event_loop(loop)
+    uvicorn.run(app, host="0.0.0.0", port=8888, loop="asyncio")

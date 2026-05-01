@@ -188,7 +188,7 @@ class EmailRepository:
                         ID_TIPO_ARCHIVO, URI_ALMACENAMIENTO, SHA256, ARCHIVO_SEGURO
                     )
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (NOMBRE_ARCHIVO) DO NOTHING
+                    ON CONFLICT (CORREO_ID, NOMBRE_ARCHIVO) DO NOTHING
                     RETURNING ADJUNTO_ID
                     """,
                     (
@@ -215,8 +215,8 @@ class EmailRepository:
                 else:
                     # Si hubo conflicto, recuperamos el ID existente
                     cur.execute(
-                        "SELECT ADJUNTO_ID FROM FACTURACION.ADJUNTOS_CORREO WHERE NOMBRE_ARCHIVO = %s",
-                        (nombre_archivo,)
+                        "SELECT ADJUNTO_ID FROM FACTURACION.ADJUNTOS_CORREO WHERE CORREO_ID = %s AND NOMBRE_ARCHIVO = %s",
+                        (id_correo, nombre_archivo)
                     )
                     existente = cur.fetchone()
                     id_adjunto = existente[0] if existente else -1
@@ -238,25 +238,18 @@ class EmailRepository:
         cufe_detectado: Optional[str] = None,
     ) -> int:
         """Crea un registro de proceso de ingesta (sin commit)."""
-        clave_idempotencia = f"email_{id_correo}_{datetime.now(tz=timezone.utc).strftime('%Y%m%d%H%M%S')}"
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO FACTURACION.PROCESO_INGESTA (
-                    ID_CORREO, ID_ADJUNTO, ID_ARCHIVO_ORIGEN, CLAVE_IDEMPOTENCIA,
-                    VERSION_MOTOR, ID_ESTADO_PROCESO, CUFE_DETECTADO
+                    ADJUNTO_ID, ID_ESTADO
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                RETURNING ID_PROCESO
+                VALUES (%s, %s)
+                RETURNING ID_PROCESO_INGESTA
                 """,
                 (
-                    id_correo,
                     id_adjunto,
-                    id_archivo_origen,
-                    clave_idempotencia,
-                    "1.0.0",
                     1,  # RECIBIDO
-                    cufe_detectado,
                 ),
             )
             id_proceso = cur.fetchone()[0]
@@ -275,8 +268,8 @@ class EmailRepository:
             cur.execute(
                 """
                 UPDATE FACTURACION.PROCESO_INGESTA
-                SET ID_ESTADO_PROCESO = %s, RESUMEN_ERROR = %s, FECHA_FIN = NOW()
-                WHERE ID_PROCESO = %s
+                SET ID_ESTADO = %s, OBSERVACION = %s, FECHA_FIN = NOW()
+                WHERE ID_PROCESO_INGESTA = %s
                 """,
                 (id_estado, resumen_error, id_proceso),
             )

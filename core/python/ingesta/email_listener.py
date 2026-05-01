@@ -272,8 +272,8 @@ class EmailListener:
                     pdf_destino = self._attachment_handler.construir_ruta_destino(validacion.pdf_path.name, parsed)
                     xml_destino.parent.mkdir(parents=True, exist_ok=True)
                     pdf_destino.parent.mkdir(parents=True, exist_ok=True)
-                    validacion.xml_path.rename(xml_destino)
-                    validacion.pdf_path.rename(pdf_destino)
+                    validacion.xml_path.replace(xml_destino)
+                    validacion.pdf_path.replace(pdf_destino)
 
                     id_adjunto_xml = self._repository.guardar_adjunto_correo(
                         conn=conn_db,
@@ -315,7 +315,7 @@ class EmailListener:
                         "ruta_pdf": str(pdf_destino),
                         "remitente": remitente,
                     }
-                    if not self._publisher.publish(evento):
+                    if not self._publisher.publish(evento, db_conn=conn_db):
                         raise RuntimeError("No se pudo publicar evento en cola")
 
                     # Si llegamos aquí, todo OK; el with conn_db hará commit automáticamente

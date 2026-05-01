@@ -7,22 +7,12 @@ import logging
 import os
 import time
 import email as _email
-import json
 from pathlib import Path
 
 import yaml
 from dotenv import load_dotenv
 
 from core.queue_publisher import get_publisher
-from core.trazabilidad_core import registrar_log_etapa, iniciar_proceso_ingesta
-from core.python.ingesta.queue_publisher import get_publisher
-from core.python.trazabilidad import registrar_log_etapa, iniciar_proceso_ingesta
-from metadata.log_metadata import (
-    EstadosProceso,
-    EstructurasDetalle,
-    EtapasProceso,
-    MensajesError
-)
 from utils.attachment_handler import AttachmentHandler
 from utils.email_parser import EmailParser
 
@@ -87,9 +77,8 @@ class EmailListener:
         for part in msg.walk():
             filename = part.get_filename()
             if filename and filename.lower().endswith(".zip"):
-                zip_filename = filename
-                break
-        return zip_filename
+                return filename
+        return None
 
     def _procesar_correo(self, conn: imaplib.IMAP4_SSL, uid: bytes) -> bool:
         """Procesa un correo individual.
@@ -101,59 +90,22 @@ class EmailListener:
         Returns:
             bool: True si procesó correctamente.
         """
-        """Procesa un correo individual."""
-        id_proceso_actual = iniciar_proceso_ingesta(EstadosProceso.recibido)
-
         status, data = conn.uid("fetch", uid, "(RFC822)")
         if status != "OK" or not data:
-            registrar_log_etapa(
-                id_proceso=id_proceso_actual,
-                codigo_etapa=EtapasProceso.recepcion_email,
-                codigo_estado=EstadosProceso.error,
-                detalle_error=MensajesError.error_cuerpo_email,
-                marcar_fin=True
-            )
             return False
 
         raw = data[0][1]
-
-        detalle_recepcion = EstructurasDetalle.recepcion_email.format(
-            uid=uid.decode('utf-8', errors='ignore'), host=self.host
-        )
-        registrar_log_etapa(
-            id_proceso=id_proceso_actual,
-            codigo_etapa=EtapasProceso.recepcion_email,
-            codigo_estado=EstadosProceso.recibido,
-            detalle_json=json.loads(detalle_recepcion),
-            marcar_fin=True
-        )
-
-        nombre_zip = self._tiene_adjunto_zip(raw)
+        msg = _email.message_from_bytes(raw)
+        nombre_zip = self._obtener_nombre_zip(msg)
 
         if not nombre_zip:
-            registrar_log_etapa(
-                id_proceso=id_proceso_actual,
-                codigo_etapa=EtapasProceso.verificacion_adjuntos,
-                codigo_estado=EstadosProceso.error,
-                detalle_error=MensajesError.error_sin_zip,
-                marcar_fin=True
-            )
             return False
 
-        detalle_adjuntos = EstructurasDetalle.verificacion_adjuntos.format(archivo_zip=nombre_zip)
-        registrar_log_etapa(
-            id_proceso=id_proceso_actual,
-            codigo_etapa=EtapasProceso.verificacion_adjuntos,
-            codigo_estado=EstadosProceso.adjunto_verificado,
-            detalle_json=json.loads(detalle_adjuntos),
-            marcar_fin=True
-        )
-
-        msg = _email.message_from_bytes(raw)
         parsed = self._parser.parsear(msg.get("Subject", ""))
         ruta = self._attachment_handler.descargar_zip(msg, parsed)
 
-        if not ruta: return False
+        if not ruta:
+            return False
 
         exito = self._publisher.publish({
             "email_uid": uid.decode(),

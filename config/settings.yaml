@@ -89,3 +89,11 @@ processor:
   s3_prefijo_zip: facturas
   s3_prefijo_extraidos: facturas_descomprimidas
   cabecera_bytes: 100
+
+# ──────────────────────────────────────────────
+# Seguridad y Antivirus
+# ──────────────────────────────────────────────
+security:
+  clamav_host: "clamav"
+  clamav_port: 3310
+  clamav_timeout: 10

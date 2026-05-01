@@ -14,6 +14,12 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./modelo_facturacion_gpt.sql:/docker-entrypoint-initdb.d/init.sql:ro
 
+  # ── Antivirus ──
+  clamav:
+    image: clamav/clamav:latest
+    container_name: facturacion_clamav
+    restart: unless-stopped
+
   # ── Backend API ──
   api:
     build: .
@@ -21,6 +27,7 @@ services:
     restart: unless-stopped
     depends_on:
       - database
+      - clamav
     expose:
       - "8888"
     env_file:

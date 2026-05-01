@@ -268,7 +268,8 @@ class EmailListener:
                         id_correo=id_correo,
                         ruta_archivo=ruta_zip,
                         id_tipo_archivo=IdTipoArchivo.zip,
-                        archivo_seguro=scan_zip.seguro
+                        archivo_seguro=scan_zip.seguro,
+                        fecha_envio=fecha_envio
                     )
 
                     # Mover XML y PDF desde temp a ubicación permanente y guardarlos como hijos del ZIP
@@ -285,7 +286,8 @@ class EmailListener:
                         ruta_archivo=xml_destino,
                         id_tipo_archivo=IdTipoArchivo.xml,
                         adjunto_padre_id=id_adjunto_zip,
-                        archivo_seguro=scan_xml.seguro
+                        archivo_seguro=scan_xml.seguro,
+                        fecha_envio=fecha_envio
                     )
 
                     id_adjunto_pdf = self._repository.guardar_adjunto_correo(
@@ -294,7 +296,8 @@ class EmailListener:
                         ruta_archivo=pdf_destino,
                         id_tipo_archivo=IdTipoArchivo.pdf,
                         adjunto_padre_id=id_adjunto_zip,
-                        archivo_seguro=scan_pdf.seguro
+                        archivo_seguro=scan_pdf.seguro,
+                        fecha_envio=fecha_envio
                     )
 
                     # 5h. Crear proceso de ingesta

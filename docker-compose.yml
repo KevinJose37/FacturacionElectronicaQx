@@ -55,13 +55,6 @@ services:
       - default
       - nginx-proxy
 
-  antivirus:
-    image: clamav/clamav:latest
-    container_name: facturacion_antivirus
-    restart: unless-stopped
-    ports:
-      - "3310:3310"
-
 volumes:
   postgres_data:
 

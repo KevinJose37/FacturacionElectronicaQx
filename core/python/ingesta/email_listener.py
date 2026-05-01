@@ -160,11 +160,11 @@ class EmailListener:
                         id_mensaje=id_mensaje,
                         remitente=remitente,
                         asunto=asunto,
-                        fecha_recepcion=datetime.now(tz=timezone.utc),
+                        fecha_deteccion=datetime.now(tz=timezone.utc),
                         fecha_envio=fecha_envio,
                         cuerpo_texto=cuerpo_texto,
                         cuerpo_html=cuerpo_html,
-                        si_contiene_adjuntos=tiene_adjuntos,
+                        contiene_adjuntos=tiene_adjuntos,
                         id_origen=self.id_origen,
                     )
                     if not id_correo:

@@ -102,41 +102,39 @@ class EmailRepository:
         id_mensaje: str,
         remitente: str,
         asunto: Optional[str] = None,
-        fecha_recepcion: Optional[datetime] = None,
+        fecha_deteccion: Optional[datetime] = None,
         fecha_envio: Optional[datetime] = None,
         cuerpo_texto: Optional[str] = None,
         cuerpo_html: Optional[str] = None,
-        si_contiene_adjuntos: bool = False,
+        contiene_adjuntos: bool = False,
         id_origen: int = 1,
-        id_archivo_eml: Optional[int] = None,
     ) -> Optional[int]:
         """Guarda un correo en CORREO_ENTRANTE (sin commit)."""
-        if fecha_recepcion is None:
-            fecha_recepcion = datetime.now(tz=timezone.utc)
+        if fecha_deteccion is None:
+            fecha_deteccion = datetime.now(tz=timezone.utc)
 
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO FACTURACION.CORREO_ENTRANTE (
-                    ID_MENSAJE_EMAIL, REMITENTE, ASUNTO,
-                    FECHA_RECEPCION, FECHA_ENVIO, CUERPO_TEXTO, CUERPO_HTML,
-                    SI_CONTIENE_ADJUNTOS, ID_ORIGEN, ID_ARCHIVO_EML
+                    MESSAGE_ID, REMITENTE, ASUNTO,
+                    FECHA_DETECCION, FECHA_ENVIO, CUERPO_TEXTO, CUERPO_HTML,
+                    CONTIENE_ADJUNTOS, ID_ORIGEN
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (ID_MENSAJE_EMAIL) DO NOTHING
-                RETURNING ID_CORREO
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (MESSAGE_ID) DO NOTHING
+                RETURNING CORREO_ID
                 """,
                 (
                     id_mensaje,
                     remitente,
                     asunto,
-                    fecha_recepcion,
+                    fecha_deteccion,
                     fecha_envio,
                     cuerpo_texto,
                     cuerpo_html,
-                    si_contiene_adjuntos,
+                    contiene_adjuntos,
                     id_origen,
-                    id_archivo_eml,
                 ),
             )
             resultado = cur.fetchone()
@@ -145,7 +143,7 @@ class EmailRepository:
                 logger.debug("Correo guardado: ID=%s mensaje=%s", id_correo, id_mensaje)
                 return id_correo
             else:
-                cur.execute("SELECT ID_CORREO FROM FACTURACION.CORREO_ENTRANTE WHERE ID_MENSAJE_EMAIL = %s", (id_mensaje,))
+                cur.execute("SELECT CORREO_ID FROM FACTURACION.CORREO_ENTRANTE WHERE MESSAGE_ID = %s", (id_mensaje,))
                 existente = cur.fetchone()
                 return existente[0] if existente else None
 

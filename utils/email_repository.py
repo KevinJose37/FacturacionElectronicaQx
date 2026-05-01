@@ -2,11 +2,12 @@
 
 Gestiona la inserción de:
     - Correos entrantes (CORREO_ENTRANTE)
-    - Archivos adjuntos (ARCHIVO y ADJUNTO_CORREO)
+    - Archivos adjuntos (ADJUNTOS_CORREO)
+    - Eventos de ingesta (EVENTO_INGESTA)
+    - Procesos de ingesta (PROCESO_INGESTA)
     - Relaciones entre ellos
-    - Procesos de ingesta y logs
 
-Garantiza idempotencia mediante únicos (ID_MENSAJE_EMAIL, HASH_SHA256).
+Garantiza idempotencia mediante únicos (MESSAGE_ID, SHA256, CORREO_ID+NOMBRE_ARCHIVO).
 """
 
 from __future__ import annotations
@@ -176,6 +177,7 @@ class EmailRepository:
             id_tipo_archivo: Identificador del tipo de archivo.
             adjunto_padre_id: ID del adjunto raíz (para agrupar hijos).
             archivo_seguro: Indica si el archivo es confiable.
+            fecha_envio: Fecha de envío del correo para construir ruta S3.
 
         Returns:
             int: ID del adjunto registrado o el ID existente en caso de conflicto.
@@ -250,32 +252,99 @@ class EmailRepository:
 
         return id_adjunto
 
+    # ------------------------------------------------------------------
+    # Eventos y Procesos de Ingesta
+    # ------------------------------------------------------------------
+
+    def crear_evento_ingesta(
+        self,
+        conn: Connection,
+        adjunto_id: int,
+        id_estado: int = 1,
+    ) -> bool:
+        """Crea un evento de ingesta para un adjunto en EVENTO_INGESTA.
+
+        El evento marca un adjunto como pendiente de procesamiento en el
+        pipeline de ingesta.
+
+        Args:
+            conn: Conexión activa a la base de datos.
+            adjunto_id: ID del adjunto (PK en ADJUNTOS_CORREO).
+            id_estado: Estado inicial (default: 1 = PENDIENTE).
+
+        Returns:
+            bool: True si se insertó correctamente, False si ya existía o hubo error.
+        """
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO FACTURACION.EVENTO_INGESTA
+                        (ADJUNTO_ID, ID_ESTADO)
+                    VALUES (%s, %s)
+                    ON CONFLICT (ADJUNTO_ID) DO NOTHING
+                    """,
+                    (adjunto_id, id_estado),
+                )
+                insertado = cur.rowcount > 0
+                if insertado:
+                    logger.debug("Evento de ingesta creado para ADJUNTO_ID=%s", adjunto_id)
+                else:
+                    logger.debug("Evento de ingesta ya existente para ADJUNTO_ID=%s", adjunto_id)
+                return insertado
+        except Exception as err:
+            logger.error("Error al crear evento de ingesta para ADJUNTO_ID=%s: %s", adjunto_id, err)
+            return False
+
     def crear_proceso_ingesta(
         self,
         conn: Connection,
-        id_correo: int,
-        id_adjunto: Optional[int] = None,
-        id_archivo_origen: Optional[int] = None,
-        cufe_detectado: Optional[str] = None,
+        adjunto_id: int,
+        id_proceso: int,
+        observacion: str,
+        id_estado: int = 1,
     ) -> int:
-        """Crea un registro de proceso de ingesta (sin commit)."""
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO FACTURACION.PROCESO_INGESTA (
-                    ADJUNTO_ID, ID_ESTADO
+        """Crea un registro de proceso de ingesta (sin commit).
+
+        Args:
+            conn: Conexión activa a la base de datos.
+            adjunto_id: ID del adjunto asociado.
+            id_proceso: Tipo de proceso (FK a TIPO_PROCESO).
+            observacion: Descripción del proceso realizado.
+            id_estado: Estado del proceso (default: 1 = PENDIENTE).
+
+        Returns:
+            int: ID del proceso creado, o -1 si hubo error.
+        """
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO FACTURACION.PROCESO_INGESTA (
+                        ADJUNTO_ID, ID_PROCESO, ID_ESTADO, OBSERVACION
+                    )
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING ID_PROCESO_INGESTA
+                    """,
+                    (
+                        adjunto_id,
+                        id_proceso,
+                        id_estado,
+                        observacion,
+                    ),
                 )
-                VALUES (%s, %s)
-                RETURNING ID_PROCESO_INGESTA
-                """,
-                (
-                    id_adjunto,
-                    1,  # RECIBIDO
-                ),
+                id_proceso_ingesta = cur.fetchone()[0]
+                logger.debug(
+                    "Proceso de ingesta creado: ID=%s tipo=%s para ADJUNTO_ID=%s",
+                    id_proceso_ingesta, id_proceso, adjunto_id,
+                )
+                return id_proceso_ingesta
+        except Exception as err:
+            logger.error(
+                "Error al crear proceso de ingesta (adjunto=%s, proceso=%s): %s",
+                adjunto_id, id_proceso, err,
             )
-            id_proceso = cur.fetchone()[0]
-            logger.debug("Proceso de ingesta creado: ID=%s para correo ID=%s", id_proceso, id_correo)
-            return id_proceso
+            return -1
 
     def actualizar_estado_proceso(
         self,
@@ -284,15 +353,20 @@ class EmailRepository:
         id_estado: int,
         resumen_error: Optional[str] = None,
     ):
-        """Actualiza el estado de un proceso de ingesta (sin commit)."""
+        """Actualiza el estado de un proceso de ingesta (sin commit).
+
+        Si se marca como finalizado (procesado o error), actualiza FECHA_FIN.
+        """
         with conn.cursor() as cur:
             cur.execute(
                 """
                 UPDATE FACTURACION.PROCESO_INGESTA
-                SET ID_ESTADO = %s, OBSERVACION = %s, FECHA_FIN = NOW()
+                SET ID_ESTADO = %s,
+                    OBSERVACION = COALESCE(%s, OBSERVACION),
+                    FECHA_FIN = CASE WHEN %s IN (3, 4, 5) THEN NOW() ELSE FECHA_FIN END
                 WHERE ID_PROCESO_INGESTA = %s
                 """,
-                (id_estado, resumen_error, id_proceso),
+                (id_estado, resumen_error, id_estado, id_proceso),
             )
             logger.debug("Proceso ID=%s actualizado a estado %s", id_proceso, id_estado)
 

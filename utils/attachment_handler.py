@@ -1,6 +1,6 @@
 """Manejador de adjuntos ZIP de correos de facturación electrónica.
 
-Descarga el primer adjunto .zip encontrado en un mensaje de correo y lo
+Descarga adjuntos válidos (ZIP, XML, PDF) de un mensaje de correo y los
 guarda en la estructura de carpetas::
 
     downloads/{YYYY}/{MM}/{DD}/{nit_proveedor}/
@@ -9,16 +9,17 @@ guarda en la estructura de carpetas::
 Example:
     >>> from src.ingesta.attachment_handler import AttachmentHandler
     >>> handler = AttachmentHandler(config)
-    >>> ruta = handler.descargar_zip(msg, parsed_subject)
+    >>> adjuntos = handler.descargar_todos_adjuntos(msg, parsed_subject)
 """
 
 from __future__ import annotations
 
 import email
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
     from email.message import Message
@@ -27,9 +28,28 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Extensiones válidas para adjuntos de facturación
+_EXTENSIONES_FACTURA = {".zip", ".xml", ".pdf"}
+
+
+@dataclass
+class AdjuntoDescargado:
+    """Representa un adjunto descargado del correo.
+
+    Attributes:
+        ruta: Ruta absoluta al archivo descargado.
+        nombre_original: Nombre original del adjunto en el correo.
+        extension: Extensión normalizada del archivo (.zip, .xml, .pdf).
+    """
+    ruta: Path
+    nombre_original: str
+    extension: str
+
 
 class AttachmentHandler:
-    """Descargador de adjuntos ZIP desde objetos ``email.message.Message``.
+    """Descargador de adjuntos desde objetos ``email.message.Message``.
+
+    Soporta la descarga de múltiples adjuntos ZIP, XML y PDF.
 
     Attributes:
         base_path: Ruta raíz donde se almacenan los adjuntos descargados.
@@ -63,6 +83,30 @@ class AttachmentHandler:
                     return True
         except Exception as e:
             logger.error("Error al verificar adjuntos ZIP: %s", e)
+        
+        return False
+
+    def tiene_adjuntos_factura(self, raw_email: bytes) -> bool:
+        """Verifica si el correo contiene adjuntos válidos para facturación.
+
+        Busca archivos .zip, .xml o .pdf adjuntos al correo.
+
+        Args:
+            raw_email: Contenido binario del correo.
+
+        Returns:
+            bool: True si se encuentra al menos un adjunto válido.
+        """
+        try:
+            msg = email.message_from_bytes(raw_email)
+            for part in msg.walk():
+                filename = part.get_filename()
+                if filename:
+                    ext = Path(filename).suffix.lower()
+                    if ext in _EXTENSIONES_FACTURA:
+                        return True
+        except Exception as e:
+            logger.error("Error al verificar adjuntos de facturación: %s", e)
         
         return False
 
@@ -117,6 +161,70 @@ class AttachmentHandler:
 
         logger.debug("No se encontró ningún adjunto ZIP en el correo.")
         return None
+
+    def descargar_todos_adjuntos(
+        self,
+        msg: "Message",
+        parsed: "ParsedSubject",
+    ) -> List[AdjuntoDescargado]:
+        """Descarga todos los adjuntos válidos (ZIP, XML, PDF) del correo.
+
+        Itera sobre todas las partes del mensaje y descarga cualquier adjunto
+        cuya extensión sea .zip, .xml o .pdf.
+
+        Args:
+            msg: Objeto ``email.message.Message`` del correo.
+            parsed: Resultado del parseo del asunto (``ParsedSubject``).
+
+        Returns:
+            Lista de ``AdjuntoDescargado`` con los archivos descargados.
+            Puede estar vacía si no se encontraron adjuntos válidos.
+        """
+        adjuntos: List[AdjuntoDescargado] = []
+
+        for part in msg.walk():
+            filename = part.get_filename()
+            if not filename:
+                continue
+
+            ext = Path(filename).suffix.lower()
+            if ext not in _EXTENSIONES_FACTURA:
+                logger.debug("Adjunto ignorado (extensión no válida): %r", filename)
+                continue
+
+            payload = part.get_payload(decode=True)
+            if not payload or len(payload) == 0:
+                logger.warning("Adjunto %r está vacío; se omite.", filename)
+                continue
+
+            destino = self.construir_ruta_destino(filename, parsed)
+            destino.parent.mkdir(parents=True, exist_ok=True)
+
+            # Evitar sobreescritura si ya existe un archivo con el mismo nombre
+            if destino.exists():
+                stem = destino.stem
+                suffix = destino.suffix
+                contador = 1
+                while destino.exists():
+                    destino = destino.with_name(f"{stem}_{contador}{suffix}")
+                    contador += 1
+
+            destino.write_bytes(payload)
+            logger.info(
+                "Adjunto descargado: nombre_original=%r | ext=%s | tamaño=%d bytes | destino=%s",
+                filename, ext, len(payload), destino,
+            )
+
+            adjuntos.append(AdjuntoDescargado(
+                ruta=destino,
+                nombre_original=filename,
+                extension=ext,
+            ))
+
+        if not adjuntos:
+            logger.debug("No se encontraron adjuntos válidos en el correo.")
+
+        return adjuntos
 
     # ------------------------------------------------------------------
     # Helpers privados

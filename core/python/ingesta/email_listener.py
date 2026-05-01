@@ -10,6 +10,7 @@ import email as _email
 from datetime import datetime, timezone
 from pathlib import Path
 from email.utils import parsedate_to_datetime
+from typing import List, Optional
 
 import yaml
 from dotenv import load_dotenv
@@ -17,12 +18,11 @@ from dotenv import load_dotenv
 from config import get_postgres_config
 from core.python.ingesta.queue_publisher import get_publisher
 
-from metadata.db_metadata import IdEstadoProceso
-from metadata.db_metadata import IdTipoArchivo
+from metadata.db_metadata import IdEstadoProceso, IdTipoArchivo, IdTipoProceso
 
 from utils.alerts import AlertManager
-from utils.attachment_handler import AttachmentHandler
-from utils.attachment_validator import AttachmentValidator
+from utils.attachment_handler import AttachmentHandler, AdjuntoDescargado
+from utils.attachment_validator import AttachmentValidator, ParXmlPdf
 from utils.email_parser import EmailParser
 from utils.email_repository import EmailRepository
 from utils.factura_filter import FacturaFilter
@@ -101,8 +101,273 @@ class EmailListener:
             message_id = message_id[1:-1]
         return message_id or f"unknown-{datetime.now(tz=timezone.utc).timestamp()}"
 
+    # ------------------------------------------------------------------
+    # Helpers de procesamiento de adjuntos
+    # ------------------------------------------------------------------
+
+    def _escanear_archivo(self, ruta: Path) -> bool:
+        """Escanea un archivo individual contra malware.
+
+        Returns:
+            True si el archivo es seguro, False si se detectó amenaza.
+        """
+        scan = self._scanner.escanear_archivo(ruta)
+        if not scan.seguro:
+            self._alert_manager.malware_detectado(ruta.name, scan.nivel_riesgo)
+            logger.critical("Malware detectado en %s: %s", ruta, scan.detalle)
+            return False
+        return True
+
+    def _procesar_zips(
+        self,
+        zips: List[AdjuntoDescargado],
+        conn_db,
+        id_correo: int,
+        id_mensaje: str,
+        fecha_envio: Optional[datetime],
+        parsed: dict,
+    ) -> List[dict]:
+        """Procesa una lista de adjuntos ZIP, extrae pares XML+PDF.
+
+        Soporta ZIPs con contenido directo y ZIPs con sub-ZIPs anidados.
+
+        Returns:
+            Lista de diccionarios con info de cada par procesado exitosamente.
+        """
+        resultados = []
+
+        for adj_zip in zips:
+            # Verificar hash duplicado
+            sha256_zip = self._repository.calcular_hash_sha256(adj_zip.ruta)
+            if self._repository.existe_adjunto_por_hash(conn_db, sha256_zip):
+                logger.warning(
+                    "ZIP ya existe en BD (hash=%s): %s. Omitiendo.",
+                    sha256_zip[:8], adj_zip.nombre_original,
+                )
+                continue
+
+            # Escanear el ZIP
+            if not self._escanear_archivo(adj_zip.ruta):
+                logger.critical("ZIP infectado: %s", adj_zip.nombre_original)
+                continue
+
+            # Validar contenido (con soporte para ZIPs anidados)
+            validacion = self._validator.validar_zip_completo(adj_zip.ruta)
+            if not validacion.es_valido or not validacion.pares:
+                self._alert_manager.adjunto_incompleto(
+                    email_uid=id_mensaje,
+                    archivos=validacion.archivos_encontrados,
+                    motivo=validacion.motivo_error or "ZIP sin pares XML+PDF válidos",
+                )
+                logger.error(
+                    "Validación ZIP falló: %s | %s",
+                    adj_zip.nombre_original, validacion.motivo_error,
+                )
+                continue
+
+            # Registrar el ZIP padre en ADJUNTOS_CORREO
+            id_adjunto_zip = self._repository.guardar_adjunto_correo(
+                conn=conn_db,
+                id_correo=id_correo,
+                ruta_archivo=adj_zip.ruta,
+                id_tipo_archivo=IdTipoArchivo.zip,
+                archivo_seguro=True,
+                fecha_envio=fecha_envio,
+            )
+            if id_adjunto_zip == -1:
+                logger.error("No se pudo registrar ZIP en BD: %s", adj_zip.nombre_original)
+                continue
+
+            # Si hay ZIPs anidados, registrarlos también
+            zips_anidados_ids = {}
+            if validacion.tiene_zips_anidados:
+                for par in validacion.pares:
+                    if par.zip_origen and par.zip_origen != adj_zip.ruta:
+                        sub_zip_key = str(par.zip_origen)
+                        if sub_zip_key not in zips_anidados_ids:
+                            id_sub_zip = self._repository.guardar_adjunto_correo(
+                                conn=conn_db,
+                                id_correo=id_correo,
+                                ruta_archivo=par.zip_origen,
+                                id_tipo_archivo=IdTipoArchivo.zip,
+                                adjunto_padre_id=id_adjunto_zip,
+                                archivo_seguro=True,
+                                fecha_envio=fecha_envio,
+                            )
+                            zips_anidados_ids[sub_zip_key] = id_sub_zip
+
+            # Procesar cada par XML+PDF
+            for par in validacion.pares:
+                resultado = self._registrar_par_factura(
+                    par=par,
+                    conn_db=conn_db,
+                    id_correo=id_correo,
+                    id_adjunto_padre=zips_anidados_ids.get(str(par.zip_origen), id_adjunto_zip),
+                    fecha_envio=fecha_envio,
+                    parsed=parsed,
+                    id_mensaje=id_mensaje,
+                )
+                if resultado:
+                    resultados.append(resultado)
+
+        return resultados
+
+    def _procesar_sueltos(
+        self,
+        xmls: List[AdjuntoDescargado],
+        pdfs: List[AdjuntoDescargado],
+        conn_db,
+        id_correo: int,
+        id_mensaje: str,
+        fecha_envio: Optional[datetime],
+        parsed: dict,
+    ) -> List[dict]:
+        """Procesa archivos XML y PDF adjuntos directamente al correo (sin ZIP).
+
+        Returns:
+            Lista de diccionarios con info de cada par procesado exitosamente.
+        """
+        pares = self._validator.agrupar_pares_sueltos(
+            xmls=[a.ruta for a in xmls],
+            pdfs=[a.ruta for a in pdfs],
+        )
+
+        if not pares:
+            self._alert_manager.adjunto_incompleto(
+                email_uid=id_mensaje,
+                archivos=[a.nombre_original for a in xmls + pdfs],
+                motivo="No se pudieron emparejar archivos XML y PDF sueltos",
+            )
+            return []
+
+        resultados = []
+        for par in pares:
+            resultado = self._registrar_par_factura(
+                par=par,
+                conn_db=conn_db,
+                id_correo=id_correo,
+                id_adjunto_padre=None,
+                fecha_envio=fecha_envio,
+                parsed=parsed,
+                id_mensaje=id_mensaje,
+            )
+            if resultado:
+                resultados.append(resultado)
+
+        return resultados
+
+    def _registrar_par_factura(
+        self,
+        par: ParXmlPdf,
+        conn_db,
+        id_correo: int,
+        id_adjunto_padre: Optional[int],
+        fecha_envio: Optional[datetime],
+        parsed: dict,
+        id_mensaje: str,
+    ) -> Optional[dict]:
+        """Registra un par XML+PDF como factura en BD y crea sus eventos.
+
+        Para cada par:
+        1. Escanea XML y PDF contra malware
+        2. Mueve archivos a ubicación permanente
+        3. Registra en ADJUNTOS_CORREO
+        4. Crea EVENTO_INGESTA
+        5. Registra procesos en PROCESO_INGESTA
+
+        Returns:
+            dict con IDs del par registrado, o None si falló.
+        """
+        # 1. Escanear malware
+        xml_seguro = self._escanear_archivo(par.xml_path)
+        pdf_seguro = self._escanear_archivo(par.pdf_path)
+
+        if not xml_seguro or not pdf_seguro:
+            # Registrar adjuntos como inseguros pero no procesar
+            if not xml_seguro:
+                self._repository.guardar_adjunto_correo(
+                    conn=conn_db, id_correo=id_correo, ruta_archivo=par.xml_path,
+                    id_tipo_archivo=IdTipoArchivo.xml, adjunto_padre_id=id_adjunto_padre,
+                    archivo_seguro=False, fecha_envio=fecha_envio,
+                )
+            if not pdf_seguro:
+                self._repository.guardar_adjunto_correo(
+                    conn=conn_db, id_correo=id_correo, ruta_archivo=par.pdf_path,
+                    id_tipo_archivo=IdTipoArchivo.pdf, adjunto_padre_id=id_adjunto_padre,
+                    archivo_seguro=False, fecha_envio=fecha_envio,
+                )
+            return None
+
+        # 2. Mover a ubicación permanente
+        xml_destino = self._attachment_handler.construir_ruta_destino(par.xml_path.name, parsed)
+        pdf_destino = self._attachment_handler.construir_ruta_destino(par.pdf_path.name, parsed)
+        xml_destino.parent.mkdir(parents=True, exist_ok=True)
+        pdf_destino.parent.mkdir(parents=True, exist_ok=True)
+        par.xml_path.replace(xml_destino)
+        par.pdf_path.replace(pdf_destino)
+
+        # 3. Registrar adjuntos en BD
+        id_adjunto_xml = self._repository.guardar_adjunto_correo(
+            conn=conn_db, id_correo=id_correo, ruta_archivo=xml_destino,
+            id_tipo_archivo=IdTipoArchivo.xml, adjunto_padre_id=id_adjunto_padre,
+            archivo_seguro=True, fecha_envio=fecha_envio,
+        )
+        id_adjunto_pdf = self._repository.guardar_adjunto_correo(
+            conn=conn_db, id_correo=id_correo, ruta_archivo=pdf_destino,
+            id_tipo_archivo=IdTipoArchivo.pdf, adjunto_padre_id=id_adjunto_padre,
+            archivo_seguro=True, fecha_envio=fecha_envio,
+        )
+
+        if id_adjunto_xml == -1 or id_adjunto_pdf == -1:
+            logger.error("Error registrando adjuntos XML/PDF en BD para correo %s", id_mensaje)
+            return None
+
+        # 4. Crear evento de ingesta (el XML es la unidad de procesamiento)
+        self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_adjunto_xml)
+
+        # 5. Registrar procesos de ingesta realizados
+        self._repository.crear_proceso_ingesta(
+            conn=conn_db, adjunto_id=id_adjunto_xml,
+            id_proceso=IdTipoProceso.escaneo_malware,
+            observacion="Escaneo de malware completado: archivos seguros",
+            id_estado=IdEstadoProceso.procesado,
+        )
+        self._repository.crear_proceso_ingesta(
+            conn=conn_db, adjunto_id=id_adjunto_xml,
+            id_proceso=IdTipoProceso.descarga_almacenamiento,
+            observacion=f"Archivos almacenados: XML={xml_destino.name}, PDF={pdf_destino.name}",
+            id_estado=IdEstadoProceso.procesado,
+        )
+
+        if par.zip_origen:
+            self._repository.crear_proceso_ingesta(
+                conn=conn_db, adjunto_id=id_adjunto_xml,
+                id_proceso=IdTipoProceso.validacion_contenido_zip,
+                observacion=f"ZIP validado: contiene XML y PDF ({par.zip_origen.name})",
+                id_estado=IdEstadoProceso.procesado,
+            )
+
+        return {
+            "id_adjunto_xml": id_adjunto_xml,
+            "id_adjunto_pdf": id_adjunto_pdf,
+            "ruta_xml": str(xml_destino),
+            "ruta_pdf": str(pdf_destino),
+        }
+
+    # ------------------------------------------------------------------
+    # Procesamiento principal
+    # ------------------------------------------------------------------
+
     def _procesar_correo(self, conn: imaplib.IMAP4_SSL, uid: bytes) -> bool:
-        """Procesa un correo individual con flujo completo."""
+        """Procesa un correo individual con flujo completo.
+
+        Soporta los siguientes casos:
+        - Correo con un ZIP con XML y PDF dentro
+        - Correo con varios ZIPs con XML y PDF dentro
+        - Correo con un ZIP con ZIPs anidados (cada uno con XML y PDF)
+        - Correo con XML y PDF sueltos (sin ZIP)
+        - Correo mixto: ZIPs + XML/PDF sueltos
+        """
         try:
             # 1. FETCH del correo
             status, data = conn.uid("fetch", uid, "(RFC822)")
@@ -118,14 +383,13 @@ class EmailListener:
             remitente = msg.get("From", "")
             asunto = msg.get("Subject", "")
             fecha_envio_raw = msg.get("Date", None)
+            fecha_envio = None
 
             if fecha_envio_raw:
                 try:
                     fecha_envio = parsedate_to_datetime(fecha_envio_raw)
-
                 except Exception as e:
                     logger.debug("No se pudo parsear fecha de envío: %s | error: %s", fecha_envio_raw, e)
-                    fecha_envio = None
 
             # 3. Parsear asunto
             parsed = self._parser.parsear(asunto)
@@ -141,13 +405,13 @@ class EmailListener:
                 conn.uid("store", uid, "+FLAGS", "\\Seen")
                 return True
 
-            # 4. Verificar si tiene adjunto ZIP
-            tiene_zip = self._attachment_handler._tiene_adjunto_zip(raw)
+            # 4. Verificar adjuntos válidos (ZIP, XML o PDF)
+            tiene_adjuntos_factura = self._attachment_handler.tiene_adjuntos_factura(raw)
 
             # 5. Procesamiento principal con transacción
             with self._repository._get_connection() as conn_db:
                 try:
-                    # 5a. Guardar correo en BD (registro histórico)
+                    # 5a. Guardar correo en BD
                     id_correo = self._repository.guardar_correo_entrante(
                         conn=conn_db,
                         id_mensaje=id_mensaje,
@@ -165,173 +429,98 @@ class EmailListener:
                         conn.uid("store", uid, "+FLAGS", "\\Seen")
                         return True
 
-                    # 5b. Aplicar filtro de facturación (para flujo de ingesta completo)
-                    resultado_filtro = filtro.evaluar(parsed, tiene_zip, remitente)
+                    # 5b. Aplicar filtro de facturación
+                    resultado_filtro = filtro.evaluar(parsed, tiene_adjuntos_factura, remitente)
 
                     if not resultado_filtro.es_factura:
-                        if resultado_filtro.motivo_rechazo == "SIN_ADJUNTO_ZIP":
-                            logger.info("Correo de facturación registrado sin ZIP (ID_CORREO=%s): %s", id_correo, id_mensaje)
-                            self._alert_manager.adjunto_incompleto(
-                                email_uid=id_mensaje,
-                                archivos=[],
-                                motivo="El correo de facturación no contiene un archivo ZIP adjunto"
+                        if resultado_filtro.motivo_rechazo == "SIN_ADJUNTOS_FACTURA":
+                            logger.info(
+                                "Correo de facturación sin adjuntos válidos (ID_CORREO=%s): %s",
+                                id_correo, id_mensaje,
                             )
-                            conn.uid("store", uid, "+FLAGS", "\\Seen")
-                            return True  # Registro exitoso, pero sin ingesta
-
-                        self._alert_manager.factura_rechazada(
-                            motivo=resultado_filtro.motivo_rechazo or "No cumple criterios de factura",
-                            nit=parsed.get("nit"),
-                            num_factura=parsed.get("num_factura"),
-                        )
-                        logger.warning("Correo de facturación rechazado por filtro: %s | Motivo: %s", id_mensaje, resultado_filtro.motivo_rechazo)
-                        conn.uid("store", uid, "+FLAGS", "\\Seen")
-                        return True # Registrado en CORREO_ENTRANTE, pero marcado como rechazado en flujo
-
-                    # 5c. Descargar ZIP
-                    ruta_zip = self._attachment_handler.descargar_zip(msg, parsed)
-                    if not ruta_zip:
-                        self._alert_manager.adjunto_incompleto(
-                            email_uid=id_mensaje,
-                            archivos=[],
-                            motivo="No se pudo descargar ZIP",
-                        )
-                        logger.error("Falla al descargar ZIP para correo %s", id_mensaje)
-                        conn.uid("store", uid, "+FLAGS", "\\Seen")
-                        return False
-
-                    # 5c.1 Verificar si el ZIP ya fue procesado antes (hash repetido)
-                    sha256_zip = self._repository.calcular_hash_sha256(ruta_zip)
-                    if self._repository.existe_adjunto_por_hash(conn_db, sha256_zip):
-                        logger.warning("El archivo ZIP ya existe en la tabla adjuntos_correo (Hash: %s). Se omitirá su procesamiento.", sha256_zip[:8])
-                        try:
-                            ruta_zip.unlink(missing_ok=True)
-                        except Exception:
-                            pass
+                            self._alert_manager.adjunto_incompleto(
+                                email_uid=id_mensaje, archivos=[],
+                                motivo="El correo de facturación no contiene adjuntos válidos (ZIP, XML o PDF)",
+                            )
+                        else:
+                            self._alert_manager.factura_rechazada(
+                                motivo=resultado_filtro.motivo_rechazo or "No cumple criterios",
+                                nit=parsed.get("nit"),
+                                num_factura=parsed.get("num_factura"),
+                            )
+                            logger.warning(
+                                "Correo rechazado por filtro: %s | %s",
+                                id_mensaje, resultado_filtro.motivo_rechazo,
+                            )
                         conn.uid("store", uid, "+FLAGS", "\\Seen")
                         return True
 
-                    # 5d. Validar contenido del ZIP (XML + PDF)
-                    validacion = self._validator.validar_zip(ruta_zip)
-                    if not validacion.es_valido:
-                        try:
-                            ruta_zip.unlink(missing_ok=True)
-                        except Exception:
-                            pass
+                    # 5c. Descargar TODOS los adjuntos válidos
+                    adjuntos = self._attachment_handler.descargar_todos_adjuntos(msg, parsed)
+                    if not adjuntos:
                         self._alert_manager.adjunto_incompleto(
-                            email_uid=id_mensaje,
-                            archivos=validacion.archivos_encontrados,
-                            motivo=validacion.motivo_error or "Validación fallida",
+                            email_uid=id_mensaje, archivos=[],
+                            motivo="No se pudieron descargar adjuntos",
                         )
-                        logger.error("Validación de adjuntos falló: %s | %s", id_mensaje, validacion.motivo_error)
+                        logger.error("Falla al descargar adjuntos para correo %s", id_mensaje)
                         conn.uid("store", uid, "+FLAGS", "\\Seen")
                         return False
 
-                    # 5e. Escaneo de malware sobre ZIP, XML y PDF
-                    scan_zip = self._scanner.escanear_archivo(ruta_zip)
-                    if not scan_zip.seguro:
-                        try:
-                            ruta_zip.unlink(missing_ok=True)
-                        except Exception:
-                            pass
-                        self._alert_manager.malware_detectado(ruta_zip.name, scan_zip.nivel_riesgo)
-                        logger.critical("Malware detectado en ZIP: %s | %s", ruta_zip, scan_zip.detalle)
+                    # 5d. Clasificar adjuntos por tipo
+                    zips = [a for a in adjuntos if a.extension == ".zip"]
+                    xmls = [a for a in adjuntos if a.extension == ".xml"]
+                    pdfs = [a for a in adjuntos if a.extension == ".pdf"]
+
+                    todos_resultados = []
+
+                    # 5e. Procesar ZIPs (si los hay)
+                    if zips:
+                        resultados_zip = self._procesar_zips(
+                            zips=zips, conn_db=conn_db, id_correo=id_correo,
+                            id_mensaje=id_mensaje, fecha_envio=fecha_envio, parsed=parsed,
+                        )
+                        todos_resultados.extend(resultados_zip)
+
+                    # 5f. Procesar XML+PDF sueltos (si los hay)
+                    if xmls and pdfs:
+                        resultados_sueltos = self._procesar_sueltos(
+                            xmls=xmls, pdfs=pdfs, conn_db=conn_db,
+                            id_correo=id_correo, id_mensaje=id_mensaje,
+                            fecha_envio=fecha_envio, parsed=parsed,
+                        )
+                        todos_resultados.extend(resultados_sueltos)
+
+                    if not todos_resultados:
+                        logger.warning(
+                            "Ningún par XML+PDF procesado exitosamente para correo %s",
+                            id_mensaje,
+                        )
                         conn.uid("store", uid, "+FLAGS", "\\Seen")
                         return False
 
-                    scan_xml = self._scanner.escanear_archivo(validacion.xml_path)
-                    if not scan_xml.seguro:
-                        try:
-                            ruta_zip.unlink(missing_ok=True)
-                        except Exception:
-                            pass
-                        self._alert_manager.malware_detectado(validacion.xml_path.name, scan_xml.nivel_riesgo)
-                        logger.critical("Malware detectado en XML: %s | %s", validacion.xml_path, scan_xml.detalle)
-                        conn.uid("store", uid, "+FLAGS", "\\Seen")
-                        return False
+                    # 5g. Publicar eventos en cola
+                    for res in todos_resultados:
+                        evento = {
+                            "event_type": "factura_disponible",
+                            "id_mensaje_email": id_mensaje,
+                            "id_correo": id_correo,
+                            "id_adjunto_xml": res["id_adjunto_xml"],
+                            "id_adjunto_pdf": res["id_adjunto_pdf"],
+                            "parsed_subject": parsed,
+                            "ruta_xml": res["ruta_xml"],
+                            "ruta_pdf": res["ruta_pdf"],
+                            "remitente": remitente,
+                        }
+                        self._publisher.publish(evento, db_conn=conn_db)
 
-                    scan_pdf = self._scanner.escanear_archivo(validacion.pdf_path)
-                    if not scan_pdf.seguro:
-                        try:
-                            ruta_zip.unlink(missing_ok=True)
-                        except Exception:
-                            pass
-                        self._alert_manager.malware_detectado(validacion.pdf_path.name, scan_pdf.nivel_riesgo)
-                        logger.critical("Malware detectado en PDF: %s | %s", validacion.pdf_path, scan_pdf.detalle)
-                        conn.uid("store", uid, "+FLAGS", "\\Seen")
-                        return False
-
-                    # 5f. Guardar adjuntos en BD con jerarquía (ZIP -> XML/PDF)
-                    # El ZIP es el padre
-                    id_adjunto_zip = self._repository.guardar_adjunto_correo(
-                        conn=conn_db,
-                        id_correo=id_correo,
-                        ruta_archivo=ruta_zip,
-                        id_tipo_archivo=IdTipoArchivo.zip,
-                        archivo_seguro=scan_zip.seguro,
-                        fecha_envio=fecha_envio
-                    )
-
-                    # Mover XML y PDF desde temp a ubicación permanente y guardarlos como hijos del ZIP
-                    xml_destino = self._attachment_handler.construir_ruta_destino(validacion.xml_path.name, parsed)
-                    pdf_destino = self._attachment_handler.construir_ruta_destino(validacion.pdf_path.name, parsed)
-                    xml_destino.parent.mkdir(parents=True, exist_ok=True)
-                    pdf_destino.parent.mkdir(parents=True, exist_ok=True)
-                    validacion.xml_path.replace(xml_destino)
-                    validacion.pdf_path.replace(pdf_destino)
-
-                    id_adjunto_xml = self._repository.guardar_adjunto_correo(
-                        conn=conn_db,
-                        id_correo=id_correo,
-                        ruta_archivo=xml_destino,
-                        id_tipo_archivo=IdTipoArchivo.xml,
-                        adjunto_padre_id=id_adjunto_zip,
-                        archivo_seguro=scan_xml.seguro,
-                        fecha_envio=fecha_envio
-                    )
-
-                    id_adjunto_pdf = self._repository.guardar_adjunto_correo(
-                        conn=conn_db,
-                        id_correo=id_correo,
-                        ruta_archivo=pdf_destino,
-                        id_tipo_archivo=IdTipoArchivo.pdf,
-                        adjunto_padre_id=id_adjunto_zip,
-                        archivo_seguro=scan_pdf.seguro,
-                        fecha_envio=fecha_envio
-                    )
-
-                    # 5h. Crear proceso de ingesta
-                    id_proceso = self._repository.crear_proceso_ingesta(
-                        conn=conn_db,
-                        id_correo=id_correo,
-                        id_adjunto=id_adjunto_zip,
-                    )
-
-                    # 5j. Publicar evento en cola (con datos completos)
-                    evento = {
-                        "event_type": "factura_disponible",
-                        "id_mensaje_email": id_mensaje,
-                        "id_correo": id_correo,
-                        "id_proceso": id_proceso,
-                        "id_adjunto_zip": id_adjunto_zip,
-                        "id_adjunto_xml": id_adjunto_xml,
-                        "id_adjunto_pdf": id_adjunto_pdf,
-                        "parsed_subject": parsed,
-                        "ruta_zip": str(ruta_zip),
-                        "ruta_xml": str(xml_destino),
-                        "ruta_pdf": str(pdf_destino),
-                        "remitente": remitente,
-                    }
-                    if not self._publisher.publish(evento, db_conn=conn_db):
-                        raise RuntimeError("No se pudo publicar evento en cola")
-
-                    # Si llegamos aquí, todo OK; el with conn_db hará commit automáticamente
                     conn.uid("store", uid, "+FLAGS", "\\Seen")
-                    logger.info("Factura procesada y encolada: %s | ID_proceso=%s", id_mensaje, id_proceso)
+                    logger.info(
+                        "Correo procesado: %s | %d facturas encoladas",
+                        id_mensaje, len(todos_resultados),
+                    )
                     return True
 
                 finally:
-                    # Limpiar archivos temporales (si quedan)
                     try:
                         self._validator.limpiar_temp()
                     except Exception as e:

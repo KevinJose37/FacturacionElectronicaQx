@@ -99,26 +99,14 @@ class PostgresQueuePublisher(QueuePublisher):
         )
 
     def publish(self, event: dict[str, Any], db_conn: Any = None) -> bool:
-        """Inserta el evento en FACTURACION.EVENTO_INGESTA."""
+        """Publica el evento (la inserción en EVENTO_INGESTA se hace en el repository)."""
         enriched = self._enriquecer_evento(event)
         try:
-            conn = db_conn or self._get_connection()
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO FACTURACION.EVENTO_INGESTA 
-                        (ADJUNTO_ID, ID_ESTADO)
-                    VALUES (%s, %s)
-                    ON CONFLICT (ADJUNTO_ID) DO NOTHING
-                    """,
-                    (
-                        enriched.get("id_adjunto_zip"),
-                        1,  # ESTADO = RECIBIDO
-                    ),
-                )
-            if not db_conn:
-                conn.commit()
-                conn.close()
+            logger.info(
+                "Evento publicado: type=%s adjunto_id=%s",
+                enriched.get("event_type"),
+                enriched.get("id_adjunto_zip") or enriched.get("id_adjunto_xml"),
+            )
             return True
         except Exception as exc:
             logger.error(f"Error Postgres: {exc}")

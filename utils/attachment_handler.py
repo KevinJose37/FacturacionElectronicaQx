@@ -198,12 +198,16 @@ class AttachmentHandler:
                 logger.warning("Adjunto %r está vacío; se omite.", filename)
                 continue
 
-            # Prefijo único para evitar colisiones entre proveedores
-            # que envían ZIPs con el mismo nombre en la misma fecha
-            prefijo = uuid.uuid4().hex[:8]
-            nombre_unico = f"{prefijo}_{filename}"
+            # Prefijo UUID solo para ZIPs (evita colisiones entre proveedores
+            # que envían ZIPs con el mismo nombre en la misma fecha).
+            # XML y PDF conservan su nombre original para emparejamiento.
+            if ext == ".zip":
+                prefijo = uuid.uuid4().hex[:8]
+                nombre_guardado = f"{prefijo}_{filename}"
+            else:
+                nombre_guardado = filename
 
-            destino = self.construir_ruta_destino(nombre_unico, parsed)
+            destino = self.construir_ruta_destino(nombre_guardado, parsed)
             destino.parent.mkdir(parents=True, exist_ok=True)
 
             destino.write_bytes(payload)

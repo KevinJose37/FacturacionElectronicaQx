@@ -22,16 +22,18 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ParXmlPdf:
-    """Un par XML+PDF que representa los archivos de una factura.
+    """Archivos de una factura: XML obligatorio, PDF opcional.
 
     Attributes:
-        xml_path: Ruta al archivo XML extraído.
-        pdf_path: Ruta al archivo PDF extraído.
+        xml_path: Ruta al archivo XML extraído (obligatorio).
+        pdf_path: Ruta al archivo PDF extraído (None si no se encontró).
         zip_origen: Ruta al ZIP del que se extrajeron (None si son sueltos).
+        pdf_faltante: True si no se encontró PDF correspondiente.
     """
     xml_path: Path
-    pdf_path: Path
+    pdf_path: Optional[Path] = None
     zip_origen: Optional[Path] = None
+    pdf_faltante: bool = False
 
 
 @dataclass
@@ -198,8 +200,8 @@ class AttachmentValidator:
                 pares: List[ParXmlPdf] = []
                 tiene_zips_anidados = len(zip_files) > 0
 
-                # Caso 1: El ZIP contiene XML+PDF directos
-                if xml_files and pdf_files:
+                # Caso 1: El ZIP contiene XMLs (con o sin PDFs)
+                if xml_files:
                     extract_dir = self.temp_root / ruta_zip.stem
                     extract_dir.mkdir(parents=True, exist_ok=True)
 
@@ -212,6 +214,7 @@ class AttachmentValidator:
                     # Emparejar XMLs y PDFs:
                     # 1° intento: por stem exacto (mismo nombre, diferente extensión)
                     # 2° intento: por dígitos internos (ej: ad0071...xml ↔ fv0071...pdf)
+                    # XMLs sin PDF se incluyen con pdf_faltante=True
                     pdf_por_stem = {Path(pf).stem.lower(): pf for pf in pdf_files}
                     pdf_por_digitos = {}
                     for pf in pdf_files:
@@ -239,10 +242,17 @@ class AttachmentValidator:
                             ))
                             pdf_usados.add(Path(pdf_match).stem.lower())
                         else:
+                            # XML sin PDF: se procesa igual, marcado para revisión humana
                             logger.warning(
-                                "XML sin PDF correspondiente en ZIP %s: %s",
+                                "XML sin PDF correspondiente en ZIP %s: %s (se procesará sin PDF)",
                                 ruta_zip.name, xf
                             )
+                            pares.append(ParXmlPdf(
+                                xml_path=extract_dir / xf,
+                                pdf_path=None,
+                                zip_origen=ruta_zip,
+                                pdf_faltante=True,
+                            ))
 
                     for pf in pdf_files:
                         if Path(pf).stem.lower() not in pdf_usados:
@@ -279,10 +289,8 @@ class AttachmentValidator:
                     motivo_parts = []
                     if not xml_files and not zip_files:
                         motivo_parts.append("no contiene archivos XML")
-                    if not pdf_files and not zip_files:
-                        motivo_parts.append("no contiene archivos PDF")
                     if zip_files and not pares:
-                        motivo_parts.append("ZIPs internos no contienen pares XML+PDF válidos")
+                        motivo_parts.append("ZIPs internos no contienen XMLs válidos")
                     motivo = "ZIP inválido: " + ", ".join(motivo_parts) if motivo_parts else "ZIP vacío o sin contenido de factura"
 
                     return ZipValidacionCompleta(
@@ -354,7 +362,14 @@ class AttachmentValidator:
                 ))
                 pdf_usados.add(pdf_match.stem.lower())
             else:
-                logger.warning("XML sin PDF correspondiente (suelto): %s", xml_path.name)
+                # XML sin PDF: se procesa igual, marcado para revisión humana
+                logger.warning("XML sin PDF correspondiente (suelto): %s (se procesará sin PDF)", xml_path.name)
+                pares.append(ParXmlPdf(
+                    xml_path=xml_path,
+                    pdf_path=None,
+                    zip_origen=None,
+                    pdf_faltante=True,
+                ))
 
         for pdf_path in pdfs:
             if pdf_path.stem.lower() not in pdf_usados:

@@ -137,15 +137,15 @@ class EmailListener:
         resultados = []
 
         for adj_zip in zips:
-            # Verificar hash duplicado (informativo, no bloquea)
-            # Permite reprocesar correcciones de facturas con distinto contenido
+            # Verificar hash duplicado — si el mismo archivo ya fue procesado, omitir.
+            # Las correcciones de factura tienen contenido distinto → hash diferente → se procesan.
             sha256_zip = self._repository.calcular_hash_sha256(adj_zip.ruta)
             if self._repository.existe_adjunto_por_hash(conn_db, sha256_zip):
-                logger.warning(
-                    "ZIP con hash existente en BD (hash=%s): %s. "
-                    "Puede ser duplicado o corrección de factura. Continuando.",
+                logger.info(
+                    "ZIP con hash ya existente en BD (hash=%s): %s. Omitiendo duplicado.",
                     sha256_zip[:8], adj_zip.nombre_original,
                 )
+                continue
 
             # Escanear el ZIP
             if not self._escanear_archivo(adj_zip.ruta):
@@ -267,45 +267,54 @@ class EmailListener:
         parsed: dict,
         id_mensaje: str,
     ) -> Optional[dict]:
-        """Registra un par XML+PDF como factura en BD y crea sus eventos.
+        """Registra una factura (XML obligatorio, PDF opcional) en BD.
 
-        Para cada par:
-        1. Escanea XML y PDF contra malware
+        Para cada factura:
+        1. Escanea XML (y PDF si existe) contra malware
         2. Mueve archivos a ubicación permanente
         3. Registra en ADJUNTOS_CORREO
         4. Crea EVENTO_INGESTA
         5. Registra procesos en PROCESO_INGESTA
 
-        Returns:
-            dict con IDs del par registrado, o None si falló.
-        """
-        # 1. Escanear malware
-        xml_seguro = self._escanear_archivo(par.xml_path)
-        pdf_seguro = self._escanear_archivo(par.pdf_path)
+        Si el PDF no existe, se registra una observación para revisión humana.
 
-        if not xml_seguro or not pdf_seguro:
-            # Registrar adjuntos como inseguros pero no procesar
-            if not xml_seguro:
-                self._repository.guardar_adjunto_correo(
-                    conn=conn_db, id_correo=id_correo, ruta_archivo=par.xml_path,
-                    id_tipo_archivo=IdTipoArchivo.xml, adjunto_padre_id=id_adjunto_padre,
-                    archivo_seguro=False, fecha_envio=fecha_envio,
-                )
+        Returns:
+            dict con IDs registrados, o None si el XML falló.
+        """
+        # 1. Escanear malware — XML es obligatorio
+        xml_seguro = self._escanear_archivo(par.xml_path)
+        if not xml_seguro:
+            self._repository.guardar_adjunto_correo(
+                conn=conn_db, id_correo=id_correo, ruta_archivo=par.xml_path,
+                id_tipo_archivo=IdTipoArchivo.xml, adjunto_padre_id=id_adjunto_padre,
+                archivo_seguro=False, fecha_envio=fecha_envio,
+            )
+            return None
+
+        pdf_seguro = True
+        if par.pdf_path:
+            pdf_seguro = self._escanear_archivo(par.pdf_path)
             if not pdf_seguro:
                 self._repository.guardar_adjunto_correo(
                     conn=conn_db, id_correo=id_correo, ruta_archivo=par.pdf_path,
                     id_tipo_archivo=IdTipoArchivo.pdf, adjunto_padre_id=id_adjunto_padre,
                     archivo_seguro=False, fecha_envio=fecha_envio,
                 )
-            return None
+                # PDF infectado, pero el XML se puede procesar
+                par.pdf_path = None
+                par.pdf_faltante = True
 
-        # 2. Mover a ubicación permanente
+        # 2. Mover XML a ubicación permanente
         xml_destino = self._attachment_handler.construir_ruta_destino(par.xml_path.name, parsed)
-        pdf_destino = self._attachment_handler.construir_ruta_destino(par.pdf_path.name, parsed)
         xml_destino.parent.mkdir(parents=True, exist_ok=True)
-        pdf_destino.parent.mkdir(parents=True, exist_ok=True)
         par.xml_path.replace(xml_destino)
-        par.pdf_path.replace(pdf_destino)
+
+        # Mover PDF si existe y es seguro
+        pdf_destino = None
+        if par.pdf_path:
+            pdf_destino = self._attachment_handler.construir_ruta_destino(par.pdf_path.name, parsed)
+            pdf_destino.parent.mkdir(parents=True, exist_ok=True)
+            par.pdf_path.replace(pdf_destino)
 
         # 3. Registrar adjuntos en BD
         id_adjunto_xml = self._repository.guardar_adjunto_correo(
@@ -313,38 +322,56 @@ class EmailListener:
             id_tipo_archivo=IdTipoArchivo.xml, adjunto_padre_id=id_adjunto_padre,
             archivo_seguro=True, fecha_envio=fecha_envio,
         )
-        id_adjunto_pdf = self._repository.guardar_adjunto_correo(
-            conn=conn_db, id_correo=id_correo, ruta_archivo=pdf_destino,
-            id_tipo_archivo=IdTipoArchivo.pdf, adjunto_padre_id=id_adjunto_padre,
-            archivo_seguro=True, fecha_envio=fecha_envio,
-        )
-
-        if id_adjunto_xml == -1 or id_adjunto_pdf == -1:
-            logger.error("Error registrando adjuntos XML/PDF en BD para correo %s", id_mensaje)
+        if id_adjunto_xml == -1:
+            logger.error("Error registrando XML en BD para correo %s", id_mensaje)
             return None
+
+        id_adjunto_pdf = None
+        if pdf_destino:
+            id_adjunto_pdf = self._repository.guardar_adjunto_correo(
+                conn=conn_db, id_correo=id_correo, ruta_archivo=pdf_destino,
+                id_tipo_archivo=IdTipoArchivo.pdf, adjunto_padre_id=id_adjunto_padre,
+                archivo_seguro=True, fecha_envio=fecha_envio,
+            )
 
         # 4. Crear evento de ingesta (el XML es la unidad de procesamiento)
         self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_adjunto_xml)
 
         # 5. Registrar procesos de ingesta realizados
+        obs_malware = "Escaneo completado: XML seguro"
+        if par.pdf_faltante:
+            obs_malware += " | PDF no disponible: requiere revisión humana"
+        elif pdf_destino:
+            obs_malware += ", PDF seguro"
+
         self._repository.crear_proceso_ingesta(
             conn=conn_db, adjunto_id=id_adjunto_xml,
             id_proceso=IdTipoProceso.escaneo_malware,
-            observacion="Escaneo de malware completado: archivos seguros",
+            observacion=obs_malware,
             id_estado=IdEstadoProceso.procesado,
         )
+
+        obs_descarga = f"XML almacenado: {xml_destino.name}"
+        if pdf_destino:
+            obs_descarga += f", PDF almacenado: {pdf_destino.name}"
+        else:
+            obs_descarga += " | PDF faltante: pendiente revisión humana en correo"
+
         self._repository.crear_proceso_ingesta(
             conn=conn_db, adjunto_id=id_adjunto_xml,
             id_proceso=IdTipoProceso.descarga_almacenamiento,
-            observacion=f"Archivos almacenados: XML={xml_destino.name}, PDF={pdf_destino.name}",
+            observacion=obs_descarga,
             id_estado=IdEstadoProceso.procesado,
         )
 
         if par.zip_origen:
+            obs_zip = f"ZIP validado: contiene XML ({par.zip_origen.name})"
+            if par.pdf_faltante:
+                obs_zip += " | PDF no encontrado en ZIP"
             self._repository.crear_proceso_ingesta(
                 conn=conn_db, adjunto_id=id_adjunto_xml,
                 id_proceso=IdTipoProceso.validacion_contenido_zip,
-                observacion=f"ZIP validado: contiene XML y PDF ({par.zip_origen.name})",
+                observacion=obs_zip,
                 id_estado=IdEstadoProceso.procesado,
             )
 
@@ -352,7 +379,8 @@ class EmailListener:
             "id_adjunto_xml": id_adjunto_xml,
             "id_adjunto_pdf": id_adjunto_pdf,
             "ruta_xml": str(xml_destino),
-            "ruta_pdf": str(pdf_destino),
+            "ruta_pdf": str(pdf_destino) if pdf_destino else None,
+            "pdf_faltante": par.pdf_faltante,
         }
 
     # ------------------------------------------------------------------
@@ -482,8 +510,8 @@ class EmailListener:
                         )
                         todos_resultados.extend(resultados_zip)
 
-                    # 5f. Procesar XML+PDF sueltos (si los hay)
-                    if xmls and pdfs:
+                    # 5f. Procesar XMLs sueltos (con o sin PDFs correspondientes)
+                    if xmls:
                         resultados_sueltos = self._procesar_sueltos(
                             xmls=xmls, pdfs=pdfs, conn_db=conn_db,
                             id_correo=id_correo, id_mensaje=id_mensaje,

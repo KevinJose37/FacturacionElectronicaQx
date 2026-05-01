@@ -300,43 +300,6 @@ class EmailListener:
                         id_adjunto=id_adjunto_zip,
                     )
 
-                    # 5i. Registrar logs por etapa
-                    self._repository.registrar_log_proceso(
-                        conn=conn_db,
-                        id_proceso=id_proceso,
-                        codigo_etapa="RECIBIDO",
-                        id_estado=self.ESTADO_RECIBIDO,
-                        detalle={"id_mensaje": id_mensaje, "remitente": remitente},
-                    )
-                    self._repository.registrar_log_proceso(
-                        conn=conn_db,
-                        id_proceso=id_proceso,
-                        codigo_etapa="ADJUNTO_VERIFICADO",
-                        id_estado=self.ESTADO_ADJUNTO_VERIFICADO,
-                        detalle={"zip": ruta_zip.name, "archivos": validacion.archivos_encontrados},
-                    )
-                    self._repository.registrar_log_proceso(
-                        conn=conn_db,
-                        id_proceso=id_proceso,
-                        codigo_etapa="ESCANEADO_OK",
-                        id_estado=self.ESTADO_ESCANEADO_OK,
-                        detalle={"malware_zip": scan_zip.seguro, "malware_xml": scan_xml.seguro, "malware_pdf": scan_pdf.seguro},
-                    )
-                    self._repository.registrar_log_proceso(
-                        conn=conn_db,
-                        id_proceso=id_proceso,
-                        codigo_etapa="XML_EXTRAIDO",
-                        id_estado=self.ESTADO_XML_EXTRAIDO,
-                        detalle={"xml": xml_destino.name},
-                    )
-                    self._repository.registrar_log_proceso(
-                        conn=conn_db,
-                        id_proceso=id_proceso,
-                        codigo_etapa="FACTURA_PARSED",
-                        id_estado=self.ESTADO_FACTURA_PARSED,
-                        detalle={"parsed": parsed},
-                    )
-
                     # 5j. Publicar evento en cola (con datos completos)
                     evento = {
                         "event_type": "factura_disponible",

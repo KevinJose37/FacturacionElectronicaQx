@@ -6,7 +6,8 @@ como no procesable y el flujo se detiene.
 
 Criterios de filtrado:
     1. Asunto debe contener datos estructurados (NIT, número factura, etc.)
-    2. Debe tener al menos un adjunto ZIP
+       O palabras clave de facturación (factura, localizador, etc.)
+    2. Debe tener al menos un adjunto válido (ZIP, XML, o PDF)
     3. Remitente debe ser un dominio válido (opcional, configurable)
 
 Si el correo no cumple, se genera un evento de rechazo con el motivo.
@@ -44,6 +45,22 @@ class FilterResult:
         }
 
 
+# Patrones de asuntos conocidos para facturación electrónica
+_PATRON_LOCALIZADOR = re.compile(
+    r"localizador\s+\d+\s*:\s*factura",
+    re.IGNORECASE,
+)
+
+_PATRON_NIT_SEMICOLON = re.compile(
+    r"\d{8,10}\s*;",  # NIT seguido de punto y coma
+)
+
+_PATRON_FACTURA_NUMERO = re.compile(
+    r"factura\s*(electr[oó]nica)?\s*(no\.?|n[uú]mero|#)?\s*\w+",
+    re.IGNORECASE,
+)
+
+
 class FacturaFilter:
     """Filtro que determina si un correo es una factura electrónica válida.
 
@@ -64,10 +81,19 @@ class FacturaFilter:
         self.require_nit = filter_cfg.get("require_nit", True)
         self.require_num_factura = filter_cfg.get("require_num_factura", True)
         self.allowed_senders = filter_cfg.get("allowed_senders", None)  # None = todos
-        self.keywords = ["factura", "facturacion", "fe", "electronic bill"]
+        self.keywords = [
+            "factura", "facturacion", "facturación",
+            "electronic bill", "invoice",
+        ]
 
     def es_facturacion(self, parsed_subject: ParsedSubject) -> bool:
         """Determina si el correo es de facturación basándose en el asunto.
+
+        Aplica múltiples criterios de detección:
+        1. Presencia de NIT en el asunto (formato estándar con ;)
+        2. Palabras clave de facturación
+        3. Patrón "Localizador XXXXX: Factura"
+        4. Patrón de número de factura
 
         Args:
             parsed_subject: Datos parseados del asunto.
@@ -75,46 +101,65 @@ class FacturaFilter:
         Returns:
             bool: True si se identifica como facturación.
         """
+        asunto = parsed_subject.get("asunto_original", "")
+
         # 1. Criterio de NIT (formato estándar)
         if parsed_subject.get("nit"):
             logger.debug("Identificado como facturación por NIT: %s", parsed_subject["nit"])
             return True
 
+        asunto_lower = asunto.lower()
+
         # 2. Criterio de Palabras Clave
-        asunto = parsed_subject.get("asunto_original", "").lower()
         for kw in self.keywords:
-            # Usamos búsqueda de palabra completa para evitar falsos positivos con 'fe'
-            if kw == "fe":
-                if re.search(r"\bfe\b", asunto):
-                    logger.debug("Identificado como facturación por palabra clave: %s", kw)
-                    return True
-            elif kw in asunto:
+            if kw in asunto_lower:
                 logger.debug("Identificado como facturación por palabra clave: %s", kw)
                 return True
+
+        # 3. Patrón "Localizador 130123998: Factura"
+        if _PATRON_LOCALIZADOR.search(asunto):
+            logger.debug("Identificado como facturación por patrón 'Localizador: Factura'")
+            return True
+
+        # 4. Patrón NIT;... (formato semicolon sin parseo completo)
+        if _PATRON_NIT_SEMICOLON.search(asunto):
+            logger.debug("Identificado como facturación por patrón NIT;")
+            return True
+
+        # 5. Patrón "Factura electrónica No. XXX" o similar
+        if _PATRON_FACTURA_NUMERO.search(asunto):
+            logger.debug("Identificado como facturación por patrón de número de factura")
+            return True
+
+        # 6. Criterio FE como palabra aislada
+        if re.search(r"\bfe\b", asunto_lower):
+            logger.debug("Identificado como facturación por palabra clave: fe")
+            return True
 
         return False
 
     def evaluar(
         self,
         parsed_subject: ParsedSubject,
-        tiene_zip: bool,
+        tiene_adjuntos_factura: bool,
         remitente: Optional[str] = None,
     ) -> FilterResult:
         """Evalúa un correo contra las reglas de filtro.
 
         Args:
             parsed_subject: Datos parseados del asunto.
-            tiene_zip: True si el correo contiene al menos un adjunto ZIP.
+            tiene_adjuntos_factura: True si el correo contiene al menos un
+                adjunto válido (ZIP, XML o PDF).
             remitente: Dirección de email del remitente (opcional).
 
         Returns:
             FilterResult con el resultado de la evaluación.
         """
-        # Regla 1: Debe tener adjunto ZIP
-        if not tiene_zip:
+        # Regla 1: Debe tener al menos un adjunto válido (ZIP, XML o PDF)
+        if not tiene_adjuntos_factura:
             return FilterResult(
                 es_factura=False,
-                motivo_rechazo="SIN_ADJUNTO_ZIP",
+                motivo_rechazo="SIN_ADJUNTOS_FACTURA",
                 parsed_subject=parsed_subject,
             )
 

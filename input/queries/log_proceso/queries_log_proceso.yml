@@ -1,0 +1,9 @@
+# ──────────────────────────────────────────────
+# Queries para el registro de procesos de ingesta
+# ──────────────────────────────────────────────
+
+insertar: >
+  INSERT INTO FACTURACION.PROCESO_INGESTA
+    (ADJUNTO_ID, ID_PROCESO, ID_ESTADO, ID_ERROR, OBSERVACION, FECHA_INICIO, FECHA_FIN)
+  VALUES (%s, %s, %s, %s, %s, %s, NOW())
+  RETURNING ID_PROCESO_INGESTA

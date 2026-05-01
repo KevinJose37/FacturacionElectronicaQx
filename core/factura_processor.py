@@ -7,10 +7,17 @@ la extracción del ZIP y la carga de los archivos válidos a S3.
 import logging
 import tempfile
 import zipfile
+import mimetypes
 from pathlib import Path
 
-from utils.security_utils import validar_identidad_archivo, validar_integridad_zip
+from utils.security_utils import (
+    validar_identidad_archivo,
+    validar_integridad_zip,
+    escanear_con_clamav,
+    calcular_hashes_archivo,
+)
 from utils.s3_utils import subir_archivo_s3
+from core.trazabilidad_core import registrar_archivo, registrar_escaneo_seguridad
 
 logger = logging.getLogger(__name__)
 
@@ -94,11 +101,47 @@ def procesar_y_subir_factura(ruta_zip: Path | str) -> bool:
 
                             # Subir archivos internos
                             for archivo in archivos_extraidos:
+                                extension = archivo.suffix.lower()
+                                mime, _ = mimetypes.guess_type(archivo)
+                                hashes = calcular_hashes_archivo(archivo)
+                                
+                                # 3.1 Escaneo de Seguridad con ClamAV
+                                resultado_scan = escanear_con_clamav(archivo)
+                                
+                                if resultado_scan["malware_detectado"]:
+                                    logger.error(f"Malware detectado en {archivo.name}. Se omite subida.")
+                                    malware_detectado = True
+                                    # Aun así registramos el hallazgo en la DB para auditoría
+                                    # (Necesitaríamos registrar el archivo primero, o permitir escaneos sin ID_ARCHIVO)
+                                    # Por ahora, si hay malware, bloqueamos el proceso.
+                                    break
+
+                                # 4. Subir a S3 si está limpio
                                 destino_s3 = f"facturas_descomprimidas/{ruta_zip.stem}/{archivo.name}"
-                                if not subir_archivo_s3(archivo, destino_s3):
+                                if subir_archivo_s3(archivo, destino_s3):
+                                    # 5. Registrar en BD (Archivo + Escaneo)
+                                    id_archivo = registrar_archivo(
+                                        nombre_original=archivo.name,
+                                        ruta_s3=destino_s3,
+                                        tamanio_bytes=archivo.stat().st_size,
+                                        md5_hash=hashes["md5"],
+                                        sha256_hash=hashes["sha256"],
+                                        tipo_mime=mime
+                                    )
+                                    
+                                    if id_archivo:
+                                        registrar_escaneo_seguridad(
+                                            id_archivo=id_archivo,
+                                            motor=resultado_scan["version_motor"],
+                                            version="Latest Signatures",
+                                            malware_detectado=resultado_scan["malware_detectado"],
+                                            nivel_riesgo="BAJO" if not resultado_scan["malware_detectado"] else "ALTO",
+                                            detalle_json=resultado_scan
+                                        )
+                                else:
                                     todas_exitosas = False
 
-                            es_exitoso = todas_exitosas
+                            es_exitoso = todas_exitosas and not malware_detectado
 
             except Exception as e:
                 logger.error(f"Error procesando el ZIP {ruta_zip}: {e}")

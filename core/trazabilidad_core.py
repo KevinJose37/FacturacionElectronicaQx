@@ -100,3 +100,102 @@ def iniciar_proceso_ingesta(codigo_estado: str) -> int | None:
             conexion.close()
             
     return id_proceso_generado
+
+
+def registrar_archivo(
+    nombre_original: str,
+    ruta_s3: str,
+    tamanio_bytes: int,
+    md5_hash: str | None = None,
+    sha256_hash: str | None = None,
+    tipo_mime: str | None = None,
+) -> int | None:
+    """Registra un archivo en la base de datos.
+
+    Args:
+        nombre_original: Nombre del archivo.
+        ruta_s3: Ruta final en S3.
+        tamanio_bytes: Tamaño en bytes.
+        md5_hash: Hash MD5.
+        sha256_hash: Hash SHA256.
+        tipo_mime: MIME type del archivo.
+
+    Returns:
+        ID del archivo generado o None si falló.
+    """
+    id_archivo = None
+    conexion = None
+
+    try:
+        conexion = obtener_conexion()
+        if conexion:
+            datos = {
+                "nombre_original": nombre_original,
+                "ruta_s3": ruta_s3,
+                "tamaño_bytes": tamanio_bytes,
+                "md5_hash": md5_hash,
+                "sha256_hash": sha256_hash,
+                "tipo_mime": tipo_mime,
+            }
+            id_archivo = insertar_datos(
+                conexion=conexion, esquema="facturacion", tabla="archivo", datos=datos
+            )
+            logger.info(f"Archivo registrado con ID: {id_archivo}")
+    except Exception as e:
+        logger.error(f"Error al registrar archivo: {e}")
+    finally:
+        if conexion:
+            conexion.close()
+
+    return id_archivo
+
+
+def registrar_escaneo_seguridad(
+    id_archivo: int,
+    motor: str,
+    version: str,
+    malware_detectado: bool,
+    nivel_riesgo: str = "BAJO",
+    detalle_json: dict | None = None,
+) -> int | None:
+    """Registra un resultado de escaneo de seguridad.
+
+    Args:
+        id_archivo: ID del archivo escaneado.
+        motor: Nombre del motor antivirus.
+        version: Versión del motor/firmas.
+        malware_detectado: Booleano de detección.
+        nivel_riesgo: Nivel de riesgo detectado.
+        detalle_json: Detalles técnicos adicionales.
+
+    Returns:
+        ID del escaneo o None si falló.
+    """
+    id_escaneo = None
+    conexion = None
+
+    try:
+        conexion = obtener_conexion()
+        if conexion:
+            datos = {
+                "id_archivo": id_archivo,
+                "motor_antivirus": motor,
+                "version_motor": version,
+                "malware_detectado": malware_detectado,
+                "nivel_riesgo": nivel_riesgo,
+                "detalle_json": json.dumps(detalle_json) if detalle_json else None,
+            }
+            id_escaneo = insertar_datos(
+                conexion=conexion,
+                esquema="facturacion",
+                tabla="escaneo_seguridad",
+                datos=datos,
+            )
+            logger.info(f"Escaneo de seguridad registrado con ID: {id_escaneo}")
+    except Exception as e:
+        logger.error(f"Error al registrar escaneo de seguridad: {e}")
+    finally:
+        if conexion:
+            conexion.close()
+
+    return id_escaneo

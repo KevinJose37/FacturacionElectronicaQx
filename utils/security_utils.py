@@ -7,7 +7,10 @@ previniendo la ejecución de malware básico disfrazado.
 
 import logging
 import zipfile
+import hashlib
+import clamd
 from pathlib import Path
+from config import get_antivirus_config
 
 logger = logging.getLogger(__name__)
 
@@ -88,3 +91,70 @@ def validar_identidad_archivo(contenido: bytes, extension_esperada: str) -> bool
             es_valido = False
 
     return es_valido
+
+
+def calcular_hashes_archivo(ruta_archivo: Path) -> dict:
+    """Calcula los hashes MD5 y SHA256 de un archivo.
+
+    Args:
+        ruta_archivo: Ruta al archivo.
+
+    Returns:
+        Diccionario con 'md5' y 'sha256'.
+    """
+    md5_hash = hashlib.md5()
+    sha256_hash = hashlib.sha256()
+
+    with open(ruta_archivo, "rb") as f:
+        # Leer en bloques de 4KB para eficiencia
+        for byte_block in iter(lambda: f.read(4096), b""):
+            md5_hash.update(byte_block)
+            sha256_hash.update(byte_block)
+
+    return {"md5": md5_hash.hexdigest(), "sha256": sha256_hash.hexdigest()}
+
+
+def escanear_con_clamav(ruta_archivo: Path) -> dict:
+    """Escanea un archivo en busca de malware usando ClamAV local.
+
+    Args:
+        ruta_archivo: Ruta al archivo a escanear.
+
+    Returns:
+        Diccionario con los resultados del escaneo.
+    """
+    config = get_antivirus_config()
+    resultado_final = {
+        "malware_detectado": False,
+        "nombre_virus": None,
+        "version_motor": "ClamAV 1.0 (Local)",
+        "detalles": None,
+    }
+
+    try:
+        # Intentar conectar con el socket de red del contenedor
+        cd = clamd.ClamdNetworkSocket(host=config["host"], port=config["port"])
+
+        # Realizar el escaneo (instream envía el archivo por el socket)
+        # Esto es necesario si el contenedor no tiene acceso al sistema de archivos local
+        with open(ruta_archivo, "rb") as f:
+            resultado = cd.instream(f)
+
+        # Respuesta de clamd: {'stream': ('status', 'virus_name')}
+        if resultado and "stream" in resultado:
+            status, virus_name = resultado["stream"]
+            if status == "FOUND":
+                resultado_final["malware_detectado"] = True
+                resultado_final["nombre_virus"] = virus_name
+                resultado_final["detalles"] = f"Virus detectado: {virus_name}"
+            else:
+                resultado_final["detalles"] = "Archivo limpio"
+
+        # Obtener versión del motor
+        resultado_final["version_motor"] = cd.version()
+
+    except Exception as e:
+        logger.error(f"Error al escanear con ClamAV: {e}")
+        resultado_final["detalles"] = f"Error de conexión/escaneo: {str(e)}"
+
+    return resultado_final

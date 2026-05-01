@@ -23,7 +23,10 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TypedDict
+from typing import TypedDict, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from email.message import Message
 
 logger = logging.getLogger(__name__)
 
@@ -201,3 +204,38 @@ class EmailParser:
             es_reenvio=es_reenvio,
             asunto_original=asunto_original,
         )
+
+    def extraer_cuerpos_mensaje(self, msg: "Message") -> tuple[str | None, str | None]:
+        """Extrae el cuerpo de texto y HTML del mensaje.
+
+        Returns:
+            Tupla (cuerpo_texto, cuerpo_html).
+        """
+        cuerpo_texto = None
+        cuerpo_html = None
+
+        if msg.is_multipart():
+            for part in msg.walk():
+                content_type = part.get_content_type()
+                disposition = str(part.get("Content-Disposition"))
+
+                if "attachment" in disposition:
+                    continue
+
+                payload = part.get_payload(decode=True)
+                if not payload:
+                    continue
+
+                if content_type == "text/plain" and not cuerpo_texto:
+                    cuerpo_texto = payload.decode(errors="ignore")
+                elif content_type == "text/html" and not cuerpo_html:
+                    cuerpo_html = payload.decode(errors="ignore")
+        else:
+            payload = msg.get_payload(decode=True)
+            if payload:
+                if msg.get_content_type() == "text/plain":
+                    cuerpo_texto = payload.decode(errors="ignore")
+                else:
+                    cuerpo_html = payload.decode(errors="ignore")
+
+        return cuerpo_texto, cuerpo_html

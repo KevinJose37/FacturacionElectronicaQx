@@ -46,6 +46,26 @@ class AttachmentHandler:
         self.base_path = Path(raw_base)
         logger.debug("AttachmentHandler inicializado. base_path=%s", self.base_path)
 
+    def _tiene_adjunto_zip(self, raw_email: bytes) -> bool:
+        """Verifica de forma rápida si el correo crudo contiene un adjunto ZIP.
+
+        Args:
+            raw_email: Contenido binario del correo.
+
+        Returns:
+            bool: True si se encuentra al menos un archivo .zip.
+        """
+        try:
+            msg = email.message_from_bytes(raw_email)
+            for part in msg.walk():
+                filename = part.get_filename()
+                if filename and filename.lower().endswith(".zip"):
+                    return True
+        except Exception as e:
+            logger.error("Error al verificar adjuntos ZIP: %s", e)
+        
+        return False
+
     # ------------------------------------------------------------------
     # API pública
     # ------------------------------------------------------------------
@@ -83,7 +103,7 @@ class AttachmentHandler:
                 )
                 continue
 
-            destino = self._construir_ruta_destino(filename, parsed)
+            destino = self.construir_ruta_destino(filename, parsed)
             destino.parent.mkdir(parents=True, exist_ok=True)
 
             destino.write_bytes(payload)
@@ -102,7 +122,7 @@ class AttachmentHandler:
     # Helpers privados
     # ------------------------------------------------------------------
 
-    def _construir_ruta_destino(
+    def construir_ruta_destino(
         self,
         filename: str,
         parsed: "ParsedSubject",

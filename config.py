@@ -53,11 +53,11 @@ def get_postgres_config() -> dict:
         Diccionario con la configuración de la base de datos PostgreSQL.
     """
     configuracion = {
-        "host": get_config("POSTGRES_HOST", "localhost"),
-        "port": get_config("POSTGRES_PORT", "5432"),
-        "dbname": get_config("POSTGRES_DB", "postgres"),
-        "user": get_config("POSTGRES_USER", "postgres"),
-        "password": get_config("POSTGRES_PASSWORD", "postgres"),
+        'host': get_config('POSTGRES_HOST', 'localhost'),
+        'port': get_config('POSTGRES_PORT', '5432'),
+        'dbname': get_config('POSTGRES_DB', 'postgres'),
+        'user': get_config('POSTGRES_USER', 'postgres'),
+        'password': get_config('POSTGRES_PASSWORD', 'postgres')
     }
     return configuracion
 

@@ -24,7 +24,7 @@ class QueuePublisher(ABC):
     """Interfaz abstracta para publicadores de eventos de ingesta."""
 
     @abstractmethod
-    def publish(self, event: dict[str, Any]) -> bool:
+    def publish(self, event: dict[str, Any], db_conn: Any = None) -> bool:
         """Publica un evento en la cola configurada.
 
         Args:
@@ -65,7 +65,7 @@ class LocalQueuePublisher(QueuePublisher):
         self.local_path = Path(local_path)
         self.local_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def publish(self, event: dict[str, Any]) -> bool:
+    def publish(self, event: dict[str, Any], db_conn: Any = None) -> bool:
         """Agrega una línea al archivo JSONL."""
         enriched = self._enriquecer_evento(event)
         try:
@@ -98,27 +98,27 @@ class PostgresQueuePublisher(QueuePublisher):
             password=os.environ["POSTGRES_PASSWORD"],
         )
 
-    def publish(self, event: dict[str, Any]) -> bool:
+    def publish(self, event: dict[str, Any], db_conn: Any = None) -> bool:
         """Inserta el evento en FACTURACION.EVENTO_INGESTA."""
         enriched = self._enriquecer_evento(event)
         try:
-            with self._get_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """
-                        INSERT INTO FACTURACION.EVENTO_INGESTA 
-                            (ID_EVENTO, FECHA_CREACION, ESTADO, ORIGEN, DATOS_JSON)
-                        VALUES (%s, %s, %s, %s, %s)
-                        """,
-                        (
-                            enriched["event_id"],
-                            enriched["timestamp"],
-                            "PENDIENTE",
-                            enriched["source"],
-                            json.dumps(enriched, ensure_ascii=False),
-                        ),
-                    )
+            conn = db_conn or self._get_connection()
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO FACTURACION.EVENTO_INGESTA 
+                        (ADJUNTO_ID, ID_ESTADO)
+                    VALUES (%s, %s)
+                    ON CONFLICT (ADJUNTO_ID) DO NOTHING
+                    """,
+                    (
+                        enriched.get("id_adjunto_zip"),
+                        1,  # ESTADO = RECIBIDO
+                    ),
+                )
+            if not db_conn:
                 conn.commit()
+                conn.close()
             return True
         except Exception as exc:
             logger.error(f"Error Postgres: {exc}")

@@ -12,7 +12,7 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 
-from core.queue_publisher import get_publisher
+from core.python.ingesta.queue_publisher import get_publisher
 from utils.attachment_handler import AttachmentHandler
 from utils.email_parser import EmailParser
 
@@ -70,10 +70,8 @@ class EmailListener:
         return data[0].split() if status == "OK" else []
 
     @staticmethod
-    def _tiene_adjunto_zip(raw_message: bytes) -> str | None:
+    def _tiene_adjunto_zip(msg: _email.message.Message) -> str | None:
         """Verifica si el mensaje tiene adjuntos ZIP y retorna su nombre."""
-        zip_filename = None
-        msg = _email.message_from_bytes(raw_message)
         for part in msg.walk():
             filename = part.get_filename()
             if filename and filename.lower().endswith(".zip"):
@@ -96,7 +94,7 @@ class EmailListener:
 
         raw = data[0][1]
         msg = _email.message_from_bytes(raw)
-        nombre_zip = self._obtener_nombre_zip(msg)
+        nombre_zip = self._tiene_adjunto_zip(msg)
 
         if not nombre_zip:
             return False

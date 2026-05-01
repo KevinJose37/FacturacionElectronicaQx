@@ -15,7 +15,7 @@ import yaml
 from dotenv import load_dotenv
 
 from config import get_postgres_config
-from core.queue_publisher import get_publisher
+from core.python.ingesta.queue_publisher import get_publisher
 from utils.alerts import AlertManager
 from utils.attachment_handler import AttachmentHandler
 from utils.attachment_validator import AttachmentValidator
@@ -26,7 +26,7 @@ from utils.malware_scanner import MalwareScanner
 
 load_dotenv()
 
-_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "settings.yaml"
+_CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "settings.yaml"
 
 
 def _load_config() -> dict:

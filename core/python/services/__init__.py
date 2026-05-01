@@ -1,0 +1,23 @@
+"""Paquete de servicios de consulta a la base de datos.
+
+Cada módulo encapsula las queries y lógica de negocio
+para una sección específica de la aplicación.
+"""
+
+from core.python.services import (
+    dashboard_service,
+    facturas_service,
+    logs_service,
+    proveedores_service,
+    rechazos_service,
+    validaciones_service,
+)
+
+__all__ = [
+    'dashboard_service',
+    'facturas_service',
+    'logs_service',
+    'proveedores_service',
+    'rechazos_service',
+    'validaciones_service',
+]

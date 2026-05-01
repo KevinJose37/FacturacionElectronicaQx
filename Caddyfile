@@ -1,0 +1,9 @@
+# Caddyfile — Reverse proxy con HTTPS automático
+# La variable {$DOMAIN} se inyecta desde docker-compose.yml
+# Si DOMAIN=localhost, Caddy usa certificados auto-firmados (dev)
+# Si DOMAIN=tudominio.com, Caddy gestiona Let's Encrypt automáticamente
+
+{$DOMAIN} {
+	# Frontend (SPA + proxy a API incluido vía nginx)
+	reverse_proxy frontend:80
+}

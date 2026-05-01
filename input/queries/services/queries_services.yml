@@ -1,0 +1,220 @@
+# ──────────────────────────────────────────────
+# Queries SQL de los servicios del frontend
+#
+# Organizadas por servicio. Cada query usa placeholders
+# {where}, {order}, {ids_...} interpolados en tiempo de ejecución.
+# Los parámetros posicionales usan %s (psycopg).
+# ──────────────────────────────────────────────
+
+# ══════════════════════════════════════════════
+# Dashboard
+# ══════════════════════════════════════════════
+
+dashboard:
+  kpis: >
+    SELECT
+    COUNT(*) FILTER (WHERE fecha_creacion >= %s) as hoy,
+    COUNT(*) FILTER (WHERE fecha_creacion >= %s) as ayer,
+    COUNT(*) FILTER (WHERE id_estado_proceso = 7) as validadas,
+    COUNT(*) FILTER (WHERE id_estado_proceso IN (8, 10)) as rechazadas,
+    COUNT(DISTINCT id_tercero_emisor) as proveedores
+    FROM facturacion.factura
+
+  etapas_flujo: >
+    SELECT
+    COUNT(*) as total,
+    COUNT(*) FILTER (WHERE id_estado_proceso >= 2) as validacion,
+    COUNT(*) FILTER (WHERE id_estado_proceso >= 6) as procesamiento,
+    COUNT(*) FILTER (WHERE id_estado_proceso IN (7, 9)) as erp,
+    COUNT(*) FILTER (WHERE id_estado_proceso = 9) as finalizado
+    FROM facturacion.factura
+
+  facturas_por_proveedor: >
+    SELECT t.nombre_comercial, COUNT(*) as total
+    FROM facturacion.factura f
+    JOIN facturacion.tercero t ON f.id_tercero_emisor = t.id_tercero
+    GROUP BY t.nombre_comercial
+    ORDER BY total DESC LIMIT %s
+
+  tendencia: >
+    SELECT fecha_expedicion::date as dia,
+    COUNT(*) as procesadas,
+    COUNT(*) FILTER (WHERE id_estado_proceso = 7) as validadas
+    FROM facturacion.factura
+    WHERE fecha_expedicion >= NOW() - INTERVAL '%s days'
+    GROUP BY dia ORDER BY dia
+
+  ultimas_facturas: >
+    SELECT f.prefijo_facturacion || '-' || f.numero_factura as num,
+    t.nombre_comercial,
+    ep.descripcion as estado,
+    f.fecha_expedicion,
+    f.valor_total
+    FROM facturacion.factura f
+    JOIN facturacion.tercero t ON f.id_tercero_emisor = t.id_tercero
+    JOIN facturacion.tipo_estado_proceso ep ON f.id_estado_proceso = ep.id_estado_proceso
+    ORDER BY f.fecha_creacion DESC LIMIT %s
+
+  actividad_reciente: >
+    SELECT lp.codigo_etapa, lp.detalle_error, lp.fecha_inicio,
+    lp.detalle_json
+    FROM facturacion.log_proceso lp
+    ORDER BY lp.fecha_inicio DESC LIMIT %s
+
+  tipos_documento: >
+    SELECT tipo_documento, COUNT(*)
+    FROM facturacion.factura
+    GROUP BY tipo_documento
+    ORDER BY COUNT(*) DESC
+
+  heatmap_errores: >
+    SELECT EXTRACT(DOW FROM fecha_inicio)::int as dia,
+    EXTRACT(HOUR FROM fecha_inicio)::int as hora,
+    COUNT(*) as total
+    FROM facturacion.log_proceso
+    WHERE detalle_error IS NOT NULL
+    AND fecha_inicio >= NOW() - make_interval(days => %s)
+    GROUP BY dia, hora
+    ORDER BY dia, hora
+
+  indicadores_pipeline: >
+    SELECT
+    COUNT(*) FILTER (WHERE fecha_fin IS NULL
+    AND fecha_inicio < NOW() - INTERVAL '1 hour') as atascadas,
+    COUNT(*) FILTER (WHERE fecha_fin IS NOT NULL
+    AND fecha_fin - fecha_inicio < INTERVAL '5 minutes') as sla_ok,
+    COUNT(*) FILTER (WHERE fecha_fin IS NOT NULL) as sla_total
+    FROM facturacion.proceso_ingesta
+
+  cola_interna: >
+    SELECT COUNT(*) FROM facturacion.evento_ingesta
+    WHERE estado = 'PENDIENTE'
+
+  eventos_por_minuto: >
+    SELECT COUNT(*) FROM facturacion.log_proceso
+    WHERE fecha_inicio >= NOW() - make_interval(mins => %s)
+
+# ══════════════════════════════════════════════
+# Facturas
+# ══════════════════════════════════════════════
+
+facturas:
+  listar: >
+    SELECT f.prefijo_facturacion || '-' || f.numero_factura as num,
+    t.nombre_comercial, ep.descripcion, f.valor_total,
+    f.fecha_expedicion, f.id_estado_proceso
+    FROM facturacion.factura f
+    JOIN facturacion.tercero t ON f.id_tercero_emisor = t.id_tercero
+    JOIN facturacion.tipo_estado_proceso ep ON f.id_estado_proceso = ep.id_estado_proceso
+    {where}
+    ORDER BY f.fecha_creacion DESC LIMIT %s OFFSET %s
+
+  estadisticas: >
+    SELECT
+    COUNT(*) as total,
+    COUNT(*) FILTER (WHERE id_estado_proceso IN (7, 9)) as validadas,
+    COUNT(*) FILTER (WHERE id_estado_proceso IN (5, 6)) as pendientes,
+    COUNT(*) FILTER (WHERE id_estado_proceso IN (8, 10)) as rechazadas,
+    COALESCE(SUM(valor_total), 0) as monto
+    FROM facturacion.factura
+
+# Fragmentos de condiciones para facturas
+facturas_filtros:
+  estado: "f.id_estado_proceso IN ({placeholders})"
+  busqueda: "(f.numero_factura ILIKE %s OR t.nombre_comercial ILIKE %s OR t.razon_social ILIKE %s)"
+
+# ══════════════════════════════════════════════
+# Logs
+# ══════════════════════════════════════════════
+
+logs:
+  listar: >
+    SELECT lp.fecha_inicio, lp.codigo_etapa, lp.detalle_error, lp.detalle_json
+    FROM facturacion.log_proceso lp {where}
+    ORDER BY lp.fecha_inicio DESC LIMIT %s
+
+  conteos: >
+    SELECT COUNT(*) as total,
+    COUNT(*) FILTER (WHERE detalle_error IS NOT NULL) as errores,
+    COUNT(*) FILTER (WHERE detalle_json::text ILIKE '%%warn%%') as warnings
+    FROM facturacion.log_proceso WHERE fecha_inicio >= %s
+
+# Fragmentos de condiciones para logs
+logs_filtros:
+  error: "lp.detalle_error IS NOT NULL"
+  warn: "lp.detalle_json::text ILIKE '%warn%'"
+  info: "lp.detalle_error IS NULL"
+  busqueda: "(lp.codigo_etapa ILIKE %s OR lp.detalle_error ILIKE %s)"
+
+# ══════════════════════════════════════════════
+# Proveedores
+# ══════════════════════════════════════════════
+
+proveedores:
+  listar: >
+    SELECT t.numero_documento, t.nombre_comercial, t.razon_social,
+    COUNT(f.id_factura) as total_facturas,
+    COUNT(f.id_factura) FILTER (WHERE f.id_estado_proceso IN (7, 9)) as validadas,
+    MAX(f.fecha_creacion) as ultima_sync
+    FROM facturacion.tercero t
+    LEFT JOIN facturacion.factura f ON t.id_tercero = f.id_tercero_emisor
+    WHERE t.id_rol_tercero = 1
+    GROUP BY t.id_tercero
+    ORDER BY total_facturas DESC
+
+  estadisticas: >
+    SELECT COUNT(*) as total,
+    COUNT(*) FILTER (WHERE validadas * 100.0 / GREATEST(total_f, 1) >= 90) as activos,
+    COALESCE(AVG(validadas * 100.0 / GREATEST(total_f, 1)), 0) as tasa_prom
+    FROM (
+      SELECT t.id_tercero,
+      COUNT(f.id_factura) as total_f,
+      COUNT(f.id_factura) FILTER (WHERE f.id_estado_proceso IN (7, 9)) as validadas
+      FROM facturacion.tercero t
+      LEFT JOIN facturacion.factura f ON t.id_tercero = f.id_tercero_emisor
+      WHERE t.id_rol_tercero = 1
+      GROUP BY t.id_tercero
+    ) sub
+
+# ══════════════════════════════════════════════
+# Rechazos
+# ══════════════════════════════════════════════
+
+rechazos:
+  listar: >
+    SELECT f.prefijo_facturacion || '-' || f.numero_factura as num,
+    t.nombre_comercial, vd.descripcion_respuesta, vd.codigo_respuesta,
+    vd.fecha_validacion, f.id_estado_proceso
+    FROM facturacion.factura f
+    JOIN facturacion.tercero t ON f.id_tercero_emisor = t.id_tercero
+    LEFT JOIN facturacion.validacion_dian vd ON f.id_factura = vd.id_factura
+    WHERE f.id_estado_proceso IN (8, 10)
+    ORDER BY vd.fecha_validacion DESC NULLS LAST
+
+  estadisticas: >
+    SELECT
+    COUNT(*) FILTER (WHERE id_estado_proceso IN (8, 10) AND fecha_creacion >= %s) as rechazos_hoy,
+    COUNT(*) FILTER (WHERE id_estado_proceso = 10) as severidad_alta,
+    COUNT(*) as total FROM facturacion.factura
+
+  reintentos: >
+    SELECT COUNT(*) FROM facturacion.proceso_ingesta
+    WHERE id_estado_proceso IN (8, 10)
+
+  causas_frecuentes: >
+    SELECT vd.codigo_respuesta, COUNT(*) as total
+    FROM facturacion.validacion_dian vd WHERE vd.id_estado_proceso IN (8, 10)
+    GROUP BY vd.codigo_respuesta ORDER BY total DESC
+
+# ══════════════════════════════════════════════
+# Validaciones
+# ══════════════════════════════════════════════
+
+validaciones:
+  reglas: >
+    SELECT lp.codigo_etapa,
+    COUNT(*) FILTER (WHERE lp.detalle_error IS NULL) as passed,
+    COUNT(*) FILTER (WHERE lp.detalle_error IS NOT NULL) as failed
+    FROM facturacion.log_proceso lp
+    GROUP BY lp.codigo_etapa
+    ORDER BY (COUNT(*) FILTER (WHERE lp.detalle_error IS NOT NULL)) DESC

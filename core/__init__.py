@@ -39,12 +39,6 @@ from core.python.ingesta import (               # noqa: F401
     get_publisher,
 )
 
-# ── Trazabilidad ──────────────────────────────────────────────────
-from core.python.trazabilidad import (          # noqa: F401
-    registrar_log_etapa,
-    iniciar_proceso_ingesta,
-)
-
 # ── Procesamiento de facturas ─────────────────────────────────────
 # Import lazy: requiere boto3. Usar: from core.python.facturas import procesar_y_subir_factura
 

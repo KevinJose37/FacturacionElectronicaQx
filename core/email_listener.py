@@ -63,6 +63,7 @@ class EmailListener:
         self.max_attempts = int(retry_cfg.get("max_attempts", 3))
         self.backoff_base = float(retry_cfg.get("backoff_base_seconds", 2))
         self.poll_interval = int(_CONFIG.get("poll_interval_seconds", 60))
+        self.id_origen = int(_CONFIG.get("id_origen", 1))
 
         self._password = os.environ["EMAIL_PASSWORD"]
         self._parser = EmailParser()
@@ -118,7 +119,6 @@ class EmailListener:
             # 2. Extraer metadata básica
             id_mensaje = self._extraer_id_mensaje(msg)
             remitente = msg.get("From", "")
-            destinatario = msg.get("To", "")
             asunto = msg.get("Subject", "")
             fecha_envio_raw = msg.get("Date", None)
             fecha_envio = None
@@ -131,6 +131,10 @@ class EmailListener:
 
             # 3. Parsear asunto
             parsed = self._parser.parsear(asunto)
+
+            # 3.2 Extraer cuerpos y verificar adjuntos
+            cuerpo_texto, cuerpo_html = self._parser.extraer_cuerpos_mensaje(msg)
+            tiene_adjuntos = any(part.get_filename() for part in msg.walk())
 
             # 3.1 Identificar si es facturación (Filtro inicial)
             filtro = FacturaFilter(_CONFIG)
@@ -150,10 +154,13 @@ class EmailListener:
                         conn=conn_db,
                         id_mensaje=id_mensaje,
                         remitente=remitente,
-                        destinatario=destinatario,
                         asunto=asunto,
                         fecha_recepcion=datetime.now(tz=timezone.utc),
                         fecha_envio=fecha_envio,
+                        cuerpo_texto=cuerpo_texto,
+                        cuerpo_html=cuerpo_html,
+                        si_contiene_adjuntos=tiene_adjuntos,
+                        id_origen=self.id_origen,
                     )
                     if not id_correo:
                         logger.warning("Correo ya existente en BD: %s. Marcando como leído.", id_mensaje)

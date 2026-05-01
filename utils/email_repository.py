@@ -101,12 +101,13 @@ class EmailRepository:
         conn: Connection,
         id_mensaje: str,
         remitente: str,
-        destinatario: str,
         asunto: Optional[str] = None,
         fecha_recepcion: Optional[datetime] = None,
         fecha_envio: Optional[datetime] = None,
         cuerpo_texto: Optional[str] = None,
         cuerpo_html: Optional[str] = None,
+        si_contiene_adjuntos: bool = False,
+        id_origen: int = 1,
         id_archivo_eml: Optional[int] = None,
     ) -> Optional[int]:
         """Guarda un correo en CORREO_ENTRANTE (sin commit)."""
@@ -117,22 +118,24 @@ class EmailRepository:
             cur.execute(
                 """
                 INSERT INTO FACTURACION.CORREO_ENTRANTE (
-                    ID_MENSAJE_EMAIL, REMITENTE, DESTINATARIO, ASUNTO,
-                    FECHA_RECEPCION, FECHA_ENVIO, CUERPO_TEXTO, CUERPO_HTML, ID_ARCHIVO_EML
+                    ID_MENSAJE_EMAIL, REMITENTE, ASUNTO,
+                    FECHA_RECEPCION, FECHA_ENVIO, CUERPO_TEXTO, CUERPO_HTML,
+                    SI_CONTIENE_ADJUNTOS, ID_ORIGEN, ID_ARCHIVO_EML
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (ID_MENSAJE_EMAIL) DO NOTHING
                 RETURNING ID_CORREO
                 """,
                 (
                     id_mensaje,
                     remitente,
-                    destinatario,
                     asunto,
                     fecha_recepcion,
                     fecha_envio,
                     cuerpo_texto,
                     cuerpo_html,
+                    si_contiene_adjuntos,
+                    id_origen,
                     id_archivo_eml,
                 ),
             )

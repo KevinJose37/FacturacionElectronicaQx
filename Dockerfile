@@ -26,6 +26,9 @@ FROM python:3.12-alpine
 
 WORKDIR /app
 
+# Instalar dependencias del sistema (libmagic para python-magic)
+RUN apk add --no-cache libmagic
+
 # Copiar el entorno virtual y el código desde la etapa builder
 COPY --from=builder /app /app
 

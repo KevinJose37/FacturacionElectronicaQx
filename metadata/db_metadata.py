@@ -3,6 +3,31 @@
 Mensajes de error y textos del pool de conexiones y cache.
 """
 
+class IdEstadoProceso:
+    """Estados de proceso para ingesta de facturas."""
+
+    en_proceso = 2
+    """Estado en proceso de ingesta.""" 
+
+    pendiente = 1
+    """Estado pendiente de procesamiento."""
+
+    procesado = 3
+    """Estado procesado de ingesta."""
+
+
+class IdTipoArchivo:
+    """Tipos de archivos para ingesta de facturas."""
+
+    zip = 1
+    """Archivo ZIP para ingesta de facturas."""
+
+    xml = 2
+    """Archivo XML para ingesta de facturas."""
+
+    pdf = 3
+    """Archivo PDF para ingesta de facturas."""
+
 
 class MensajesDB:
     """Mensajes de error y log del módulo de base de datos."""

@@ -16,6 +16,10 @@ from dotenv import load_dotenv
 
 from config import get_postgres_config
 from core.python.ingesta.queue_publisher import get_publisher
+
+from metadata.db_metadata import IdEstadoProceso
+from metadata.db_metadata import IdTipoArchivo
+
 from utils.alerts import AlertManager
 from utils.attachment_handler import AttachmentHandler
 from utils.attachment_validator import AttachmentValidator
@@ -43,18 +47,6 @@ logger = logging.getLogger(__name__)
 
 class EmailListener:
     """Listener IMAP para procesamiento de facturas con flujo completo."""
-
-    # Estados de proceso (deben coincidir con catálogo TIPO_ESTADO_PROCESO)
-    ESTADO_RECIBIDO = 1
-    ESTADO_ADJUNTO_VERIFICADO = 2
-    ESTADO_ESCANEADO_OK = 3
-    ESTADO_XML_EXTRAIDO = 5
-    ESTADO_FACTURA_PARSED = 6
-
-    # Tipos de archivo
-    TIPO_ZIP = 1
-    TIPO_XML = 2
-    TIPO_PDF = 3
 
     def __init__(self):
         """Inicializa el listener con configuración y dependencias."""
@@ -126,10 +118,11 @@ class EmailListener:
             remitente = msg.get("From", "")
             asunto = msg.get("Subject", "")
             fecha_envio_raw = msg.get("Date", None)
-            fecha_envio = None
+
             if fecha_envio_raw:
                 try:
                     fecha_envio = parsedate_to_datetime(fecha_envio_raw)
+
                 except Exception as e:
                     logger.debug("No se pudo parsear fecha de envío: %s | error: %s", fecha_envio_raw, e)
                     fecha_envio = None
@@ -274,7 +267,7 @@ class EmailListener:
                         conn=conn_db,
                         id_correo=id_correo,
                         ruta_archivo=ruta_zip,
-                        id_tipo_archivo=self.TIPO_ZIP,
+                        id_tipo_archivo=IdTipoArchivo.zip,
                         archivo_seguro=scan_zip.seguro
                     )
 
@@ -290,7 +283,7 @@ class EmailListener:
                         conn=conn_db,
                         id_correo=id_correo,
                         ruta_archivo=xml_destino,
-                        id_tipo_archivo=self.TIPO_XML,
+                        id_tipo_archivo=IdTipoArchivo.xml,
                         adjunto_padre_id=id_adjunto_zip,
                         archivo_seguro=scan_xml.seguro
                     )
@@ -299,7 +292,7 @@ class EmailListener:
                         conn=conn_db,
                         id_correo=id_correo,
                         ruta_archivo=pdf_destino,
-                        id_tipo_archivo=self.TIPO_PDF,
+                        id_tipo_archivo=IdTipoArchivo.pdf,
                         adjunto_padre_id=id_adjunto_zip,
                         archivo_seguro=scan_pdf.seguro
                     )

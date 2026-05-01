@@ -207,6 +207,17 @@ class EmailListener:
                         conn.uid("store", uid, "+FLAGS", "\\Seen")
                         return False
 
+                    # 5c.1 Verificar si el ZIP ya fue procesado antes (hash repetido)
+                    sha256_zip = self._repository.calcular_hash_sha256(ruta_zip)
+                    if self._repository.existe_adjunto_por_hash(conn_db, sha256_zip):
+                        logger.warning("El archivo ZIP ya existe en la tabla adjuntos_correo (Hash: %s). Se omitirá su procesamiento.", sha256_zip[:8])
+                        try:
+                            ruta_zip.unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                        conn.uid("store", uid, "+FLAGS", "\\Seen")
+                        return True
+
                     # 5d. Validar contenido del ZIP (XML + PDF)
                     validacion = self._validator.validar_zip(ruta_zip)
                     if not validacion.es_valido:

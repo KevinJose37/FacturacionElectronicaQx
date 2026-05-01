@@ -47,13 +47,19 @@ class EmailRepository:
             password=self.config["password"],
         )
 
-    def _calcular_hash_sha256(self, ruta_archivo: Path) -> str:
+    def calcular_hash_sha256(self, ruta_archivo: Path) -> str:
         """Calcula el SHA256 de un archivo."""
         sha256 = hashlib.sha256()
         with ruta_archivo.open("rb") as f:
             for bloque in iter(lambda: f.read(65536), b""):
                 sha256.update(bloque)
         return sha256.hexdigest()
+
+    def existe_adjunto_por_hash(self, conn: Connection, sha256_hash: str) -> bool:
+        """Verifica si un adjunto ya existe en BD mediante su hash SHA256."""
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM FACTURACION.ADJUNTOS_CORREO WHERE SHA256 = %s LIMIT 1", (sha256_hash,))
+            return cur.fetchone() is not None
 
     def _detectar_mime_type(self, ruta_archivo: Path) -> str:
         """Detecta el tipo MIME de un archivo."""
@@ -68,7 +74,7 @@ class EmailRepository:
             logger.error("Archivo no existe: %s", ruta)
             raise FileNotFoundError(f"Archivo no encontrado: {ruta}")
 
-        hash_sha256 = self._calcular_hash_sha256(ruta)
+        hash_sha256 = self.calcular_hash_sha256(ruta)
         tamano = ruta.stat().st_size
         mime_type = self._detectar_mime_type(ruta)
         nombre = nombre_original or ruta.name
@@ -175,7 +181,7 @@ class EmailRepository:
         id_adjunto = -1
         try:
             # Cálculo de metadatos del archivo
-            sha256_hash = self._calcular_hash_sha256(ruta_archivo)
+            sha256_hash = self.calcular_hash_sha256(ruta_archivo)
             uri_almacenamiento = str(ruta_archivo)
             nombre_archivo = ruta_archivo.name
 

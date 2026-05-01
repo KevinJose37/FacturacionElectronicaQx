@@ -153,38 +153,83 @@ class EmailRepository:
         self,
         conn: Connection,
         id_correo: int,
-        id_archivo: int,
-        nombre_archivo: str,
-        es_zip: bool = False,
-        es_xml: bool = False,
-        es_comprobante_dian: bool = False,
-        orden: int = 1,
+        ruta_archivo: Path,
+        id_tipo_archivo: int,
+        adjunto_padre_id: Optional[int] = None,
+        archivo_seguro: bool = True,
     ) -> int:
-        """Registra un adjunto en ADJUNTO_CORREO (sin commit)."""
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO FACTURACION.ADJUNTO_CORREO (
-                    ID_CORREO, ID_ARCHIVO, NOMBRE_ARCHIVO, ORDEN_ADJUNTO,
-                    ES_FORMATO_ZIP, ES_FORMATO_XML, ES_COMPROBANTE_DIAN
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (ID_CORREO, ID_ARCHIVO) DO NOTHING
-                RETURNING ID_ADJUNTO
-                """,
-                (id_correo, id_archivo, nombre_archivo, orden, es_zip, es_xml, es_comprobante_dian),
-            )
-            resultado = cur.fetchone()
-            if resultado:
-                logger.debug("Adjunto registrado: ID=%s para correo ID=%s", resultado[0], id_correo)
-                return resultado[0]
-            else:
+        """Guarda un adjunto en la tabla ADJUNTOS_CORREO.
+
+        Gestiona la persistencia de metadatos de archivos adjuntos, incluyendo
+        el hash SHA256 y la jerarquía de archivos.
+
+        Args:
+            conn: Conexión activa a la base de datos.
+            id_correo: ID del correo asociado (CORREO_ID).
+            ruta_archivo: Ruta del archivo en el sistema de archivos.
+            id_tipo_archivo: Identificador del tipo de archivo.
+            adjunto_padre_id: ID del adjunto raíz (para agrupar hijos).
+            archivo_seguro: Indica si el archivo es confiable.
+
+        Returns:
+            int: ID del adjunto registrado o el ID existente en caso de conflicto.
+        """
+        id_adjunto = -1
+        try:
+            # Cálculo de metadatos del archivo
+            sha256_hash = self._calcular_hash_sha256(ruta_archivo)
+            uri_almacenamiento = str(ruta_archivo)
+            nombre_archivo = ruta_archivo.name
+
+            with conn.cursor() as cur:
+                # Intento de inserción respetando el esquema solicitado
                 cur.execute(
-                    "SELECT ID_ADJUNTO FROM FACTURACION.ADJUNTO_CORREO WHERE ID_CORREO = %s AND ID_ARCHIVO = %s",
-                    (id_correo, id_archivo),
+                    """
+                    INSERT INTO FACTURACION.ADJUNTOS_CORREO (
+                        CORREO_ID, ADJUNTO_PADRE_ID, NOMBRE_ARCHIVO,
+                        ID_TIPO_ARCHIVO, URI_ALMACENAMIENTO, SHA256, ARCHIVO_SEGURO
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (NOMBRE_ARCHIVO) DO NOTHING
+                    RETURNING ADJUNTO_ID
+                    """,
+                    (
+                        id_correo,
+                        adjunto_padre_id,
+                        nombre_archivo,
+                        id_tipo_archivo,
+                        uri_almacenamiento,
+                        sha256_hash,
+                        archivo_seguro,
+                    ),
                 )
-                existente = cur.fetchone()
-                return existente[0] if existente else -1
+                
+                res = cur.fetchone()
+                if res:
+                    id_adjunto = res[0]
+                    
+                    # Autorreferencia para archivos raíz (ZIP) para compartir el mismo PADRE_ID
+                    if adjunto_padre_id is None:
+                        cur.execute(
+                            "UPDATE FACTURACION.ADJUNTOS_CORREO SET ADJUNTO_PADRE_ID = %s WHERE ADJUNTO_ID = %s",
+                            (id_adjunto, id_adjunto)
+                        )
+                else:
+                    # Si hubo conflicto, recuperamos el ID existente
+                    cur.execute(
+                        "SELECT ADJUNTO_ID FROM FACTURACION.ADJUNTOS_CORREO WHERE NOMBRE_ARCHIVO = %s",
+                        (nombre_archivo,)
+                    )
+                    existente = cur.fetchone()
+                    id_adjunto = existente[0] if existente else -1
+
+                logger.debug("Adjunto procesado (ID=%s): %s", id_adjunto, nombre_archivo)
+                
+        except Exception as err:
+            logger.error("Error crítico al guardar adjunto %s: %s", ruta_archivo, err)
+            id_adjunto = -1
+
+        return id_adjunto
 
     def crear_proceso_ingesta(
         self,

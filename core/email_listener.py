@@ -51,6 +51,11 @@ class EmailListener:
     ESTADO_XML_EXTRAIDO = 5
     ESTADO_FACTURA_PARSED = 6
 
+    # Tipos de archivo
+    TIPO_ZIP = 1
+    TIPO_XML = 2
+    TIPO_PDF = 3
+
     def __init__(self):
         """Inicializa el listener con configuración y dependencias."""
         email_cfg = _CONFIG["email"]
@@ -252,11 +257,17 @@ class EmailListener:
                         conn.uid("store", uid, "+FLAGS", "\\Seen")
                         return False
 
-                    # 5f. Guardar archivos en BD y mover a almacenamiento permanente
-                    # El ZIP ya está en su ubicación permanente (ruta_zip)
-                    id_archivo_zip = self._repository.guardar_archivo(conn_db, ruta_zip)
+                    # 5f. Guardar adjuntos en BD con jerarquía (ZIP -> XML/PDF)
+                    # El ZIP es el padre
+                    id_adjunto_zip = self._repository.guardar_adjunto_correo(
+                        conn=conn_db,
+                        id_correo=id_correo,
+                        ruta_archivo=ruta_zip,
+                        id_tipo_archivo=self.TIPO_ZIP,
+                        archivo_seguro=scan_zip.seguro
+                    )
 
-                    # Mover XML y PDF desde temp a ubicación permanente
+                    # Mover XML y PDF desde temp a ubicación permanente y guardarlos como hijos del ZIP
                     xml_destino = self._attachment_handler.construir_ruta_destino(validacion.xml_path.name, parsed)
                     pdf_destino = self._attachment_handler.construir_ruta_destino(validacion.pdf_path.name, parsed)
                     xml_destino.parent.mkdir(parents=True, exist_ok=True)
@@ -264,31 +275,22 @@ class EmailListener:
                     validacion.xml_path.rename(xml_destino)
                     validacion.pdf_path.rename(pdf_destino)
 
-                    id_archivo_xml = self._repository.guardar_archivo(conn_db, xml_destino)
-                    id_archivo_pdf = self._repository.guardar_archivo(conn_db, pdf_destino)
-
-                    # 5g. Registrar adjuntos
-                    id_adjunto_zip = self._repository.guardar_adjunto_correo(
-                        conn=conn_db,
-                        id_correo=id_correo,
-                        id_archivo=id_archivo_zip,
-                        nombre_archivo=ruta_zip.name,
-                        es_zip=True,
-                    )
                     id_adjunto_xml = self._repository.guardar_adjunto_correo(
                         conn=conn_db,
                         id_correo=id_correo,
-                        id_archivo=id_archivo_xml,
-                        nombre_archivo=xml_destino.name,
-                        es_xml=True,
-                        orden=2,
+                        ruta_archivo=xml_destino,
+                        id_tipo_archivo=self.TIPO_XML,
+                        adjunto_padre_id=id_adjunto_zip,
+                        archivo_seguro=scan_xml.seguro
                     )
+
                     id_adjunto_pdf = self._repository.guardar_adjunto_correo(
                         conn=conn_db,
                         id_correo=id_correo,
-                        id_archivo=id_archivo_pdf,
-                        nombre_archivo=pdf_destino.name,
-                        orden=3,
+                        ruta_archivo=pdf_destino,
+                        id_tipo_archivo=self.TIPO_PDF,
+                        adjunto_padre_id=id_adjunto_zip,
+                        archivo_seguro=scan_pdf.seguro
                     )
 
                     # 5h. Crear proceso de ingesta
@@ -296,7 +298,6 @@ class EmailListener:
                         conn=conn_db,
                         id_correo=id_correo,
                         id_adjunto=id_adjunto_zip,
-                        id_archivo_origen=id_archivo_zip,
                     )
 
                     # 5i. Registrar logs por etapa
@@ -342,9 +343,9 @@ class EmailListener:
                         "id_mensaje_email": id_mensaje,
                         "id_correo": id_correo,
                         "id_proceso": id_proceso,
-                        "id_archivo_zip": id_archivo_zip,
-                        "id_archivo_xml": id_archivo_xml,
-                        "id_archivo_pdf": id_archivo_pdf,
+                        "id_adjunto_zip": id_adjunto_zip,
+                        "id_adjunto_xml": id_adjunto_xml,
+                        "id_adjunto_pdf": id_adjunto_pdf,
                         "parsed_subject": parsed,
                         "ruta_zip": str(ruta_zip),
                         "ruta_xml": str(xml_destino),

@@ -164,7 +164,7 @@ class EmailRepository:
         adjunto_padre_id: Optional[int] = None,
         archivo_seguro: bool = True,
         fecha_envio: Optional[datetime] = None,
-    ) -> int:
+    ) -> tuple[int, str]:
         """Guarda un adjunto en la tabla ADJUNTOS_CORREO.
 
         Gestiona la persistencia de metadatos de archivos adjuntos, incluyendo
@@ -180,9 +180,10 @@ class EmailRepository:
             fecha_envio: Fecha de envío del correo para construir ruta S3.
 
         Returns:
-            int: ID del adjunto registrado o el ID existente en caso de conflicto.
+            tuple[int, str]: ID del adjunto registrado y su URI de almacenamiento S3.
         """
         id_adjunto = -1
+        uri_almacenamiento = ""
         try:
             # Cálculo de metadatos del archivo
             sha256_hash = self.calcular_hash_sha256(ruta_archivo)
@@ -250,7 +251,7 @@ class EmailRepository:
             logger.error("Error crítico al guardar adjunto %s: %s", ruta_archivo, err)
             id_adjunto = -1
 
-        return id_adjunto
+        return id_adjunto, uri_almacenamiento
 
     # ------------------------------------------------------------------
     # Eventos y Procesos de Ingesta

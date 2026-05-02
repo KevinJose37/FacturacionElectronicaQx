@@ -44,9 +44,6 @@ from core.python.logs_proceso import (          # noqa: F401
     registrar_proceso_ingesta,
 )
 
-# ── Procesamiento de facturas ─────────────────────────────────────
-# Import lazy: requiere boto3. Usar: from core.python.facturas import procesar_y_subir_factura
-
 # ── Schemas (modelos Pydantic) ────────────────────────────────────
 from core.python.schemas import (               # noqa: F401
     DashboardResponse,

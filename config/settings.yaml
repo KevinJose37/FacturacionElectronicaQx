@@ -80,17 +80,6 @@ llm:
   max_tokens: 1024
 
 # ──────────────────────────────────────────────
-# Procesamiento de facturas (ZIP → S3)
-# ──────────────────────────────────────────────
-processor:
-  extensiones_permitidas:
-    - .xml
-    - .pdf
-  s3_prefijo_zip: facturas
-  s3_prefijo_extraidos: facturas_descomprimidas
-  cabecera_bytes: 100
-
-# ──────────────────────────────────────────────
 # Seguridad y Antivirus
 # ──────────────────────────────────────────────
 security:

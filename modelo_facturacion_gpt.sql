@@ -38,6 +38,34 @@ INSERT INTO FACTURACION.TIPO_PROCESO (ID_TIPO_PROCESO, CODIGO_REFERENCIA, DESCRI
 ON CONFLICT DO NOTHING;
 
 
+CREATE TABLE FACTURACION.TIPO_ERROR (
+    ID_TIPO_ERROR     INT PRIMARY KEY,
+    CODIGO_REFERENCIA VARCHAR(50) UNIQUE NOT NULL,
+    DESCRIPCION       VARCHAR(200) NOT NULL
+);
+
+INSERT INTO FACTURACION.TIPO_ERROR (ID_TIPO_ERROR, CODIGO_REFERENCIA, DESCRIPCION) VALUES
+(1,  'MALWARE_DETECTADO',          'Se detectó virus o malware en el archivo'),
+(2,  'EXTENSION_PROHIBIDA',        'El archivo tiene una extensión peligrosa (.exe, .bat, etc.)'),
+(3,  'TAMANO_EXCEDIDO',            'El archivo excede el tamaño máximo permitido'),
+(4,  'ZIP_CORRUPTO',               'El archivo ZIP está corrupto o no es válido'),
+(5,  'ZIP_SIN_XML',                'El ZIP no contiene archivos XML de factura'),
+(6,  'ZIP_PROFUNDIDAD_EXCEDIDA',   'ZIPs anidados exceden la profundidad máxima permitida'),
+(7,  'ZIP_SUBZIP_INVALIDO',        'Un sub-ZIP dentro del ZIP principal no contiene pares válidos'),
+(8,  'FALLO_DESCARGA_ADJUNTOS',    'No se pudieron descargar los adjuntos del correo'),
+(9,  'FALLO_SUBIDA_S3',            'Error al subir el archivo a S3'),
+(10, 'FALLO_REGISTRO_BD',          'Error al registrar el adjunto en la base de datos'),
+(11, 'XML_EMBEBIDO_NO_ENCONTRADO', 'No se encontraron los XMLs de Invoice o ApplicationResponse embebidos'),
+(12, 'XML_EMBEBIDO_PARSE_ERROR',   'Error al parsear el XML AttachedDocument para extraer embebidos'),
+(13, 'PDF_FALTANTE',               'No se encontró un PDF correspondiente al XML'),
+(14, 'PDF_SIN_XML',                'Se encontró un PDF sin XML correspondiente'),
+(15, 'CORREO_SIN_ADJUNTOS_VALIDOS','El correo de facturación no contiene adjuntos válidos'),
+(16, 'CORREO_RECHAZADO_FILTRO',    'El correo no cumple los criterios del filtro de facturación'),
+(17, 'ERROR_PROCESAMIENTO_GENERAL','Error inesperado durante el procesamiento del correo'),
+(18, 'ADJUNTO_DUPLICADO',          'El adjunto ya fue procesado previamente (hash duplicado)')
+ON CONFLICT DO NOTHING;
+
+
 CREATE TABLE FACTURACION.TIPO_FORMA_PAGO (
     ID_FORMA_PAGO     INT PRIMARY KEY,
     CODIGO_REFERENCIA VARCHAR(20) UNIQUE NOT NULL,
@@ -158,7 +186,7 @@ CREATE TABLE FACTURACION.PROCESO_INGESTA (
     ADJUNTO_ID         BIGINT NOT NULL REFERENCES FACTURACION.ADJUNTOS_CORREO(ADJUNTO_ID),
     ID_PROCESO         INT NOT NULL REFERENCES FACTURACION.TIPO_PROCESO(ID_TIPO_PROCESO),
     ID_ESTADO          INT NOT NULL REFERENCES FACTURACION.TIPO_ESTADO_PROCESO(ID_ESTADO_PROCESO),
-    ID_ERROR           INT NULL,
+    ID_ERROR           INT NULL REFERENCES FACTURACION.TIPO_ERROR(ID_TIPO_ERROR),
     FECHA_INICIO       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     FECHA_FIN          TIMESTAMPTZ NULL,
     OBSERVACION        VARCHAR(255) NOT NULL

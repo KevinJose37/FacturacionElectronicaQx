@@ -57,6 +57,75 @@ class IdTipoProceso:
     """Registro de adjuntos en la base de datos."""
 
 
+class IdTipoError:
+    """Tipos de error en el procesamiento de ingesta.
+
+    Corresponden a la tabla FACTURACION.TIPO_ERROR.
+    Se usan en la columna ID_ERROR de PROCESO_INGESTA.
+    """
+
+    # -- Escaneo de malware (ESCANEO_MALWARE) --
+    malware_detectado = 1
+    """ClamAV detectó virus o malware en el archivo."""
+
+    extension_prohibida = 2
+    """El archivo tiene una extensión peligrosa (.exe, .bat, etc.)."""
+
+    tamano_excedido = 3
+    """El archivo excede el tamaño máximo permitido."""
+
+    # -- Validación de contenido ZIP (VALIDACION_CONTENIDO_ZIP) --
+    zip_corrupto = 4
+    """El archivo ZIP está corrupto o no es válido."""
+
+    zip_sin_xml = 5
+    """El ZIP no contiene archivos XML de factura."""
+
+    zip_profundidad_excedida = 6
+    """ZIPs anidados exceden la profundidad máxima permitida."""
+
+    zip_subzip_invalido = 7
+    """Un sub-ZIP dentro del ZIP principal no contiene pares válidos."""
+
+    # -- Descarga y almacenamiento (DESCARGA_ALMACENAMIENTO) --
+    fallo_descarga_adjuntos = 8
+    """No se pudieron descargar los adjuntos del correo."""
+
+    fallo_subida_s3 = 9
+    """Error al subir el archivo a S3."""
+
+    fallo_registro_bd = 10
+    """Error al registrar el adjunto en la base de datos."""
+
+    # -- Extracción de XMLs embebidos (EXTRACCION_ZIP) --
+    xml_embebido_no_encontrado = 11
+    """No se encontraron los XMLs de Invoice o ApplicationResponse embebidos."""
+
+    xml_embebido_parse_error = 12
+    """Error al parsear el XML AttachedDocument para extraer embebidos."""
+
+    # -- Emparejamiento XML/PDF --
+    pdf_faltante = 13
+    """No se encontró un PDF correspondiente al XML."""
+
+    pdf_sin_xml = 14
+    """Se encontró un PDF sin XML correspondiente."""
+
+    # -- Filtro de facturación --
+    correo_sin_adjuntos_validos = 15
+    """El correo de facturación no contiene adjuntos válidos (ZIP, XML o PDF)."""
+
+    correo_rechazado_filtro = 16
+    """El correo no cumple los criterios del filtro de facturación."""
+
+    # -- Errores generales --
+    error_procesamiento_general = 17
+    """Error inesperado durante el procesamiento del correo."""
+
+    adjunto_duplicado = 18
+    """El adjunto ya fue procesado previamente (hash duplicado)."""
+
+
 class MensajesDB:
     """Mensajes de error y log del módulo de base de datos."""
 

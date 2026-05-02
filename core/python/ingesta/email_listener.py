@@ -109,18 +109,17 @@ class EmailListener:
     # Helpers de procesamiento de adjuntos
     # ------------------------------------------------------------------
 
-    def _escanear_archivo(self, ruta: Path) -> bool:
+    def _escanear_archivo(self, ruta: Path) -> 'ScanResult':
         """Escanea un archivo individual contra malware.
 
         Returns:
-            True si el archivo es seguro, False si se detectó amenaza.
+            ScanResult con el veredicto de seguridad.
         """
         scan = self._scanner.escanear_archivo(ruta)
         if not scan.seguro:
             self._alert_manager.malware_detectado(ruta.name, scan.nivel_riesgo)
             logger.critical("Malware detectado en %s: %s", ruta, scan.detalle)
-            return False
-        return True
+        return scan
 
     def _procesar_zips(
         self,
@@ -152,8 +151,22 @@ class EmailListener:
                 continue
 
             # Escanear el ZIP
-            if not self._escanear_archivo(adj_zip.ruta):
+            scan_zip = self._escanear_archivo(adj_zip.ruta)
+            if not scan_zip.seguro:
                 logger.critical("ZIP infectado: %s", adj_zip.nombre_original)
+                # Registrar ZIP infectado en BD para trazabilidad
+                id_zip_infectado, _ = self._repository.guardar_adjunto_correo(
+                    conn=conn_db, id_correo=id_correo, ruta_archivo=adj_zip.ruta,
+                    id_tipo_archivo=IdTipoArchivo.zip, archivo_seguro=False,
+                    fecha_envio=fecha_envio,
+                )
+                if id_zip_infectado != -1:
+                    self._repository.crear_proceso_ingesta(
+                        conn=conn_db, adjunto_id=id_zip_infectado,
+                        id_proceso=IdTipoProceso.escaneo_malware,
+                        observacion=f"ZIP rechazado: {scan_zip.detalle}",
+                        id_estado=IdEstadoProceso.procesado,
+                    )
                 continue
 
             # Validar contenido (con soporte para ZIPs anidados)
@@ -291,24 +304,37 @@ class EmailListener:
             dict con IDs registrados, o None si el XML falló.
         """
         # 1. Escanear malware — XML es obligatorio
-        xml_seguro = self._escanear_archivo(par.xml_path)
-        if not xml_seguro:
-            self._repository.guardar_adjunto_correo(
+        scan_xml = self._escanear_archivo(par.xml_path)
+        if not scan_xml.seguro:
+            id_xml_infectado, _ = self._repository.guardar_adjunto_correo(
                 conn=conn_db, id_correo=id_correo, ruta_archivo=par.xml_path,
                 id_tipo_archivo=IdTipoArchivo.xml, adjunto_padre_id=id_adjunto_padre,
                 archivo_seguro=False, fecha_envio=fecha_envio,
             )
+            if id_xml_infectado != -1:
+                self._repository.crear_proceso_ingesta(
+                    conn=conn_db, adjunto_id=id_xml_infectado,
+                    id_proceso=IdTipoProceso.escaneo_malware,
+                    observacion=f"XML rechazado: {scan_xml.detalle}",
+                    id_estado=IdEstadoProceso.procesado,
+                )
             return None
 
-        pdf_seguro = True
         if par.pdf_path:
-            pdf_seguro = self._escanear_archivo(par.pdf_path)
-            if not pdf_seguro:
-                self._repository.guardar_adjunto_correo(
+            scan_pdf = self._escanear_archivo(par.pdf_path)
+            if not scan_pdf.seguro:
+                id_pdf_infectado, _ = self._repository.guardar_adjunto_correo(
                     conn=conn_db, id_correo=id_correo, ruta_archivo=par.pdf_path,
                     id_tipo_archivo=IdTipoArchivo.pdf, adjunto_padre_id=id_adjunto_padre,
                     archivo_seguro=False, fecha_envio=fecha_envio,
                 )
+                if id_pdf_infectado != -1:
+                    self._repository.crear_proceso_ingesta(
+                        conn=conn_db, adjunto_id=id_pdf_infectado,
+                        id_proceso=IdTipoProceso.escaneo_malware,
+                        observacion=f"PDF rechazado: {scan_pdf.detalle}",
+                        id_estado=IdEstadoProceso.procesado,
+                    )
                 # PDF infectado, pero el XML se puede procesar
                 par.pdf_path = None
                 par.pdf_faltante = True

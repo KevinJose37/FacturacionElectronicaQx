@@ -7,6 +7,9 @@ import yaml
 from pathlib import Path
 from functools import lru_cache
 from typing import Any
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 @lru_cache(maxsize=128)

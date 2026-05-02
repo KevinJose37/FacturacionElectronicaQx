@@ -63,10 +63,15 @@ async def verificar_con_ia(
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            }
+            logger.info("Enviando petición a IA: %s/v1/chat/completions", llm_base_url)
             response = await client.post(
-                f"{llm_base_url}/chat/completions",
+                f"{llm_base_url}/v1/chat/completions",
                 json=payload,
-                headers={"Authorization": f"Bearer {api_key}"},
+                headers=headers,
             )
 
         response.raise_for_status()

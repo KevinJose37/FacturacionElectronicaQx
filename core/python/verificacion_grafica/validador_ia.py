@@ -29,7 +29,8 @@ async def verificar_con_ia(
 
     llm_base_url = get_config("LLM_BASE_URL", "").rstrip("/")
     api_key = get_config("LLM_API_KEY", "")
-    model = get_config("LLM_MODEL", "gpt-4o-mini")
+    model = get_config("LLM_MODEL", "innti-dev")
+    user_email = get_config("LLM_USER_EMAIL", "")
     timeout = int(get_config("LLM_TIMEOUT", "45"))
     
     if not llm_base_url or not api_key:
@@ -67,6 +68,8 @@ async def verificar_con_ia(
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json"
             }
+            if user_email:
+                headers["X-OpenWebUI-User-Email"] = user_email
             logger.info("Enviando petición a IA: %s/v1/chat/completions", llm_base_url)
             response = await client.post(
                 f"{llm_base_url}/v1/chat/completions",

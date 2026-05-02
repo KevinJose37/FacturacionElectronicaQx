@@ -75,7 +75,9 @@ def escanear_con_clamav(ruta: Path) -> tuple:
         return True, 'Servicio ClamAV no disponible'
     
     try:
-        resultado_scan = cd.scan_file(str(ruta.absolute()))
+        with open(ruta, 'rb') as f:
+            resultado_scan = cd.scan_stream(f)
+        
         if resultado_scan is None:
             return True, 'Limpio'
         else:

@@ -42,7 +42,8 @@ def subir_archivo_s3(
             s3_client = boto3.client(
                 "s3",
                 aws_access_key_id=aws_cfg.get('access_key'),
-                aws_secret_access_key=aws_cfg.get('secret_key')
+                aws_secret_access_key=aws_cfg.get('secret_key'),
+                region_name=aws_cfg.get('region_name')
             )
             s3_client.upload_file(str(ruta), target_bucket, destino_s3)
             logger.info(

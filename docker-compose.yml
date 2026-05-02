@@ -19,6 +19,9 @@ services:
     image: clamav/clamav:latest
     container_name: facturacion_clamav
     restart: unless-stopped
+    ports:
+      - "3310:3310"
+
 
   # ── Backend API ──
   api:

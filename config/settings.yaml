@@ -94,6 +94,6 @@ processor:
 # Seguridad y Antivirus
 # ──────────────────────────────────────────────
 security:
-  clamav_host: "clamav"
+  clamav_host: "127.0.0.1"
   clamav_port: 3310
   clamav_timeout: 10

@@ -99,11 +99,15 @@ def get_aws_config() -> dict:
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Error leyendo {ruta_yml}: {e}")
+    else:
+        import logging
+        logging.getLogger(__name__).warning(f"Archivo de credenciales S3 no encontrado en {ruta_yml.absolute()}")
 
     return {
         'access_key': config_yaml.get('access_key'),
         'secret_key': config_yaml.get('secret_key'),
-        'bucket_name': config_yaml.get('bucket_s3', 'facturacion-electronica-temporal')
+        'bucket_name': config_yaml.get('bucket_s3', 'facturacion-electronica-temporal'),
+        'region_name': config_yaml.get('region_s3', 'us-east-1')
     }
 
 

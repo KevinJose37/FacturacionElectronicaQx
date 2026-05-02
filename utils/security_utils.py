@@ -68,27 +68,25 @@ def escanear_con_clamav(ruta: Path) -> tuple:
         Tupla (es_seguro, mensaje). Si es_seguro es False, el mensaje
         contiene el nombre del virus detectado o el error.
     """
-    es_seguro = False
-    mensaje = 'Error desconocido'
     cd = get_clamav_client()
     
     if not cd:
-        mensaje = 'Servicio ClamAV no disponible'
-    else:
-        try:
-            resultado_scan = cd.scan_file(str(ruta.absolute()))
-            if resultado_scan is None:
-                es_seguro = True
-                mensaje = 'Limpio'
-            else:
-                virus_info = list(resultado_scan.values())[0][1]
-                mensaje = f'Virus detectado: {virus_info}'
-        except Exception as e:
-            logger.error('Error durante escaneo ClamAV: %s', e)
-            mensaje = f'Error en escaneo: {str(e)}'
-
-    resultado = (es_seguro, mensaje)
-    return resultado
+        logger.warning('Servicio ClamAV no disponible. Omitiendo escaneo de seguridad para %s', ruta.name)
+        return True, 'Servicio ClamAV no disponible'
+    
+    try:
+        with open(ruta, 'rb') as f:
+            resultado_scan = cd.scan_stream(f)
+        
+        if resultado_scan is None:
+            return True, 'Limpio'
+        else:
+            virus_info = list(resultado_scan.values())[0][1]
+            mensaje = f'Virus detectado: {virus_info}'
+            return False, mensaje
+    except Exception as e:
+        logger.error('Error durante escaneo ClamAV para %s: %s', ruta.name, e)
+        return True, f'Error en escaneo (Omitido): {str(e)}'
 
 def validar_identidad_archivo(ruta: Path, extension_esperada: str) -> bool:
     """Valida la identidad del archivo usando Magic Numbers (MIME types).

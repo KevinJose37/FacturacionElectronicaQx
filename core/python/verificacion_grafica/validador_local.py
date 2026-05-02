@@ -3,12 +3,13 @@
 import logging
 import re
 
-from config import get_config
+from config import load_yaml_config
 
 logger = logging.getLogger(__name__)
 
 # Configuraciones leídas de settings.yaml o valores por defecto
-_config = get_config("verificacion_grafica", {})
+_settings = load_yaml_config("settings.yaml")
+_config = _settings.get("verificacion_grafica", {})
 CAMPOS_CRITICOS = _config.get("campos_criticos", [
     "denominacion",
     "nit_emisor",

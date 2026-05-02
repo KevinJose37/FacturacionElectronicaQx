@@ -104,7 +104,7 @@ def _extraer_y_analizar(ruta_zip: Path) -> dict | str:
                     'zip_path': str(ruta_zip.absolute()),
                     'xml_padre': xml_padre_bytes,
                     'xml_invoice': contenidos_xml['invoice'],
-                    'xml_application_response': contenidos_xml['application_response'],
+                    'xml_application_response': contenidos_xml['applicationresponse'],
                     'pdf_content': pdf_bytes,
                     'nombre_archivos': {
                         'xml': xml_principal.name,
@@ -121,7 +121,7 @@ def _extraer_xmls_embebidos(ruta_xml: Path) -> dict | str:
         ruta_xml: Ruta al archivo XML AttachedDocument.
 
     Returns:
-        Diccionario con 'factura' y 'dian' en bytes, o mensaje de error.
+        Diccionario con 'invoice' y 'applicationresponse' en bytes, o mensaje de error.
     """
     resultado = 'Error al procesar XML embebido'
     try:
@@ -134,10 +134,10 @@ def _extraer_xmls_embebidos(ruta_xml: Path) -> dict | str:
             'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2'
         }
 
-        xpath_factura = './/cac:Attachment/cac:ExternalReference/cbc:Description'
+        xpath_factura = './/cac:Attachment/cac:ExternalReference/cbc:Description[not(ancestor::cac:ParentDocumentLineReference)]'
         factura_nodes = root.xpath(xpath_factura, namespaces=ns)
         
-        xpath_dian = './/cac:ParentDocumentLineReference/cac:Attachment/cac:ExternalReference/cbc:Description'
+        xpath_dian = './/cac:ParentDocumentLineReference//cac:Attachment/cac:ExternalReference/cbc:Description'
         dian_nodes = root.xpath(xpath_dian, namespaces=ns)
         
         if not factura_nodes:
@@ -149,7 +149,7 @@ def _extraer_xmls_embebidos(ruta_xml: Path) -> dict | str:
             xml_dian_str = dian_nodes[0].text
             resultado = {
                 'invoice': xml_factura_str.strip().encode('utf-8'),
-                'application_response': xml_dian_str.strip().encode('utf-8')
+                'applicationresponse': xml_dian_str.strip().encode('utf-8')
             }
     except Exception as e:
         resultado = f'Error al parsear XML: {str(e)}'

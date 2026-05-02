@@ -76,3 +76,10 @@ class AlertManager:
         self._notificar("CRITICAL", f"MALWARE DETECTADO: {nombre_archivo}", {
             "nivel_riesgo": nivel_riesgo
         })
+
+    def verificacion_grafica_fallida(self, num_factura: str, metodos: list, campos_fallidos: dict):
+        """Notifica que la verificación gráfica del PDF falló."""
+        self._notificar("WARNING", f"Verificación gráfica fallida para factura {num_factura}", {
+            "metodos_intentados": metodos,
+            "campos_fallidos": campos_fallidos
+        })

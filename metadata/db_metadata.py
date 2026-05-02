@@ -56,6 +56,9 @@ class IdTipoProceso:
     registro_adjuntos = 5
     """Registro de adjuntos en la base de datos."""
 
+    verificacion_grafica = 6
+    """Verificación de representación gráfica PDF vs XML."""
+
 
 class MensajesDB:
     """Mensajes de error y log del módulo de base de datos."""

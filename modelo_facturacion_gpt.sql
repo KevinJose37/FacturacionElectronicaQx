@@ -34,7 +34,8 @@ INSERT INTO FACTURACION.TIPO_PROCESO (ID_TIPO_PROCESO, CODIGO_REFERENCIA, DESCRI
 (2, 'DESCARGA_ALMACENAMIENTO', 'Descarga y almacenamiento del archivo en S3'),
 (3, 'VALIDACION_CONTENIDO_ZIP', 'Verificación de que el ZIP contiene XML y PDF completos'),
 (4, 'EXTRACCION_ZIP', 'Extracción de archivos del ZIP'),
-(5, 'REGISTRO_ADJUNTOS', 'Registro de adjuntos en la base de datos')
+(5, 'REGISTRO_ADJUNTOS', 'Registro de adjuntos en la base de datos'),
+(6, 'VERIFICACION_GRAFICA', 'Verificación de representación gráfica PDF vs XML')
 ON CONFLICT DO NOTHING;
 
 

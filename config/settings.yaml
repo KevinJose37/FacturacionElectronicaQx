@@ -97,3 +97,22 @@ security:
   clamav_host: "clamav"
   clamav_port: 3310
   clamav_timeout: 10
+
+# ──────────────────────────────────────────────
+# Verificación Gráfica (PyMuPDF + IA)
+# ──────────────────────────────────────────────
+verificacion_grafica:
+  umbral_texto_nativo: 50
+  campos_criticos:
+    - denominacion
+    - nit_emisor
+    - razon_social_emisor
+    - nit_adquiriente
+    - numero_factura
+    - valor_total
+    - cufe
+  campos_deseables:
+    - razon_social_adquiriente
+    - valor_iva
+    - numero_resolucion
+  ia_habilitada: true

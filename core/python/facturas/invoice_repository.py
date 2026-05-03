@@ -69,7 +69,6 @@ class InvoiceRepository:
             cur.execute(
                 """
                 SELECT 
-                    ei.ID_EVENTO,
                     ei.ADJUNTO_ID,
                     ei.ID_ESTADO,
                     ei.INTENTOS,
@@ -131,7 +130,7 @@ class InvoiceRepository:
     def actualizar_estado_evento(
         self,
         conn: Connection,
-        id_evento: int,
+        adjunto_id: int,
         id_estado: int,
     ) -> None:
         """Actualiza el estado de un EVENTO_INGESTA."""
@@ -139,16 +138,16 @@ class InvoiceRepository:
             cur.execute(
                 """
                 UPDATE FACTURACION.EVENTO_INGESTA
-                SET ID_ESTADO = %s, FECHA_PROCESAMIENTO = NOW()
-                WHERE ID_EVENTO = %s
+                SET ID_ESTADO = %s, FECHA_ACTUALIZACION = NOW()
+                WHERE ADJUNTO_ID = %s
                 """,
-                (id_estado, id_evento),
+                (id_estado, adjunto_id),
             )
 
     def incrementar_intentos_evento(
         self,
         conn: Connection,
-        id_evento: int,
+        adjunto_id: int,
     ) -> int:
         """Incrementa el contador de intentos y retorna el nuevo valor."""
         with conn.cursor() as cur:
@@ -156,10 +155,10 @@ class InvoiceRepository:
                 """
                 UPDATE FACTURACION.EVENTO_INGESTA
                 SET INTENTOS = INTENTOS + 1
-                WHERE ID_EVENTO = %s
+                WHERE ADJUNTO_ID = %s
                 RETURNING INTENTOS
                 """,
-                (id_evento,),
+                (adjunto_id,),
             )
             resultado = cur.fetchone()
             return resultado[0] if resultado else 0
@@ -512,7 +511,7 @@ class InvoiceRepository:
             cur.execute(
                 """
                 UPDATE FACTURACION.EVENTO_INGESTA
-                SET ID_ESTADO = %s, FECHA_PROCESAMIENTO = NOW()
+                SET ID_ESTADO = %s, FECHA_ACTUALIZACION = NOW()
                 WHERE ADJUNTO_ID = %s
                 """,
                 (id_estado, adjunto_id),

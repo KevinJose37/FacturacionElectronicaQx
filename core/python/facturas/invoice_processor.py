@@ -436,10 +436,10 @@ class InvoiceProcessor:
     def _manejar_error_evento(self, conn, evento: dict, error: str) -> None:
         """Maneja errores incrementando intentos o marcando como fallido."""
         try:
-            intentos = self._repo.incrementar_intentos_evento(conn, evento['id_evento'])
+            intentos = self._repo.incrementar_intentos_evento(conn, evento['adjunto_id'])
             if intentos >= MAX_REINTENTOS:
                 self._repo.actualizar_estado_evento(
-                    conn, evento['id_evento'], IdEstadoProceso.fallido
+                    conn, evento['adjunto_id'], IdEstadoProceso.fallido
                 )
                 self._repo.crear_proceso_ingesta(
                     conn, evento['adjunto_id'], IdTipoProceso.registro_factura,
@@ -448,10 +448,10 @@ class InvoiceProcessor:
                 )
             else:
                 self._repo.actualizar_estado_evento(
-                    conn, evento['id_evento'], IdEstadoProceso.pendiente
+                    conn, evento['adjunto_id'], IdEstadoProceso.pendiente
                 )
         except Exception:
-            logger.exception('Error manejando fallo del evento %s', evento.get('id_evento'))
+            logger.exception('Error manejando fallo del evento %s', evento.get('adjunto_id'))
 
 
 def run():

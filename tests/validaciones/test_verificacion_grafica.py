@@ -8,12 +8,19 @@ import fitz  # PyMuPDF
 # Importamos el nuevo controlador
 from core.python.verificacion_grafica.controlador import verificar_representacion_grafica
 
+import sys
+import os
+
+# Agregar el directorio raíz al path para importar los módulos correctamente
+root_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(root_dir))
+
 # Configurar logging básico para ver la salida
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Aseguramos que la carpeta scratch exista
-Path("scratch").mkdir(exist_ok=True)
+# Aseguramos que la carpeta exista
+Path("tests/validaciones").mkdir(exist_ok=True, parents=True)
 
 def crear_pdf_de_prueba(ruta: str):
     """Crea un PDF válido con la información requerida."""
@@ -44,7 +51,7 @@ def crear_pdf_de_prueba(ruta: str):
 async def main():
     logger.info("Iniciando prueba del Worker de Verificación Gráfica...")
     
-    ruta_pdf = "scratch/factura_prueba.pdf"
+    ruta_pdf = "tests/validaciones/factura_prueba.pdf"
     crear_pdf_de_prueba(ruta_pdf)
     
     # Estos son los datos extraídos del XML previamente por los validadores

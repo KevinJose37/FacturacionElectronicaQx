@@ -67,12 +67,19 @@ async def main():
     logger.info(f"Método utilizado: {resultado['metodo']}")
     
     if resultado['aprobado']:
-        logger.info("¡PRUEBA EXITOSA! El Nivel 1 (PyMuPDF local) encontró todos los datos sin costo.")
+        logger.info("¡PRUEBA EXITOSA! La verificación gráfica (PyMuPDF o IA) encontró todos los datos.")
     else:
         logger.warning("Fallo en la prueba:")
         for campo, info in resultado.get("campos", {}).items():
-            if not info.get("encontrado"):
-                logger.warning(f"  - No se encontró el campo: {campo}")
+            # Soporta tanto el formato del validador local ('encontrado') como el de la IA ('presente')
+            fue_encontrado = info.get("encontrado", False) or info.get("presente", False)
+            if not fue_encontrado:
+                valor_visto = info.get("valor_visto", "No detectado en la imagen")
+                logger.warning(f"  - {campo}: Discrepancia. La IA/Local detectó: '{valor_visto}'")
+        
+        explicacion = resultado.get("explicacion")
+        if explicacion:
+            logger.info(f"  - Explicación de Innti: {explicacion}")
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -193,7 +193,7 @@ class InvoiceRepository:
                     VALUES (%s, %s, %s, %s)
                     RETURNING ID_PROCESO_INGESTA
                     """,
-                    (adjunto_id, id_proceso, id_estado, observacion),
+                    (adjunto_id, id_proceso, id_estado, observacion[:255]),
                 )
                 resultado = cur.fetchone()
                 return resultado[0] if resultado else -1
@@ -314,16 +314,16 @@ class InvoiceRepository:
             cur.execute(
                 """
                 INSERT INTO FACTURACION.TERCERO (
-                    NUMERO_DOCUMENTO, TIPO_DOCUMENTO, DIGITO_VERIFICADOR,
+                    ID_ROL_TERCERO, NUMERO_DOCUMENTO, DIGITO_VERIFICADOR,
                     RAZON_SOCIAL, NOMBRE_COMERCIAL,
-                    CORREO_CONTACTO, TELEFONO_CONTACTO, CODIGO_CIIU
+                    CORREO_CONTACTO, TELEFONO_CONTACTO
                 )
                 VALUES (
-                    %(numero_documento)s, %(tipo_documento)s, %(digito_verificador)s,
+                    %(id_rol_tercero)s, %(numero_documento)s, %(digito_verificador)s,
                     %(razon_social)s, %(nombre_comercial)s,
-                    %(correo_contacto)s, %(telefono_contacto)s, %(codigo_ciiu)s
+                    %(correo_contacto)s, %(telefono_contacto)s
                 )
-                ON CONFLICT (NUMERO_DOCUMENTO) DO UPDATE SET
+                ON CONFLICT (ID_ROL_TERCERO, NUMERO_DOCUMENTO) DO UPDATE SET
                     RAZON_SOCIAL = COALESCE(EXCLUDED.RAZON_SOCIAL, FACTURACION.TERCERO.RAZON_SOCIAL),
                     NOMBRE_COMERCIAL = COALESCE(EXCLUDED.NOMBRE_COMERCIAL, FACTURACION.TERCERO.NOMBRE_COMERCIAL),
                     CORREO_CONTACTO = COALESCE(EXCLUDED.CORREO_CONTACTO, FACTURACION.TERCERO.CORREO_CONTACTO),

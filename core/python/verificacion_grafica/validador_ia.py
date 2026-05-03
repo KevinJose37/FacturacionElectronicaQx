@@ -79,8 +79,35 @@ async def verificar_con_ia(
 
         response.raise_for_status()
         contenido = response.json()["choices"][0]["message"]["content"]
-        resultado_ia = json.loads(contenido)
         
+        # Remover bloques de markdown si existen
+        contenido_limpio = contenido.strip()
+        if contenido_limpio.startswith("```json"):
+            contenido_limpio = contenido_limpio[7:]
+        elif contenido_limpio.startswith("```"):
+            contenido_limpio = contenido_limpio[3:]
+        if contenido_limpio.endswith("```"):
+            contenido_limpio = contenido_limpio[:-3]
+        
+        contenido_limpio = contenido_limpio.strip()
+            
+        # Parseo JSON resiliente (las IA a veces devuelven llaves extra '}' al final)
+        resultado_ia = None
+        while contenido_limpio:
+            try:
+                resultado_ia = json.loads(contenido_limpio)
+                break
+            except json.JSONDecodeError as e:
+                if "Extra data" in str(e):
+                    # Quitar el último caracter (usualmente una llave o salto de línea extra) y reintentar
+                    contenido_limpio = contenido_limpio[:-1].strip()
+                else:
+                    logger.error(f"Fallo crítico al parsear JSON.\nError: {e}\nContenido:\n{contenido_limpio}")
+                    raise e
+                    
+        if not resultado_ia:
+            raise ValueError("No se pudo extraer ningún objeto JSON válido de la IA.")
+            
         campos_res = resultado_ia.get("campos", {})
 
         # Mapear respuesta de IA al formato interno

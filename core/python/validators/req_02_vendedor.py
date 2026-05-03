@@ -67,9 +67,9 @@ def validar_emisor_v1(xml_raw: etree._Element) -> dict:
     )
 
     nodo_nit = nodos_nit[0] if nodos_nit else None
-    nit = (nodo_nit.text or '').strip() if nodo_nit else None
-    scheme_name = nodo_nit.get('schemeName') if nodo_nit else None
-    dv_xml = nodo_nit.get('schemeID') if nodo_nit else None
+    nit = (nodo_nit.text or '').strip() if nodo_nit is not None else None
+    scheme_name = nodo_nit.get('schemeName') if nodo_nit is not None else None
+    dv_xml = nodo_nit.get('schemeID') if nodo_nit is not None else None
 
     # Extraer contacto
     nodo_correo = xml_raw.xpath(

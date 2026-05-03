@@ -56,19 +56,41 @@ class InvoiceRepository:
         """Obtiene los EVENTO_INGESTA pendientes con sus datos de adjunto.
 
         Filtra por ID_ESTADO = PENDIENTE (1) y archivos XML (ID_TIPO_ARCHIVO = 2).
-        Agrupa por ADJUNTO_PADRE_ID para procesar familias completas.
+        Calcula también ADJUNTO_RAIZ_ID recorriendo la cadena de padres hasta
+        encontrar el ancestro más alto. Esto permite agrupar la familia completa
+        (AttachedDocument + Invoice + ApplicationResponse) bajo una misma raíz
+        aunque la jerarquía tenga varios niveles.
 
         Args:
             conn: Conexión activa.
             limite: Máximo de eventos a retornar.
 
         Returns:
-            Lista de diccionarios con datos del evento y adjunto.
+            Lista de diccionarios con datos del evento, del adjunto y la raíz.
         """
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT 
+                WITH RECURSIVE arbol AS (
+                    -- Caso base: cada adjunto se apunta a sí mismo
+                    SELECT
+                        ADJUNTO_ID,
+                        ADJUNTO_PADRE_ID,
+                        ADJUNTO_ID AS ADJUNTO_RAIZ_ID
+                    FROM FACTURACION.ADJUNTOS_CORREO
+                    WHERE ADJUNTO_PADRE_ID IS NULL
+
+                    UNION ALL
+
+                    -- Recursivo: hereda la raíz del padre
+                    SELECT
+                        hijo.ADJUNTO_ID,
+                        hijo.ADJUNTO_PADRE_ID,
+                        padre.ADJUNTO_RAIZ_ID
+                    FROM FACTURACION.ADJUNTOS_CORREO hijo
+                    JOIN arbol padre ON hijo.ADJUNTO_PADRE_ID = padre.ADJUNTO_ID
+                )
+                SELECT
                     ei.ADJUNTO_ID,
                     ei.ID_ESTADO,
                     ei.INTENTOS,
@@ -77,9 +99,11 @@ class InvoiceRepository:
                     ac.URI_ALMACENAMIENTO,
                     ac.SHA256,
                     ac.ADJUNTO_PADRE_ID,
-                    ac.ID_TIPO_ARCHIVO
+                    ac.ID_TIPO_ARCHIVO,
+                    arbol.ADJUNTO_RAIZ_ID
                 FROM FACTURACION.EVENTO_INGESTA ei
                 JOIN FACTURACION.ADJUNTOS_CORREO ac ON ei.ADJUNTO_ID = ac.ADJUNTO_ID
+                LEFT JOIN arbol ON ei.ADJUNTO_ID = arbol.ADJUNTO_ID
                 WHERE ei.ID_ESTADO = %s
                   AND ac.ID_TIPO_ARCHIVO = 2
                 ORDER BY ei.FECHA_CREACION ASC
@@ -324,6 +348,7 @@ class InvoiceRepository:
                     %(correo_contacto)s, %(telefono_contacto)s
                 )
                 ON CONFLICT (ID_ROL_TERCERO, NUMERO_DOCUMENTO) DO UPDATE SET
+                    DIGITO_VERIFICADOR = COALESCE(EXCLUDED.DIGITO_VERIFICADOR, FACTURACION.TERCERO.DIGITO_VERIFICADOR),
                     RAZON_SOCIAL = COALESCE(EXCLUDED.RAZON_SOCIAL, FACTURACION.TERCERO.RAZON_SOCIAL),
                     NOMBRE_COMERCIAL = COALESCE(EXCLUDED.NOMBRE_COMERCIAL, FACTURACION.TERCERO.NOMBRE_COMERCIAL),
                     CORREO_CONTACTO = COALESCE(EXCLUDED.CORREO_CONTACTO, FACTURACION.TERCERO.CORREO_CONTACTO),
@@ -354,20 +379,33 @@ class InvoiceRepository:
             ID de la autorización.
         """
         with conn.cursor() as cur:
+            # Buscar autorización existente por (emisor, resolución)
+            cur.execute(
+                """
+                SELECT ID_AUTORIZACION
+                FROM FACTURACION.AUTORIZACION_NUMERACION_DIAN
+                WHERE ID_TERCERO_EMISOR = %(id_tercero_emisor)s
+                  AND NUMERO_RESOLUCION = %(numero_resolucion)s
+                LIMIT 1
+                """,
+                datos,
+            )
+            existente = cur.fetchone()
+            if existente:
+                return existente[0]
+
             cur.execute(
                 """
                 INSERT INTO FACTURACION.AUTORIZACION_NUMERACION_DIAN (
-                    NUMERO_AUTORIZACION, PREFIJO, RANGO_DESDE, RANGO_HASTA,
-                    FECHA_INICIO_VIGENCIA, FECHA_FIN_VIGENCIA
+                    ID_TERCERO_EMISOR, PREFIJO_FACTURACION, NUMERO_RESOLUCION,
+                    RANGO_DESDE, RANGO_HASTA,
+                    FECHA_AUTORIZACION, FECHA_INICIO_VIGENCIA, FECHA_FIN_VIGENCIA
                 )
                 VALUES (
-                    %(numero_autorizacion)s, %(prefijo)s, %(rango_desde)s,
-                    %(rango_hasta)s, %(fecha_inicio)s, %(fecha_fin)s
+                    %(id_tercero_emisor)s, %(prefijo_facturacion)s, %(numero_resolucion)s,
+                    %(rango_desde)s, %(rango_hasta)s,
+                    %(fecha_autorizacion)s, %(fecha_inicio_vigencia)s, %(fecha_fin_vigencia)s
                 )
-                ON CONFLICT (NUMERO_AUTORIZACION) DO UPDATE SET
-                    PREFIJO = EXCLUDED.PREFIJO,
-                    RANGO_DESDE = EXCLUDED.RANGO_DESDE,
-                    RANGO_HASTA = EXCLUDED.RANGO_HASTA
                 RETURNING ID_AUTORIZACION
                 """,
                 datos,
@@ -386,27 +424,37 @@ class InvoiceRepository:
         linea: dict,
     ) -> int:
         """Inserta una línea de detalle de factura."""
+        cantidad = Decimal(str(linea['cantidad'])) if linea.get('cantidad') else Decimal('1')
+        if cantidad <= 0:
+            cantidad = Decimal('1')
+        valor_unit = Decimal(str(linea['valor_unitario'])) if linea.get('valor_unitario') else Decimal('0')
+        if valor_unit < 0:
+            valor_unit = Decimal('0')
+        valor_total = Decimal(str(linea['valor_total_linea'])) if linea.get('valor_total_linea') else Decimal('0')
+        if valor_total < 0:
+            valor_total = Decimal('0')
+
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO FACTURACION.DETALLE_FACTURA (
-                    ID_FACTURA, NUMERO_LINEA, DESCRIPCION,
-                    CODIGO_PRODUCTO, CANTIDAD, UNIDAD_MEDIDA,
+                    ID_FACTURA, NUMERO_LINEA, CODIGO_ITEM, DESCRIPCION_ITEM,
+                    CANTIDAD, UNIDAD_DE_MEDIDA,
                     VALOR_UNITARIO, VALOR_TOTAL_LINEA
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT DO NOTHING
+                ON CONFLICT (ID_FACTURA, NUMERO_LINEA) DO NOTHING
                 RETURNING ID_DETALLE
                 """,
                 (
                     id_factura,
-                    linea.get('numero_linea'),
-                    linea.get('descripcion'),
+                    linea.get('numero_linea') or 1,
                     linea.get('codigo_item'),
-                    Decimal(linea['cantidad']) if linea.get('cantidad') else None,
+                    linea.get('descripcion') or 'Sin descripción',
+                    cantidad,
                     linea.get('unidad_medida'),
-                    Decimal(linea['valor_unitario']) if linea.get('valor_unitario') else None,
-                    Decimal(linea['valor_total_linea']) if linea.get('valor_total_linea') else None,
+                    valor_unit,
+                    valor_total,
                 ),
             )
             resultado = cur.fetchone()
@@ -419,28 +467,38 @@ class InvoiceRepository:
         impuesto: dict,
     ) -> int:
         """Inserta un impuesto a nivel de factura."""
+        # Mapeo de códigos DIAN a IDs de TIPO_IMPUESTO
+        mapa_impuesto = {
+            '01': 1, 'IVA': 1,
+            '04': 2, 'INC': 2,
+            '22': 3, 'INC_BOLSAS': 3,
+        }
+        codigo = (impuesto.get('codigo_impuesto') or '').upper()
+        nombre = (impuesto.get('nombre_impuesto') or '').upper()
+        id_impuesto = mapa_impuesto.get(codigo) or mapa_impuesto.get(nombre) or 1
+
+        base = Decimal(str(impuesto['base_gravable'])) if impuesto.get('base_gravable') else Decimal('0')
+        if base < 0:
+            base = Decimal('0')
+        tarifa = Decimal(str(impuesto['tarifa'])) if impuesto.get('tarifa') is not None else Decimal('0')
+        if tarifa < 0:
+            tarifa = Decimal('0')
+        valor = Decimal(str(impuesto['valor_impuesto'])) if impuesto.get('valor_impuesto') else Decimal('0')
+        if valor < 0:
+            valor = Decimal('0')
+
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO FACTURACION.IMPUESTO_FACTURA (
-                    ID_FACTURA, CODIGO_IMPUESTO, NOMBRE_IMPUESTO,
-                    BASE_GRAVABLE, TARIFA, VALOR_IMPUESTO
+                    ID_FACTURA, ID_IMPUESTO, TARIFA, BASE_GRAVABLE, VALOR_IMPUESTO
                 )
-                VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT DO NOTHING
-                RETURNING ID_IMPUESTO_FACTURA
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (ID_FACTURA, ID_IMPUESTO, TARIFA) DO NOTHING
                 """,
-                (
-                    id_factura,
-                    impuesto.get('codigo_impuesto'),
-                    impuesto.get('nombre_impuesto'),
-                    Decimal(impuesto['base_gravable']) if impuesto.get('base_gravable') else None,
-                    Decimal(impuesto['tarifa']) if impuesto.get('tarifa') else None,
-                    Decimal(impuesto['valor_impuesto']) if impuesto.get('valor_impuesto') else None,
-                ),
+                (id_factura, id_impuesto, tarifa, base, valor),
             )
-            resultado = cur.fetchone()
-            return resultado[0] if resultado else -1
+            return id_impuesto
 
     def insertar_pago_factura(
         self,
@@ -449,27 +507,42 @@ class InvoiceRepository:
         datos_pago: dict,
     ) -> int:
         """Inserta los datos de pago de la factura."""
+        # Mapeo de códigos DIAN a IDs internos
+        cf_raw = str(datos_pago.get('codigo_forma_pago') or '').strip()
+        try:
+            id_forma = int(cf_raw) if cf_raw in ('1', '2') else 1
+        except (TypeError, ValueError):
+            id_forma = 1  # CONTADO por defecto
+
+        # Si es CONTADO, el medio de pago es obligatorio (default: OTRO=5)
+        cm_raw = str(datos_pago.get('codigo_medio_pago') or '').strip()
+        try:
+            id_medio = int(cm_raw) if cm_raw.isdigit() and 1 <= int(cm_raw) <= 5 else None
+        except (TypeError, ValueError):
+            id_medio = None
+        if id_forma == 1 and id_medio is None:
+            id_medio = 5  # OTRO
+
+        plazo = datos_pago.get('duracion_plazo')
+        try:
+            plazo = int(plazo) if plazo is not None else None
+            if plazo is not None and plazo < 0:
+                plazo = None
+        except (TypeError, ValueError):
+            plazo = None
+
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO FACTURACION.PAGO_FACTURA (
-                    ID_FACTURA, CODIGO_FORMA_PAGO, CODIGO_MEDIO_PAGO,
-                    FECHA_VENCIMIENTO, DURACION_PLAZO
+                    ID_FACTURA, ID_FORMA_PAGO, ID_MEDIO_PAGO, PLAZO_EN_DIAS
                 )
-                VALUES (%s, %s, %s, %s, %s)
-                ON CONFLICT DO NOTHING
-                RETURNING ID_PAGO
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (ID_FACTURA) DO NOTHING
                 """,
-                (
-                    id_factura,
-                    datos_pago.get('codigo_forma_pago'),
-                    datos_pago.get('codigo_medio_pago'),
-                    datos_pago.get('fecha_vencimiento'),
-                    datos_pago.get('duracion_plazo'),
-                ),
+                (id_factura, id_forma, id_medio, plazo),
             )
-            resultado = cur.fetchone()
-            return resultado[0] if resultado else -1
+            return id_factura
 
     def insertar_condicion_fiscal(
         self,
@@ -480,24 +553,34 @@ class InvoiceRepository:
         responsabilidades: list[dict],
     ) -> None:
         """Inserta las condiciones fiscales de un tercero en la factura."""
+        # Mapeo de códigos de responsabilidad DIAN a IDs de TIPO_CONDICION_FISCAL
+        mapa_cond = {
+            'O-11': 1, 'AGENTE_RETENEDOR_IVA': 1,
+            'O-15': 2, 'AUTORRETENEDOR_RENTA': 2, 'O-23': 2,
+            'O-13': 3, 'GRAN_CONTRIBUYENTE': 3,
+            'O-47': 4, 'SIMPLE': 4,
+        }
         with conn.cursor() as cur:
             for resp in responsabilidades:
+                codigo = (resp.get('codigo') or '').upper().strip()
+                id_cond = mapa_cond.get(codigo)
+                if id_cond is None:
+                    continue  # responsabilidad sin mapeo, se omite
+
+                nota = (resp.get('descripcion') or '')[:300] or None
+                if tipo_tercero:
+                    prefijo = f'[{tipo_tercero} id={id_tercero}] '
+                    nota = (prefijo + (nota or ''))[:300]
+
                 cur.execute(
                     """
                     INSERT INTO FACTURACION.CONDICION_FISCAL_FACTURA (
-                        ID_FACTURA, ID_TERCERO, TIPO_TERCERO,
-                        CODIGO_RESPONSABILIDAD, DESCRIPCION_RESPONSABILIDAD
+                        ID_FACTURA, ID_CONDICION_FISCAL, ES_APLICABLE, NOTAS_ADICIONALES
                     )
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT DO NOTHING
+                    VALUES (%s, %s, TRUE, %s)
+                    ON CONFLICT (ID_FACTURA, ID_CONDICION_FISCAL) DO NOTHING
                     """,
-                    (
-                        id_factura,
-                        id_tercero,
-                        tipo_tercero,
-                        resp.get('codigo'),
-                        resp.get('descripcion'),
-                    ),
+                    (id_factura, id_cond, nota),
                 )
 
     def marcar_evento_procesado(

@@ -91,9 +91,11 @@ class InvoiceProcessor:
             for futuro in as_completed(futuros):
                 familia_id = futuros[futuro]
                 try:
-                    exito = futuro.result()
-                    if exito:
+                    estado = futuro.result()
+                    if estado == 'ok':
                         resultados['exitosos'] += 1
+                    elif estado == 'skip':
+                        resultados['omitidos'] += 1
                     else:
                         resultados['fallidos'] += 1
                 except Exception as exc:
@@ -107,21 +109,37 @@ class InvoiceProcessor:
         return resultados
 
     def _agrupar_por_familia(self, eventos: list[dict]) -> dict:
-        """Agrupa eventos por su adjunto_padre_id."""
+        """Agrupa eventos por su raíz en el árbol de adjuntos.
+
+        Usa ADJUNTO_RAIZ_ID (calculado vía CTE recursivo en la query) para que
+        toda la cadena ZIP → AttachedDocument → (Invoice + ApplicationResponse)
+        quede en una sola familia. Si la raíz no viene resuelta, recurre al
+        padre directo o al propio adjunto como último fallback.
+        """
         familias = {}
         for ev in eventos:
-            padre_id = ev.get('adjunto_padre_id') or ev['adjunto_id']
-            if padre_id not in familias:
-                familias[padre_id] = []
-            familias[padre_id].append(ev)
+            raiz_id = (
+                ev.get('adjunto_raiz_id')
+                or ev.get('adjunto_padre_id')
+                or ev['adjunto_id']
+            )
+            if raiz_id not in familias:
+                familias[raiz_id] = []
+            familias[raiz_id].append(ev)
         return familias
 
     # ------------------------------------------------------------------
     # Procesamiento de una familia
     # ------------------------------------------------------------------
 
-    def _procesar_familia(self, eventos: list[dict]) -> bool:
-        """Procesa una familia de XMLs (AttachedDocument + Invoice + AR)."""
+    def _procesar_familia(self, eventos: list[dict]) -> str:
+        """Procesa una familia de XMLs (AttachedDocument + Invoice + AR).
+
+        Returns:
+            'ok'   si la factura fue procesada exitosamente.
+            'skip' si la familia no contiene Invoice procesable (huérfanos).
+            'fail' si ocurrió un error durante el pipeline.
+        """
         # Clasificar por tipo de nombre
         invoice_ev = None
         ar_ev = None
@@ -137,23 +155,35 @@ class InvoiceProcessor:
                 ad_ev = ev
 
         if not invoice_ev:
-            logger.warning('Familia sin XML Invoice, omitiendo.')
-            return False
+            nombres = [ev.get('nombre_archivo') for ev in eventos]
+            logger.warning(
+                'Familia sin XML Invoice, omitiendo huérfanos: %s', nombres
+            )
+            # Marcar los huérfanos como procesados para sacarlos de la cola
+            with self._repo.get_connection() as conn:
+                try:
+                    for ev in eventos:
+                        self._repo.marcar_evento_procesado(conn, ev['adjunto_id'])
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    logger.exception('Error marcando huérfanos como procesados')
+            return 'skip'
 
         with self._repo.get_connection() as conn:
             try:
                 exito = self._ejecutar_pipeline(conn, invoice_ev, ar_ev, ad_ev)
                 if exito:
                     conn.commit()
-                else:
-                    conn.rollback()
-                return exito
+                    return 'ok'
+                conn.rollback()
+                return 'fail'
             except Exception as exc:
                 conn.rollback()
                 logger.exception('Error en pipeline: %s', exc)
                 self._manejar_error_evento(conn, invoice_ev, str(exc))
                 conn.commit()
-                return False
+                return 'fail'
 
     def _ejecutar_pipeline(
         self,
@@ -302,40 +332,42 @@ class InvoiceProcessor:
             # TERCERO emisor
             datos_emisor = res_emisor['datos']
             id_emisor = self._repo.upsert_tercero(conn, {
+                'id_rol_tercero': 1,  # EMISOR
                 'numero_documento': datos_emisor.get('numero_documento') or 'DESCONOCIDO',
-                'tipo_documento': datos_emisor.get('scheme_name') or '31',
                 'digito_verificador': datos_emisor.get('digito_verificador'),
                 'razon_social': datos_emisor.get('razon_social'),
                 'nombre_comercial': datos_emisor.get('nombre_comercial'),
                 'correo_contacto': datos_emisor.get('correo_contacto'),
                 'telefono_contacto': datos_emisor.get('telefono_contacto'),
-                'codigo_ciiu': datos_emisor.get('codigo_ciiu'),
             })
 
             # TERCERO adquiriente
             datos_adq = res_adq['datos']
             id_adq = self._repo.upsert_tercero(conn, {
+                'id_rol_tercero': 2,  # ADQUIRIENTE
                 'numero_documento': datos_adq.get('numero_documento') or 'DESCONOCIDO',
-                'tipo_documento': datos_adq.get('scheme_name') or '13',
                 'digito_verificador': datos_adq.get('digito_verificador'),
                 'razon_social': datos_adq.get('razon_social'),
                 'nombre_comercial': datos_adq.get('nombre_comercial'),
                 'correo_contacto': datos_adq.get('correo_contacto'),
                 'telefono_contacto': datos_adq.get('telefono_contacto'),
-                'codigo_ciiu': None,
             })
 
             # AUTORIZACION_NUMERACION_DIAN
             id_autorizacion = None
             datos_num = res_num['datos']
             if datos_num.get('numero_autorizacion'):
+                fecha_inicio = datos_num.get('fecha_inicio_vigencia')
+                fecha_fin = datos_num.get('fecha_fin_vigencia')
                 id_autorizacion = self._repo.upsert_autorizacion(conn, {
-                    'numero_autorizacion': datos_num['numero_autorizacion'],
-                    'prefijo': datos_num.get('prefijo') or '',
-                    'rango_desde': datos_num.get('rango_desde'),
-                    'rango_hasta': datos_num.get('rango_hasta'),
-                    'fecha_inicio': datos_num.get('fecha_inicio_vigencia'),
-                    'fecha_fin': datos_num.get('fecha_fin_vigencia'),
+                    'id_tercero_emisor': id_emisor,
+                    'numero_resolucion': datos_num['numero_autorizacion'],
+                    'prefijo_facturacion': datos_num.get('prefijo') or '',
+                    'rango_desde': datos_num.get('rango_desde') or 0,
+                    'rango_hasta': datos_num.get('rango_hasta') or 0,
+                    'fecha_autorizacion': fecha_inicio,
+                    'fecha_inicio_vigencia': fecha_inicio,
+                    'fecha_fin_vigencia': fecha_fin,
                 })
 
             # Fecha de generación
@@ -374,7 +406,7 @@ class InvoiceProcessor:
                 'id_tercero_adquiriente': id_adq,
                 'id_autorizacion': id_autorizacion,
                 'fecha_generacion': fecha_gen,
-                'fecha_expedicion': None,
+                'fecha_expedicion': fecha_gen,
                 'fecha_vencimiento': d_pago.get('fecha_vencimiento'),
                 'moneda': d_valor.get('moneda') or 'COP',
                 'valor_total': valor_total,

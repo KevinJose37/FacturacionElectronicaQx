@@ -109,7 +109,7 @@ def construir_cadena_base_cufe(
             numero_factura,
             fecha_emision,
             hora_emision,
-            valor_total,
+            format(valor_total, 'f'),
         ] + partes_impuestos + [
             nit_adquiriente,
             clave_tecnica,

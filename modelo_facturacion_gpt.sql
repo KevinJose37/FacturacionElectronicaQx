@@ -13,7 +13,9 @@ CREATE TABLE FACTURACION.TIPO_ESTADO_PROCESO (
 INSERT INTO FACTURACION.TIPO_ESTADO_PROCESO (ID_ESTADO_PROCESO, CODIGO_REFERENCIA, DESCRIPCION) VALUES
 (1, 'PENDIENTE', 'Pendiente de procesamiento'),
 (2, 'EN_PROCESO', 'En proceso de ingesta'),
-(3, 'PROCESADO', 'Procesado de ingesta')
+(3, 'PROCESADO', 'Procesado de ingesta'),
+(4, 'ERROR', 'Estado de error en el procesamiento'),
+(5, 'FALLIDO', 'Estado de fallo definitivo (agotó reintentos)')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO FACTURACION.TIPO_ARCHIVO (ID_TIPO_ARCHIVO, CODIGO_REFERENCIA, DESCRIPCION) VALUES

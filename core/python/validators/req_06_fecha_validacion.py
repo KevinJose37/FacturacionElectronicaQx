@@ -1,5 +1,8 @@
-"""Módulo que contiene funciones de validación de la fecha de generación de la factura
- electrónica."""
+"""Módulo que contiene funciones de validación de la fecha de validación DIAN
+ de la factura electrónica."""
+
+# Standard library imports
+import logging
 
 # Third-party imports
 from lxml import etree
@@ -8,19 +11,20 @@ from lxml import etree
 from core.python.utils.validacion import validar_fecha_futura
 
 
-def validar_fecha_validacion_dian_v1(xml_factura: etree._Element) -> bool:
+logger = logging.getLogger(__name__)
+
+
+def validar_fecha_validacion_dian_v1(xml_factura: etree._Element) -> dict:
     """Valida la fecha y hora de validación DIAN (expedición).
     
     Args:
         xml_factura: Árbol XML del AttachedDocument a validar.
 
-    Reglas:
-    - Debe existir ValidationDate
-    - Debe existir ValidationTime
-    - Ambos deben tener formato válido (ISO 8601)
-
-    Retorna:
-        True si la fecha y hora son válidas, False en caso contrario.
+    Returns:
+        Diccionario con:
+        - 'valido': bool indicando si la fecha y hora son válidas.
+        - 'mensaje': str con la descripción del resultado.
+        - 'datos': dict con fecha y hora de validación, validador e ID.
     """
 
     NAMESPACES = {
@@ -36,14 +40,23 @@ def validar_fecha_validacion_dian_v1(xml_factura: etree._Element) -> bool:
         XPATH_BASE + '/cbc:ValidationDate',
         namespaces=NAMESPACES
     )
-
     nodo_hora = xml_factura.xpath(
         XPATH_BASE + '/cbc:ValidationTime',
+        namespaces=NAMESPACES
+    )
+    nodo_validador = xml_factura.xpath(
+        XPATH_BASE + '/cbc:ValidatorID',
+        namespaces=NAMESPACES
+    )
+    nodo_codigo = xml_factura.xpath(
+        XPATH_BASE + '/cbc:ValidationResultCode',
         namespaces=NAMESPACES
     )
 
     fecha = (nodo_fecha[0].text or '').strip() if nodo_fecha else None
     hora = (nodo_hora[0].text or '').strip() if nodo_hora else None
+    validador = (nodo_validador[0].text or '').strip() if nodo_validador else None
+    codigo_resultado = (nodo_codigo[0].text or '').strip() if nodo_codigo else None
 
     resultado_validacion = False
 
@@ -65,6 +78,17 @@ def validar_fecha_validacion_dian_v1(xml_factura: etree._Element) -> bool:
                 f'(ValidationDate="{fecha}", ValidationTime="{hora}").'
             )
 
-    enviar_log_validacion(mensaje)
+    logger.debug(mensaje)
 
-    return resultado_validacion
+    resultado = {
+        'valido': resultado_validacion,
+        'mensaje': mensaje,
+        'datos': {
+            'fecha_validacion': fecha,
+            'hora_validacion': hora,
+            'validador_id': validador,
+            'codigo_resultado': codigo_resultado,
+        }
+    }
+
+    return resultado

@@ -14,7 +14,7 @@ from typing import List, Optional
 import tempfile
 
 from utils.s3_utils import subir_archivo_s3
-from core.python.facturas.secure_processor import _extraer_xmls_embebidos
+from core.python.utils.xml_utils import extraer_xmls_embebidos
 
 import yaml
 from dotenv import load_dotenv
@@ -367,7 +367,7 @@ class EmailListener:
         self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_adjunto_xml)
 
         # 5. Extraer XMLs embebidos y generar eventos
-        contenidos_xml = _extraer_xmls_embebidos(par.xml_path)
+        contenidos_xml = extraer_xmls_embebidos(par.xml_path)
         if isinstance(contenidos_xml, dict):
             for tipo, contenido in contenidos_xml.items():
                 if contenido:

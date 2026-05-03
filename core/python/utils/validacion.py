@@ -327,6 +327,7 @@ def validar_estructura_minima_ubl_v1(
 
     if not faltantes:
         resultado = True
+        mensaje = 'El XML cumple con la estructura mínima UBL.'
 
     else:
         mensaje = (
@@ -337,10 +338,18 @@ def validar_estructura_minima_ubl_v1(
     return resultado, mensaje
 
 
-def validar_fecha_futura(fecha: str, hora: str) -> bool:
+def validar_fecha_futura(fecha: str, hora: str) -> dict:
+    """Valida que la fecha y hora no sean futuras.
+
+    Args:
+        fecha: Cadena de fecha en formato ISO (YYYY-MM-DD).
+        hora: Cadena de hora en formato ISO (HH:MM:SS±HH:MM).
+
+    Returns:
+        Diccionario con 'mensaje' y 'resultado' (bool).
     """
-    
-    """
+    resultado_validacion = False
+
     dt_str = f'{fecha}T{hora}'
 
     # Normalizar timezone: -05:00 → -0500
@@ -355,12 +364,12 @@ def validar_fecha_futura(fecha: str, hora: str) -> bool:
 
     if fecha_hora_utc > ahora_utc:
         mensaje = (
-            f'Fecha y hora de futuras (Fecha = "{fecha}", Hora = "{hora}").'
+            f'Fecha y hora futuras (Fecha = "{fecha}", Hora = "{hora}").'
         )
     else:
         mensaje = f'Fecha y hora válidas: {fecha} {hora}.'
         resultado_validacion = True
-    
+
     validacion = {'mensaje': mensaje, 'resultado': resultado_validacion}
 
     return validacion

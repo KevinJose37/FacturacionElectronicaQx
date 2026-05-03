@@ -1,28 +1,27 @@
 """Módulo que contiene funciones de validación de los ítems de la factura electrónica."""
 
+# Standard library imports
+import logging
+
 # Third-party imports
 from lxml import etree
 
 
-def validar_lineas_factura_v1(xml_invoice: etree._Element | None) -> bool:
+logger = logging.getLogger(__name__)
+
+
+def validar_lineas_factura_v1(xml_invoice: etree._Element | None) -> dict:
     """Valida las líneas de la factura electrónica (InvoiceLine) según la resolución
      000165 de 2023.
      
     Args:
         xml_invoice: Árbol XML de la factura electrónica a validar.
         
-    Reglas:
-    - Debe existir al menos una línea (cac:InvoiceLine)
-    - Cada línea debe tener ID (cbc:ID)
-    - Cada línea debe tener cantidad (cbc:InvoicedQuantity) > 0
-    - Cada línea debe tener valor (cbc:LineExtensionAmount) > 0
-    - Cada línea debe tener descripción (cac:Item/cbc:Description) no vacía
-    - Cada línea debe tener código de identificación del ítem
-      (cac:Item/cac:StandardItemIdentification/cbc:ID)
-    
-    Retorna:
-        True si las líneas cumplen con las validaciones, False en caso contrario.
-    
+    Returns:
+        Diccionario con:
+        - 'valido': bool indicando si las líneas cumplen.
+        - 'mensaje': str con la descripción del resultado.
+        - 'datos': dict con líneas extraídas y conteo.
     """
 
     NAMESPACES = {
@@ -31,11 +30,20 @@ def validar_lineas_factura_v1(xml_invoice: etree._Element | None) -> bool:
     }
 
     errores = []
+    lineas_extraidas = []
 
     if xml_invoice is None:
         errores.append('No se encontró el XML Invoice para validar las líneas.')
 
     else:
+        # Extraer LineCountNumeric
+        nodo_count = xml_invoice.xpath('./cbc:LineCountNumeric', namespaces=NAMESPACES)
+        conteo_informado = (
+            int(nodo_count[0].text.strip())
+            if nodo_count and nodo_count[0].text and nodo_count[0].text.strip().isdigit()
+            else None
+        )
+
         lineas = xml_invoice.xpath('./cac:InvoiceLine', namespaces=NAMESPACES)
 
         if not lineas:
@@ -53,6 +61,9 @@ def validar_lineas_factura_v1(xml_invoice: etree._Element | None) -> bool:
                     './cac:Item/cac:StandardItemIdentification/cbc:ID',
                     namespaces=NAMESPACES
                 )
+                precio_unitario = linea.xpath(
+                    './cac:Price/cbc:PriceAmount', namespaces=NAMESPACES
+                )
 
                 id_val = (id_linea[0].text or '').strip() if id_linea else ''
                 cantidad_val = (cantidad[0].text or '').strip() if cantidad else ''
@@ -62,7 +73,49 @@ def validar_lineas_factura_v1(xml_invoice: etree._Element | None) -> bool:
                     (descripcion[0].text or '').strip() if descripcion else ''
                 )
                 codigo_val = (codigo_item[0].text or '').strip() if codigo_item else ''
+                precio_unit_val = (
+                    (precio_unitario[0].text or '').strip() if precio_unitario else ''
+                )
 
+                # Extraer impuestos a nivel de línea
+                impuestos_linea = []
+                tax_totals = linea.xpath('./cac:TaxTotal', namespaces=NAMESPACES)
+                for tt in tax_totals:
+                    subtotales = tt.xpath('./cac:TaxSubtotal', namespaces=NAMESPACES)
+                    for st in subtotales:
+                        nodo_tax_id = st.xpath(
+                            './cac:TaxCategory/cac:TaxScheme/cbc:ID',
+                            namespaces=NAMESPACES
+                        )
+                        nodo_percent = st.xpath(
+                            './cac:TaxCategory/cbc:Percent', namespaces=NAMESPACES
+                        )
+                        nodo_tax_amount = st.xpath(
+                            './cbc:TaxAmount', namespaces=NAMESPACES
+                        )
+                        nodo_taxable = st.xpath(
+                            './cbc:TaxableAmount', namespaces=NAMESPACES
+                        )
+                        impuestos_linea.append({
+                            'codigo_impuesto': (
+                                (nodo_tax_id[0].text or '').strip()
+                                if nodo_tax_id else None
+                            ),
+                            'tarifa': (
+                                (nodo_percent[0].text or '').strip()
+                                if nodo_percent else None
+                            ),
+                            'valor_impuesto': (
+                                (nodo_tax_amount[0].text or '').strip()
+                                if nodo_tax_amount else None
+                            ),
+                            'base_gravable': (
+                                (nodo_taxable[0].text or '').strip()
+                                if nodo_taxable else None
+                            ),
+                        })
+
+                # Validaciones
                 if not id_val:
                     errores.append(f'Línea {idx}: no tiene ID.')
 
@@ -74,14 +127,12 @@ def validar_lineas_factura_v1(xml_invoice: etree._Element | None) -> bool:
                         errores.append(
                             f'Línea {idx}: cantidad inválida ({cantidad_val}).'
                         )
-                        
                 except Exception:
                     errores.append(f'Línea {idx}: cantidad no numérica ({cantidad_val}).')
 
                 try:
                     if float(valor_val) <= 0:
                         errores.append(f'Línea {idx}: valor inválido ({valor_val}).')
-
                 except Exception:
                     errores.append(f'Línea {idx}: valor no numérico ({valor_val}).')
 
@@ -93,14 +144,33 @@ def validar_lineas_factura_v1(xml_invoice: etree._Element | None) -> bool:
                         f'Línea {idx}: no tiene código de identificación del ítem.'
                     )
 
+                lineas_extraidas.append({
+                    'numero_linea': int(id_val) if id_val.isdigit() else idx,
+                    'cantidad': cantidad_val,
+                    'unidad_medida': unidad_medida,
+                    'valor_total_linea': valor_val,
+                    'valor_unitario': precio_unit_val,
+                    'descripcion': descripcion_val,
+                    'codigo_item': codigo_val,
+                    'impuestos': impuestos_linea,
+                })
+
     if errores:
         mensaje = 'Errores en validación de líneas:\n' + '\n'.join(errores)
-        enviar_log_validacion(mensaje)
         resultado_validacion = False
-
     else:
         mensaje = 'Las líneas de la factura cumplen el requisito 8.'
-        enviar_log_validacion(mensaje)
         resultado_validacion = True
-    
-    return resultado_validacion
+
+    logger.debug(mensaje)
+
+    resultado = {
+        'valido': resultado_validacion,
+        'mensaje': mensaje,
+        'datos': {
+            'lineas': lineas_extraidas,
+            'total_lineas': len(lineas_extraidas),
+        }
+    }
+
+    return resultado

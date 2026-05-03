@@ -1,25 +1,27 @@
 """Módulo que contiene funciones de validación para la numeración de facturas."""
 
+# Standard library imports
+import logging
+
 # Third-party imports
 from lxml import etree
 
 
-def validar_numeracion_dian_v1(xml_factura: etree._Element) -> bool:
+logger = logging.getLogger(__name__)
+
+
+def validar_numeracion_dian_v1(xml_factura: etree._Element) -> dict:
     """Valida la numeración DIAN de la factura electrónica según la resolución
     000165 de 2023.
     
     Args:
         xml_factura: Árbol XML de la factura electrónica a validar.
 
-    Reglas:
-    - Debe existir número de factura
-    - Debe existir autorización DIAN
-    - Debe existir rango (From, To)
-    - Si hay prefijo, debe ser consistente
-    - El número debe estar dentro del rango autorizado
-
-    Retorna:
-        True si la numeración es válida, False en caso contrario.
+    Returns:
+        Diccionario con:
+        - 'valido': bool indicando si la numeración es válida.
+        - 'mensaje': str con la descripción del resultado.
+        - 'datos': dict con autorizacion, prefijo, numero, rango, fechas.
     """
 
     NAMESPACES = {
@@ -31,7 +33,6 @@ def validar_numeracion_dian_v1(xml_factura: etree._Element) -> bool:
 
     nodo_id = xml_factura.xpath('./cbc:ID', namespaces=NAMESPACES)
     id_factura = (nodo_id[0].text or '').strip() if nodo_id else None
-    prefijo_scheme = nodo_id[0].get('schemeID') if nodo_id else None
 
     nodo_auth = xml_factura.xpath(
         './/sts:InvoiceControl/sts:InvoiceAuthorization',
@@ -52,11 +53,25 @@ def validar_numeracion_dian_v1(xml_factura: etree._Element) -> bool:
         namespaces=NAMESPACES
     )
 
+    # Fechas de vigencia de la autorización
+    nodo_start_date = xml_factura.xpath(
+        './/sts:InvoiceControl/sts:AuthorizationPeriod/cbc:StartDate',
+        namespaces=NAMESPACES
+    )
+    nodo_end_date = xml_factura.xpath(
+        './/sts:InvoiceControl/sts:AuthorizationPeriod/cbc:EndDate',
+        namespaces=NAMESPACES
+    )
+
     rango_from = (nodo_from[0].text or '').strip() if nodo_from else None
     rango_to = (nodo_to[0].text or '').strip() if nodo_to else None
     prefijo_dian = (nodo_prefix[0].text or '').strip() if nodo_prefix else None
+    fecha_inicio = (nodo_start_date[0].text or '').strip() if nodo_start_date else None
+    fecha_fin = (nodo_end_date[0].text or '').strip() if nodo_end_date else None
 
     resultado_validacion = False
+    prefijo_detectado = ''
+    numero_consecutivo = None
 
     if not id_factura:
         mensaje = 'No se encontró número de factura (cbc:ID).'
@@ -68,24 +83,17 @@ def validar_numeracion_dian_v1(xml_factura: etree._Element) -> bool:
         mensaje = f'Factura "{id_factura}" sin rango autorizado DIAN.'
 
     else:
-        prefijo_detectado = ''
         numero_str = id_factura
 
         if prefijo_dian and id_factura.startswith(prefijo_dian):
             prefijo_detectado = prefijo_dian
             numero_str = id_factura[len(prefijo_dian):]
 
-        elif prefijo_scheme:
-            prefijo_detectado = prefijo_scheme
-
-            if id_factura.startswith(prefijo_scheme):
-                numero_str = id_factura[len(prefijo_scheme):]
-
         if not numero_str.isdigit():
             mensaje = (f'Factura "{id_factura}" tiene un consecutivo no numérico.')
 
         else:
-            numero = int(numero_str)
+            numero_consecutivo = int(numero_str)
 
             try:
                 rango_inicio = int(rango_from)
@@ -98,16 +106,10 @@ def validar_numeracion_dian_v1(xml_factura: etree._Element) -> bool:
                 )
 
             else:
-                if not (rango_inicio <= numero <= rango_fin):
+                if not (rango_inicio <= numero_consecutivo <= rango_fin):
                     mensaje = (
                         f'Factura "{id_factura}" fuera de rango autorizado '
                         f'({rango_inicio}-{rango_fin}).'
-                    )
-
-                elif prefijo_dian and prefijo_detectado != prefijo_dian:
-                    mensaje = (
-                        f'Factura "{id_factura}" con prefijo inconsistente. '
-                        f'Esperado: "{prefijo_dian}", encontrado: "{prefijo_detectado}".'
                     )
 
                 else:
@@ -117,6 +119,21 @@ def validar_numeracion_dian_v1(xml_factura: etree._Element) -> bool:
                     )
                     resultado_validacion = True
 
-    enviar_log_validacion(mensaje)
+    logger.debug(mensaje)
 
-    return resultado_validacion
+    resultado = {
+        'valido': resultado_validacion,
+        'mensaje': mensaje,
+        'datos': {
+            'numero_factura': id_factura,
+            'numero_autorizacion': autorizacion,
+            'prefijo': prefijo_detectado or prefijo_dian,
+            'numero_consecutivo': numero_consecutivo,
+            'rango_desde': int(rango_from) if rango_from and rango_from.isdigit() else None,
+            'rango_hasta': int(rango_to) if rango_to and rango_to.isdigit() else None,
+            'fecha_inicio_vigencia': fecha_inicio,
+            'fecha_fin_vigencia': fecha_fin,
+        }
+    }
+
+    return resultado

@@ -1,6 +1,9 @@
 """Módulo que contiene funciones de validación de la fecha de generación de la factura
  electrónica."""
 
+# Standard library imports
+import logging
+
 # Third-party imports
 from lxml import etree
 
@@ -8,19 +11,20 @@ from lxml import etree
 from core.python.utils.validacion import validar_fecha_futura
 
 
-def validar_fecha_generacion_v1(xml_factura: etree._Element) -> bool:
+logger = logging.getLogger(__name__)
+
+
+def validar_fecha_generacion_v1(xml_factura: etree._Element) -> dict:
     """Valida la fecha y hora de generación de la factura electrónica.
     
     Args:
         xml_factura: Árbol XML de la factura electrónica a validar.
 
-    Reglas:
-    - Debe existir IssueDate
-    - Debe existir IssueTime
-    - Ambos deben tener formato válido (ISO 8601)
-
-    Retorna:
-        True si la fecha y hora son válidas, False en caso contrario.
+    Returns:
+        Diccionario con:
+        - 'valido': bool indicando si la fecha y hora son válidas.
+        - 'mensaje': str con la descripción del resultado.
+        - 'datos': dict con fecha y hora extraídas.
     """
 
     NAMESPACES = {
@@ -53,6 +57,15 @@ def validar_fecha_generacion_v1(xml_factura: etree._Element) -> bool:
                 f'(IssueDate="{fecha}", IssueTime="{hora}").'
             )
 
-    enviar_log_validacion(mensaje)
+    logger.debug(mensaje)
 
-    return resultado_validacion
+    resultado = {
+        'valido': resultado_validacion,
+        'mensaje': mensaje,
+        'datos': {
+            'fecha_generacion': fecha,
+            'hora_generacion': hora,
+        }
+    }
+
+    return resultado

@@ -147,6 +147,76 @@ class InvoiceRepository:
             columnas = [desc[0].lower() for desc in cur.description]
             return [dict(zip(columnas, row)) for row in cur.fetchall()]
 
+    def obtener_adjuntos_familia(
+        self,
+        conn: Connection,
+        adjunto_id: int,
+    ) -> list[dict]:
+        """Obtiene todos los adjuntos de la familia a la que pertenece `adjunto_id`.
+
+        Sube por la cadena de padres hasta la raíz y luego baja recursivamente
+        para devolver todos los descendientes (incluyendo la raíz).
+
+        Args:
+            conn: Conexión activa.
+            adjunto_id: ID de cualquier adjunto de la familia (típicamente el
+                XML Invoice asociado a la factura).
+
+        Returns:
+            Lista de diccionarios con datos del adjunto (incluye uri, tipo y nombre).
+        """
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH RECURSIVE
+                ancestros AS (
+                    SELECT ADJUNTO_ID, ADJUNTO_PADRE_ID
+                    FROM FACTURACION.ADJUNTOS_CORREO
+                    WHERE ADJUNTO_ID = %s
+
+                    UNION ALL
+
+                    SELECT padre.ADJUNTO_ID, padre.ADJUNTO_PADRE_ID
+                    FROM FACTURACION.ADJUNTOS_CORREO padre
+                    JOIN ancestros a ON a.ADJUNTO_PADRE_ID = padre.ADJUNTO_ID
+                    WHERE padre.ADJUNTO_PADRE_ID IS NOT NULL
+                      AND padre.ADJUNTO_PADRE_ID <> padre.ADJUNTO_ID
+                ),
+                raiz AS (
+                    SELECT ADJUNTO_ID
+                    FROM ancestros
+                    WHERE ADJUNTO_PADRE_ID IS NULL
+                       OR ADJUNTO_PADRE_ID = ADJUNTO_ID
+                    LIMIT 1
+                ),
+                descendientes AS (
+                    SELECT ac.ADJUNTO_ID, ac.ADJUNTO_PADRE_ID
+                    FROM FACTURACION.ADJUNTOS_CORREO ac
+                    JOIN raiz r ON ac.ADJUNTO_ID = r.ADJUNTO_ID
+
+                    UNION ALL
+
+                    SELECT hijo.ADJUNTO_ID, hijo.ADJUNTO_PADRE_ID
+                    FROM FACTURACION.ADJUNTOS_CORREO hijo
+                    JOIN descendientes d ON hijo.ADJUNTO_PADRE_ID = d.ADJUNTO_ID
+                    WHERE hijo.ADJUNTO_ID <> hijo.ADJUNTO_PADRE_ID
+                )
+                SELECT DISTINCT
+                    ac.ADJUNTO_ID,
+                    ac.ADJUNTO_PADRE_ID,
+                    ac.NOMBRE_ARCHIVO,
+                    ac.URI_ALMACENAMIENTO,
+                    ac.ID_TIPO_ARCHIVO,
+                    ac.SHA256
+                FROM FACTURACION.ADJUNTOS_CORREO ac
+                JOIN descendientes d ON ac.ADJUNTO_ID = d.ADJUNTO_ID
+                ORDER BY ac.ID_TIPO_ARCHIVO, ac.ADJUNTO_ID
+                """,
+                (adjunto_id,),
+            )
+            columnas = [desc[0].lower() for desc in cur.description]
+            return [dict(zip(columnas, row)) for row in cur.fetchall()]
+
     # ------------------------------------------------------------------
     # Estado de eventos y procesos
     # ------------------------------------------------------------------

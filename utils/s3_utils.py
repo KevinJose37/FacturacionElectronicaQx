@@ -61,6 +61,67 @@ def subir_archivo_s3(
     return es_exitoso
 
 
+def copiar_archivo_s3(
+    origen_key: str,
+    destino_key: str,
+    bucket_name: str | None = None,
+    bucket_origen: str | None = None,
+) -> bool:
+    """Copia un objeto dentro de S3 (server-side, sin pasar por el cliente).
+
+    Útil para mover/duplicar archivos ya almacenados en el bucket sin
+    necesidad de descargarlos y volverlos a subir.
+
+    Args:
+        origen_key: Key del objeto fuente dentro del bucket de origen.
+        destino_key: Key destino dentro del bucket de destino.
+        bucket_name: Bucket de destino. Si es None, usa el de configuración.
+        bucket_origen: Bucket de origen. Si es None, usa el mismo destino.
+
+    Returns:
+        True si la copia fue exitosa, False si ocurrió algún error.
+    """
+    es_exitoso = False
+    aws_cfg = get_aws_config()
+    target_bucket = bucket_name or aws_cfg.get('bucket_name')
+    source_bucket = bucket_origen or target_bucket
+
+    if not origen_key or not destino_key:
+        logger.error('copiar_archivo_s3: origen_key o destino_key vacíos.')
+        return False
+
+    if origen_key == destino_key and source_bucket == target_bucket:
+        logger.debug('Origen y destino idénticos, omitiendo copia: %s', origen_key)
+        return True
+
+    try:
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=aws_cfg.get('access_key'),
+            aws_secret_access_key=aws_cfg.get('secret_key'),
+            region_name=aws_cfg.get('region_name')
+        )
+        s3_client.copy_object(
+            Bucket=target_bucket,
+            Key=destino_key,
+            CopySource={'Bucket': source_bucket, 'Key': origen_key},
+        )
+        logger.info(
+            'Archivo copiado en S3: s3://%s/%s -> s3://%s/%s',
+            source_bucket, origen_key, target_bucket, destino_key,
+        )
+        es_exitoso = True
+    except (BotoCoreError, ClientError) as error:
+        logger.error(
+            'Error de AWS al copiar s3://%s/%s -> s3://%s/%s: %s',
+            source_bucket, origen_key, target_bucket, destino_key, error,
+        )
+    except Exception as e:
+        logger.error('Error inesperado al copiar en S3: %s', e)
+
+    return es_exitoso
+
+
 def obtener_xml_s3(
     s3_key: str,
     bucket_name: str | None = None,

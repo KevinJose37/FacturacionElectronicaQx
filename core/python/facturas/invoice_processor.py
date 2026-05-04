@@ -22,8 +22,14 @@ from typing import Optional
 from config import get_postgres_config
 from core.python.facturas.invoice_repository import InvoiceRepository
 from core.python.utils.xml_utils import parsear_xml_bytes
-from metadata.db_metadata import IdEstadoProceso, IdTipoProceso, IdTipoError
-from utils.s3_utils import obtener_xml_s3
+from metadata.db_metadata import (
+    IdEstadoProceso,
+    IdTipoArchivo,
+    IdTipoProceso,
+    IdTipoError,
+)
+from metadata.path_s3 import RutasS3
+from utils.s3_utils import copiar_archivo_s3, obtener_xml_s3
 
 # Validators
 from core.python.validators.req_01_denominacion import validar_denominacion_v1
@@ -323,6 +329,110 @@ class InvoiceProcessor:
         estado = IdEstadoProceso.procesado if resultado['valido'] else IdEstadoProceso.error
         self._repo.crear_proceso_ingesta(conn, adjunto_id, tipo, resultado['mensaje'], estado)
 
+    @staticmethod
+    def _sanitizar_segmento_ruta(valor: str) -> str:
+        """Limpia un valor para usarlo como segmento de path S3.
+
+        Reemplaza separadores y caracteres conflictivos por guiones bajos.
+        """
+        if not valor:
+            return 'DESCONOCIDO'
+        seguro = ''.join(c if c.isalnum() or c in ('-', '_', '.') else '_' for c in valor)
+        return seguro.strip('_') or 'DESCONOCIDO'
+
+    def _copiar_adjuntos_a_processed(
+        self,
+        conn,
+        adjunto_id: int,
+        numero_documento_emisor: str,
+        fecha_referencia: datetime,
+    ) -> None:
+        """Copia los archivos originales de la factura a la zona `processed/` en S3.
+
+        Para una factura recién registrada, busca toda su familia de adjuntos
+        (ZIP raíz, sub-ZIPs anidados, XML Invoice original y PDF) y los copia
+        server-side dentro del bucket a la ruta:
+
+            quipux/facturacion_electronica/processed/facturas/
+                {proveedor}/{year}/{month}/{day}/{nombre_descarga}
+
+        - `proveedor`  = `numero_documento` del emisor identificado en la
+          validación de la factura (req_02).
+        - `year/month/day` se derivan de la fecha de generación de la factura
+          (mismo criterio que `_procesar_zips` usa con `fecha_envio`).
+
+        Solo se copian:
+            * Archivos ZIP (raíz y anidados).
+            * El XML Invoice original (NO los AttachedDocument ni
+              ApplicationResponse, que son XML auxiliares).
+            * El PDF.
+
+        Es una operación best-effort: cualquier fallo se loguea pero no
+        interrumpe la transacción de registro de la factura.
+        """
+        adjuntos = self._repo.obtener_adjuntos_familia(conn, adjunto_id)
+        if not adjuntos:
+            logger.debug(
+                'No se encontraron adjuntos en la familia de adjunto_id=%s',
+                adjunto_id,
+            )
+            return
+
+        proveedor = self._sanitizar_segmento_ruta(numero_documento_emisor)
+        year = fecha_referencia.strftime('%Y')
+        month = fecha_referencia.strftime('%m')
+        day = fecha_referencia.strftime('%d')
+
+        copiados = 0
+        for adj in adjuntos:
+            id_tipo = adj.get('id_tipo_archivo')
+            uri_origen = adj.get('uri_almacenamiento')
+            nombre = adj.get('nombre_archivo')
+
+            if not uri_origen or not nombre:
+                continue
+
+            # Filtrar: solo ZIP, PDF y el XML Invoice original.
+            nombre_lower = nombre.lower()
+            nombre_destino = nombre
+            if id_tipo == IdTipoArchivo.zip:
+                pass
+            elif id_tipo == IdTipoArchivo.pdf:
+                pass
+            elif id_tipo == IdTipoArchivo.xml:
+                # Excluimos XMLs auxiliares (AttachedDocument, ApplicationResponse).
+                # El XML "Invoice" original es el único que se copia.
+                if (
+                    '_attacheddocument' in nombre_lower
+                    or '_applicationresponse' in nombre_lower
+                ):
+                    continue
+                # Quitar el sufijo "_invoice" del nombre destino (case-insensitive),
+                # ya que la ruta processed/ no lo necesita.
+                idx = nombre_lower.rfind('_invoice')
+                if idx != -1:
+                    nombre_destino = nombre[:idx] + nombre[idx + len('_invoice'):]
+            else:
+                continue
+
+            destino = RutasS3.factura_procesada_dir.format(
+                proveedor=proveedor, year=year, month=month, day=day,
+            ) + '/' + nombre_destino
+
+            ok = copiar_archivo_s3(origen_key=uri_origen, destino_key=destino)
+            if ok:
+                copiados += 1
+            else:
+                logger.warning(
+                    'No se pudo copiar adjunto a processed: %s -> %s',
+                    uri_origen, destino,
+                )
+
+        logger.info(
+            'Adjuntos copiados a processed/ para adjunto_id=%s proveedor=%s: %d',
+            adjunto_id, proveedor, copiados,
+        )
+
     def _poblar_tablas(self, conn, adjunto_id, cufe, res_denom, res_emisor,
                        res_adq, res_num, res_fecha, res_valor, res_firma,
                        res_qr, res_items, res_imp, res_forma, res_medio,
@@ -448,6 +558,24 @@ class InvoiceProcessor:
                 self._repo.insertar_condicion_fiscal(
                     conn, id_factura, id_adq, 'ADQUIRIENTE',
                     d_fiscal['responsabilidades_adquiriente'],
+                )
+
+            # Copia de adjuntos originales (.zip, .xml, .pdf) a la zona
+            # `processed/facturas/{proveedor}/{year}/{month}/{day}/` en S3.
+            # Es best-effort: si falla, NO se aborta el registro de la factura.
+            try:
+                self._copiar_adjuntos_a_processed(
+                    conn=conn,
+                    adjunto_id=adjunto_id,
+                    numero_documento_emisor=(
+                        datos_emisor.get('numero_documento') or 'DESCONOCIDO'
+                    ),
+                    fecha_referencia=fecha_gen,
+                )
+            except Exception as exc_copia:
+                logger.warning(
+                    'Fallo al copiar adjuntos a processed/ para CUFE=%s: %s',
+                    cufe[:20], exc_copia,
                 )
 
             # Registro final

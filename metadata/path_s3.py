@@ -28,10 +28,13 @@ class RutasS3:
     facturas_processed = f"{processed}/facturas"
     """Subruta para facturas procesadas exitosamente."""
 
+    tipo_documento_dir = f"{facturas_processed}/{{tipo_documento}}"
+    """Subruta por tipo de documento del proveedor."""
+
     factura_procesada_dir = (
-        f"{facturas_processed}/{{proveedor}}/{{year}}/{{month}}/{{day}}"
+        f"{tipo_documento_dir}/{{proveedor}}/{{year}}/{{month}}/{{day}}"
     )
-    """Carpeta destino por proveedor y fecha (sin nombre de archivo)."""
+    """Carpeta destino por tipo de documento, proveedor y fecha (sin nombre de archivo)."""
 
     zip_procesado = f"{factura_procesada_dir}/{{nombre_descarga}}"
     """Ruta para el ZIP original de una factura procesada."""

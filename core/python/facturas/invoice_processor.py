@@ -340,12 +340,37 @@ class InvoiceProcessor:
         seguro = ''.join(c if c.isalnum() or c in ('-', '_', '.') else '_' for c in valor)
         return seguro.strip('_') or 'DESCONOCIDO'
 
+    def _obtener_codigo_tipo_documento(self, conn, id_tipo_documento: Optional[str]) -> str:
+        """Resuelve el `CODIGO_REFERENCIA` (ej: 'NIT') desde el catálogo.
+
+        Devuelve 'DESCONOCIDO' si el código no está mapeado o es nulo.
+        """
+        if not id_tipo_documento:
+            return 'DESCONOCIDO'
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    'SELECT CODIGO_REFERENCIA '
+                    'FROM FACTURACION.TIPO_DOCUMENTO_IDENTIDAD '
+                    'WHERE ID_TIPO_DOCUMENTO = %s',
+                    (id_tipo_documento,),
+                )
+                row = cur.fetchone()
+                return row[0] if row else 'DESCONOCIDO'
+        except Exception:
+            logger.exception(
+                'Error consultando TIPO_DOCUMENTO_IDENTIDAD para id=%s',
+                id_tipo_documento,
+            )
+            return 'DESCONOCIDO'
+
     def _copiar_adjuntos_a_processed(
         self,
         conn,
         adjunto_id: int,
         numero_documento_emisor: str,
         fecha_referencia: datetime,
+        id_tipo_documento_emisor: Optional[str] = None,
     ) -> None:
         """Copia los archivos originales de la factura a la zona `processed/` en S3.
 
@@ -379,6 +404,9 @@ class InvoiceProcessor:
             return
 
         proveedor = self._sanitizar_segmento_ruta(numero_documento_emisor)
+        tipo_documento = self._sanitizar_segmento_ruta(
+            self._obtener_codigo_tipo_documento(conn, id_tipo_documento_emisor)
+        ).lower()
         year = fecha_referencia.strftime('%Y')
         month = fecha_referencia.strftime('%m')
         day = fecha_referencia.strftime('%d')
@@ -400,22 +428,21 @@ class InvoiceProcessor:
             elif id_tipo == IdTipoArchivo.pdf:
                 pass
             elif id_tipo == IdTipoArchivo.xml:
-                # Excluimos XMLs auxiliares (AttachedDocument, ApplicationResponse).
-                # El XML "Invoice" original es el único que se copia.
-                if (
-                    '_attacheddocument' in nombre_lower
-                    or '_applicationresponse' in nombre_lower
-                ):
-                    continue
-                # Quitar el sufijo "_invoice" del nombre destino (case-insensitive),
-                # ya que la ruta processed/ no lo necesita.
+                # Solo copiamos el XML "Invoice" embebido (contiene "_invoice"
+                # en el nombre; lo genera _registrar_par_factura). El XML padre
+                # original (AttachedDocument, sin sufijo) y el ApplicationResponse
+                # son auxiliares y no se copian a processed/.
                 idx = nombre_lower.rfind('_invoice')
-                if idx != -1:
-                    nombre_destino = nombre[:idx] + nombre[idx + len('_invoice'):]
+                if idx == -1:
+                    continue
+                # Quitar el sufijo "_invoice" del nombre destino, ya que la
+                # ruta processed/ no lo necesita.
+                nombre_destino = nombre[:idx] + nombre[idx + len('_invoice'):]
             else:
                 continue
 
             destino = RutasS3.factura_procesada_dir.format(
+                tipo_documento=tipo_documento,
                 proveedor=proveedor, year=year, month=month, day=day,
             ) + '/' + nombre_destino
 
@@ -449,6 +476,9 @@ class InvoiceProcessor:
                 'nombre_comercial': datos_emisor.get('nombre_comercial'),
                 'correo_contacto': datos_emisor.get('correo_contacto'),
                 'telefono_contacto': datos_emisor.get('telefono_contacto'),
+                # Tipo de identificación DIAN (Anexo 1.9): viene del schemeName
+                # del cbc:CompanyID. Se persiste como FK a TIPO_DOCUMENTO_IDENTIDAD.
+                'id_tipo_documento': datos_emisor.get('scheme_name'),
             })
 
             # TERCERO adquiriente
@@ -461,6 +491,9 @@ class InvoiceProcessor:
                 'nombre_comercial': datos_adq.get('nombre_comercial'),
                 'correo_contacto': datos_adq.get('correo_contacto'),
                 'telefono_contacto': datos_adq.get('telefono_contacto'),
+                # Tipo de identificación DIAN (Anexo 1.9): viene del schemeName
+                # del cbc:CompanyID. Se persiste como FK a TIPO_DOCUMENTO_IDENTIDAD.
+                'id_tipo_documento': datos_adq.get('scheme_name'),
             })
 
             # AUTORIZACION_NUMERACION_DIAN
@@ -571,6 +604,7 @@ class InvoiceProcessor:
                         datos_emisor.get('numero_documento') or 'DESCONOCIDO'
                     ),
                     fecha_referencia=fecha_gen,
+                    id_tipo_documento_emisor=datos_emisor.get('scheme_name'),
                 )
             except Exception as exc_copia:
                 logger.warning(

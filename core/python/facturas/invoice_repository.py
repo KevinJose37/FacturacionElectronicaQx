@@ -166,51 +166,26 @@ class InvoiceRepository:
             Lista de diccionarios con datos del adjunto (incluye uri, tipo y nombre).
         """
         with conn.cursor() as cur:
+            # La familia de un adjunto = todos los adjuntos del mismo CORREO_ID.
+            # Es más simple y robusto que recorrer el árbol padre/hijo, y cubre
+            # los casos con autorreferencia en la raíz (ZIP padre con
+            # ADJUNTO_PADRE_ID = ADJUNTO_ID) sin riesgo de loops.
             cur.execute(
                 """
-                WITH RECURSIVE
-                ancestros AS (
-                    SELECT ADJUNTO_ID, ADJUNTO_PADRE_ID
+                SELECT
+                    ADJUNTO_ID,
+                    ADJUNTO_PADRE_ID,
+                    NOMBRE_ARCHIVO,
+                    URI_ALMACENAMIENTO,
+                    ID_TIPO_ARCHIVO,
+                    SHA256
+                FROM FACTURACION.ADJUNTOS_CORREO
+                WHERE CORREO_ID = (
+                    SELECT CORREO_ID
                     FROM FACTURACION.ADJUNTOS_CORREO
                     WHERE ADJUNTO_ID = %s
-
-                    UNION ALL
-
-                    SELECT padre.ADJUNTO_ID, padre.ADJUNTO_PADRE_ID
-                    FROM FACTURACION.ADJUNTOS_CORREO padre
-                    JOIN ancestros a ON a.ADJUNTO_PADRE_ID = padre.ADJUNTO_ID
-                    WHERE padre.ADJUNTO_PADRE_ID IS NOT NULL
-                      AND padre.ADJUNTO_PADRE_ID <> padre.ADJUNTO_ID
-                ),
-                raiz AS (
-                    SELECT ADJUNTO_ID
-                    FROM ancestros
-                    WHERE ADJUNTO_PADRE_ID IS NULL
-                       OR ADJUNTO_PADRE_ID = ADJUNTO_ID
-                    LIMIT 1
-                ),
-                descendientes AS (
-                    SELECT ac.ADJUNTO_ID, ac.ADJUNTO_PADRE_ID
-                    FROM FACTURACION.ADJUNTOS_CORREO ac
-                    JOIN raiz r ON ac.ADJUNTO_ID = r.ADJUNTO_ID
-
-                    UNION ALL
-
-                    SELECT hijo.ADJUNTO_ID, hijo.ADJUNTO_PADRE_ID
-                    FROM FACTURACION.ADJUNTOS_CORREO hijo
-                    JOIN descendientes d ON hijo.ADJUNTO_PADRE_ID = d.ADJUNTO_ID
-                    WHERE hijo.ADJUNTO_ID <> hijo.ADJUNTO_PADRE_ID
                 )
-                SELECT DISTINCT
-                    ac.ADJUNTO_ID,
-                    ac.ADJUNTO_PADRE_ID,
-                    ac.NOMBRE_ARCHIVO,
-                    ac.URI_ALMACENAMIENTO,
-                    ac.ID_TIPO_ARCHIVO,
-                    ac.SHA256
-                FROM FACTURACION.ADJUNTOS_CORREO ac
-                JOIN descendientes d ON ac.ADJUNTO_ID = d.ADJUNTO_ID
-                ORDER BY ac.ID_TIPO_ARCHIVO, ac.ADJUNTO_ID
+                ORDER BY ID_TIPO_ARCHIVO, ADJUNTO_ID
                 """,
                 (adjunto_id,),
             )
@@ -410,19 +385,22 @@ class InvoiceRepository:
                 INSERT INTO FACTURACION.TERCERO (
                     ID_ROL_TERCERO, NUMERO_DOCUMENTO, DIGITO_VERIFICADOR,
                     RAZON_SOCIAL, NOMBRE_COMERCIAL,
-                    CORREO_CONTACTO, TELEFONO_CONTACTO
+                    CORREO_CONTACTO, TELEFONO_CONTACTO,
+                    ID_TIPO_DOCUMENTO
                 )
                 VALUES (
                     %(id_rol_tercero)s, %(numero_documento)s, %(digito_verificador)s,
                     %(razon_social)s, %(nombre_comercial)s,
-                    %(correo_contacto)s, %(telefono_contacto)s
+                    %(correo_contacto)s, %(telefono_contacto)s,
+                    %(id_tipo_documento)s
                 )
                 ON CONFLICT (ID_ROL_TERCERO, NUMERO_DOCUMENTO) DO UPDATE SET
                     DIGITO_VERIFICADOR = COALESCE(EXCLUDED.DIGITO_VERIFICADOR, FACTURACION.TERCERO.DIGITO_VERIFICADOR),
                     RAZON_SOCIAL = COALESCE(EXCLUDED.RAZON_SOCIAL, FACTURACION.TERCERO.RAZON_SOCIAL),
                     NOMBRE_COMERCIAL = COALESCE(EXCLUDED.NOMBRE_COMERCIAL, FACTURACION.TERCERO.NOMBRE_COMERCIAL),
                     CORREO_CONTACTO = COALESCE(EXCLUDED.CORREO_CONTACTO, FACTURACION.TERCERO.CORREO_CONTACTO),
-                    TELEFONO_CONTACTO = COALESCE(EXCLUDED.TELEFONO_CONTACTO, FACTURACION.TERCERO.TELEFONO_CONTACTO)
+                    TELEFONO_CONTACTO = COALESCE(EXCLUDED.TELEFONO_CONTACTO, FACTURACION.TERCERO.TELEFONO_CONTACTO),
+                    ID_TIPO_DOCUMENTO = COALESCE(EXCLUDED.ID_TIPO_DOCUMENTO, FACTURACION.TERCERO.ID_TIPO_DOCUMENTO)
                 RETURNING ID_TERCERO
                 """,
                 datos,

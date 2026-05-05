@@ -8,10 +8,7 @@ import logging
 from lxml import etree
 
 # Local application imports
-from core.python.utils.validacion import calcular_dv_nit_v1
 from core.python.utils.validacion import validar_datos_persona
-from metadata.db_metadata import IdTipoError
-
 
 logger = logging.getLogger(__name__)
 

@@ -6,6 +6,7 @@ import logging
 # Third-party imports
 from lxml import etree
 
+# Local application imports
 from metadata.db_metadata import IdTipoError
 
 logger = logging.getLogger(__name__)

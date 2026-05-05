@@ -5,6 +5,7 @@ import logging
 
 # Third-party imports
 from lxml import etree
+from metadata.db_metadata import IdTipoError
 
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,7 @@ def validar_medio_pago_v1(
     resultado = {
         'valido': resultado_validacion,
         'mensaje': mensaje,
+        'id_error': IdTipoError.medio_pago_invalido if not resultado_validacion else None,
         'datos': {
             'codigo_medio_pago': codigo_medio_pago,
             'nombre_medio_pago': nombre_medio_pago,

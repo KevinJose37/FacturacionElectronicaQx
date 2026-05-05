@@ -9,7 +9,7 @@ from lxml import etree
 
 # Local application imports
 from core.python.utils.validacion import validar_fecha_futura
-
+from metadata.db_metadata import IdTipoError
 
 logger = logging.getLogger(__name__)
 
@@ -38,30 +38,40 @@ def validar_fecha_generacion_v1(xml_factura: etree._Element) -> dict:
     hora = (nodo_hora[0].text or '').strip() if nodo_hora else None
 
     resultado_validacion = False
+    id_error = None
 
     if not fecha:
         mensaje = 'No se encontró la fecha de generación (IssueDate).'
+        id_error = IdTipoError.fecha_generacion_formato_invalido
 
     elif not hora:
         mensaje = 'No se encontró la hora de generación (IssueTime).'
+        id_error = IdTipoError.fecha_generacion_formato_invalido
 
     else:
         try:
             validacion = validar_fecha_futura(fecha, hora)
             mensaje = validacion['mensaje']
             resultado_validacion = validacion['resultado']
+            if not resultado_validacion:
+                if 'futura' in mensaje.lower():
+                    id_error = IdTipoError.fecha_generacion_futura
+                else:
+                    id_error = IdTipoError.fecha_generacion_formato_invalido
 
         except Exception:
             mensaje = (
                 f'Fecha u hora de generación inválida '
                 f'(IssueDate="{fecha}", IssueTime="{hora}").'
             )
+            id_error = IdTipoError.fecha_generacion_formato_invalido
 
     logger.debug(mensaje)
 
     resultado = {
         'valido': resultado_validacion,
         'mensaje': mensaje,
+        'id_error': id_error,
         'datos': {
             'fecha_generacion': fecha,
             'hora_generacion': hora,

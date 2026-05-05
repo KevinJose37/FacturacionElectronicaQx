@@ -6,6 +6,7 @@ import logging
 # Third-party imports
 from lxml import etree
 
+from metadata.db_metadata import IdTipoError
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ def validar_lineas_factura_v1(xml_invoice: etree._Element | None) -> dict:
 
     errores = []
     lineas_extraidas = []
+    id_error = None
 
     if xml_invoice is None:
         errores.append('No se encontró el XML Invoice para validar las líneas.')
@@ -158,6 +160,19 @@ def validar_lineas_factura_v1(xml_invoice: etree._Element | None) -> dict:
     if errores:
         mensaje = 'Errores en validación de líneas:\n' + '\n'.join(errores)
         resultado_validacion = False
+        
+        # Determinar el id_error más relevante
+        if any('descripción vacía' in e for e in errores):
+            id_error = IdTipoError.linea_sin_descripcion
+        elif any('cantidad' in e for e in errores):
+            id_error = IdTipoError.linea_cantidad_invalida
+        elif any('valor' in e for e in errores):
+            id_error = IdTipoError.linea_valor_invalido
+        elif any('XML Invoice' in e for e in errores) or any('no contiene líneas' in e for e in errores):
+            id_error = IdTipoError.linea_sin_descripcion # Consideramos como falta de descripción/ítem
+        else:
+            id_error = IdTipoError.linea_valor_invalido # fallback
+            
     else:
         mensaje = 'Las líneas de la factura cumplen el requisito 8.'
         resultado_validacion = True
@@ -167,6 +182,7 @@ def validar_lineas_factura_v1(xml_invoice: etree._Element | None) -> dict:
     resultado = {
         'valido': resultado_validacion,
         'mensaje': mensaje,
+        'id_error': id_error,
         'datos': {
             'lineas': lineas_extraidas,
             'total_lineas': len(lineas_extraidas),

@@ -5,6 +5,7 @@ import logging
 
 # Third-party imports
 from lxml import etree
+from metadata.db_metadata import IdTipoError
 
 
 logger = logging.getLogger(__name__)
@@ -105,6 +106,7 @@ def validar_forma_pago_v1(xml_invoice: etree._Element | None) -> dict:
     resultado = {
         'valido': resultado_validacion,
         'mensaje': mensaje,
+        'id_error': IdTipoError.forma_pago_invalida if not resultado_validacion else None,
         'datos': {
             'codigo_forma_pago': codigo_forma_pago,
             'nombre_forma_pago': nombre_forma_pago,

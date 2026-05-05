@@ -6,6 +6,7 @@ import os
 
 # Third-party imports
 from lxml import etree
+from metadata.db_metadata import IdTipoError
 
 # Local application imports
 from core.python.utils.validacion import validar_estructura_minima_ubl_v1
@@ -85,6 +86,7 @@ def validar_anexo_tecnico_v1(
     resultado = {
         'valido': resultado_validacion,
         'mensaje': mensaje,
+        'id_error': IdTipoError.anexo_tecnico_invalido if not resultado_validacion else None,
         'datos': {
             'metodo_validacion': metodo_validacion,
             'errores_xsd': errores_xsd if errores_xsd else None,

@@ -7,7 +7,6 @@ import logging
 from lxml import etree
 
 # Local application imports
-from core.python.utils.validacion import calcular_dv_nit_v1
 from core.python.utils.validacion import validar_datos_persona
 
 
@@ -89,6 +88,9 @@ def validar_emisor_v1(xml_raw: etree._Element) -> dict:
 
     validacion = validar_datos_persona(nombre, nit, scheme_name, dv_xml)
 
+    if validacion['resultado']:
+        validacion['mensaje'] = 'Datos del emisor válidos.'
+
     logger.debug(validacion['mensaje'])
 
     resultado = {
@@ -105,5 +107,8 @@ def validar_emisor_v1(xml_raw: etree._Element) -> dict:
             'codigo_ciiu': codigo_ciiu,
         }
     }
+
+    if not validacion['resultado']:
+        resultado['id_error'] = validacion.get('id_error')
 
     return resultado

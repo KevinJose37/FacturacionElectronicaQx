@@ -5,6 +5,7 @@ import logging
 
 # Third-party imports
 from lxml import etree
+from metadata.db_metadata import IdTipoError
 
 # Local application imports
 from core.python.utils.validacion import (
@@ -118,6 +119,7 @@ def validar_firma_digital_v1(
     resultado = {
         'valido': resultado_validacion,
         'mensaje': mensaje,
+        'id_error': IdTipoError.firma_digital_invalida if not resultado_validacion else None,
         'datos': {
             'hash_firma_digital': hash_firma,
             'emisor_certificado': emisor_certificado,

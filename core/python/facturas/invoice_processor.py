@@ -229,14 +229,14 @@ class InvoiceProcessor:
         if factura_existente:
             sha256_existente = factura_existente.get('sha256')
             if sha256_existente == sha256_actual:
-                logger.info('CUFE %s ya procesado con mismo SHA256, omitiendo.', cufe[:20])
+                logger.debug('CUFE %s ya procesado con mismo SHA256, omitiendo.', cufe[:20])
                 self._repo.marcar_evento_procesado(conn, adjunto_id)
                 if ar_ev:
                     self._repo.marcar_evento_procesado(conn, ar_ev['adjunto_id'])
                 if ad_ev:
                     self._repo.marcar_evento_procesado(conn, ad_ev['adjunto_id'])
                 return True
-            logger.info('CUFE %s existe con SHA256 diferente, reprocesando.', cufe[:20])
+            logger.debug('CUFE %s existe con SHA256 diferente, reprocesando.', cufe[:20])
 
         # 4. Pipeline de validaciones del Invoice
         res_denom = validar_denominacion_v1(xml_invoice)
@@ -317,7 +317,7 @@ class InvoiceProcessor:
         if ad_ev:
             self._repo.marcar_evento_procesado(conn, ad_ev['adjunto_id'])
 
-        logger.info('Factura procesada exitosamente: CUFE=%s', cufe[:20])
+        logger.debug('Factura procesada exitosamente: CUFE=%s', cufe[:20])
         return True
 
     # ------------------------------------------------------------------
@@ -326,8 +326,11 @@ class InvoiceProcessor:
 
     def _registrar_proceso(self, conn, adjunto_id: int, tipo: int, resultado: dict) -> None:
         """Registra un paso de validación en PROCESO_INGESTA."""
-        estado = IdEstadoProceso.procesado if resultado['valido'] else IdEstadoProceso.error
-        self._repo.crear_proceso_ingesta(conn, adjunto_id, tipo, resultado['mensaje'], estado)
+        valido = resultado.get('valido', False)
+        estado = IdEstadoProceso.procesado if valido else IdEstadoProceso.error
+        id_error = resultado.get('id_error')
+
+        self._repo.crear_proceso_ingesta(conn, adjunto_id, tipo, resultado['mensaje'], estado, id_error)
 
     @staticmethod
     def _sanitizar_segmento_ruta(valor: str) -> str:
@@ -472,8 +475,6 @@ class InvoiceProcessor:
                 'id_rol_tercero': 1,  # EMISOR
                 'numero_documento': datos_emisor.get('numero_documento') or 'DESCONOCIDO',
                 'digito_verificador': datos_emisor.get('digito_verificador'),
-                'razon_social': datos_emisor.get('razon_social'),
-                'nombre_comercial': datos_emisor.get('nombre_comercial'),
                 'correo_contacto': datos_emisor.get('correo_contacto'),
                 'telefono_contacto': datos_emisor.get('telefono_contacto'),
                 # Tipo de identificación DIAN (Anexo 1.9): viene del schemeName
@@ -487,8 +488,6 @@ class InvoiceProcessor:
                 'id_rol_tercero': 2,  # ADQUIRIENTE
                 'numero_documento': datos_adq.get('numero_documento') or 'DESCONOCIDO',
                 'digito_verificador': datos_adq.get('digito_verificador'),
-                'razon_social': datos_adq.get('razon_social'),
-                'nombre_comercial': datos_adq.get('nombre_comercial'),
                 'correo_contacto': datos_adq.get('correo_contacto'),
                 'telefono_contacto': datos_adq.get('telefono_contacto'),
                 # Tipo de identificación DIAN (Anexo 1.9): viene del schemeName
@@ -546,7 +545,9 @@ class InvoiceProcessor:
                 'prefijo': datos_num.get('prefijo') or '',
                 'numero_factura': datos_num.get('numero_factura') or cufe[:20],
                 'id_tercero_emisor': id_emisor,
+                'razon_social_emisor': datos_emisor.get('razon_social') or datos_emisor.get('nombre_comercial'),
                 'id_tercero_adquiriente': id_adq,
+                'razon_social_adquiriente': datos_adq.get('razon_social') or datos_adq.get('nombre_comercial'),
                 'id_autorizacion': id_autorizacion,
                 'fecha_generacion': fecha_gen,
                 'fecha_expedicion': fecha_gen,
@@ -592,6 +593,27 @@ class InvoiceProcessor:
                     conn, id_factura, id_adq, 'ADQUIRIENTE',
                     d_fiscal['responsabilidades_adquiriente'],
                 )
+
+            # SOFTWARE
+            d_sw = res_sw['datos']
+            nit_proveedor = d_sw.get('nit_proveedor')
+            nombre_proveedor = d_sw.get('nombre_proveedor')
+            id_software = d_sw.get('id_software')
+            
+            if nit_proveedor or nombre_proveedor or id_software:
+                id_fabricante = self._repo.insertar_fabricante_software(
+                    conn,
+                    numero_documento=nit_proveedor or 'DESCONOCIDO',
+                    razon_social=nombre_proveedor or 'Desconocido',
+                )
+                if id_software:
+                    id_producto = self._repo.insertar_producto_software(
+                        conn, id_fabricante, id_software
+                    )
+                    if id_producto > 0:
+                        self._repo.insertar_software_factura(
+                            conn, id_factura, id_producto, None
+                        )
 
             # Copia de adjuntos originales (.zip, .xml, .pdf) a la zona
             # `processed/facturas/{proveedor}/{year}/{month}/{day}/` en S3.

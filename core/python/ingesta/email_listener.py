@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 from config import get_postgres_config
 from core.python.ingesta.queue_publisher import get_publisher
 
-from metadata.db_metadata import IdEstadoProceso, IdTipoArchivo, IdTipoProceso
+from metadata.db_metadata import IdEstadoProceso, IdTipoArchivo, IdTipoProceso, IdTipoError
 
 from utils.alerts import AlertManager
 from utils.attachment_handler import AttachmentHandler, AdjuntoDescargado
@@ -144,7 +144,7 @@ class EmailListener:
             # Las correcciones de factura tienen contenido distinto → hash diferente → se procesan.
             sha256_zip = self._repository.calcular_hash_sha256(adj_zip.ruta)
             if self._repository.existe_adjunto_por_hash(conn_db, sha256_zip):
-                logger.info(
+                logger.debug(
                     "ZIP con hash ya existente en BD (hash=%s): %s. Omitiendo duplicado.",
                     sha256_zip[:8], adj_zip.nombre_original,
                 )
@@ -166,23 +166,12 @@ class EmailListener:
                         id_proceso=IdTipoProceso.escaneo_malware,
                         observacion=f"ZIP rechazado: {scan_zip.detalle}",
                         id_estado=IdEstadoProceso.procesado,
+                        id_error=IdTipoError.malware_detectado,
                     )
                 continue
 
             # Validar contenido (con soporte para ZIPs anidados)
             validacion = self._validator.validar_zip_completo(adj_zip.ruta)
-            if not validacion.es_valido or not validacion.pares:
-                self._alert_manager.adjunto_incompleto(
-                    email_uid=id_mensaje,
-                    archivos=validacion.archivos_encontrados,
-                    motivo=validacion.motivo_error or "ZIP sin pares XML+PDF válidos",
-                )
-                logger.error(
-                    "Validación ZIP falló: %s | %s",
-                    adj_zip.nombre_original, validacion.motivo_error,
-                )
-                continue
-
             # Registrar el ZIP padre en ADJUNTOS_CORREO
             id_adjunto_zip, uri_zip = self._repository.guardar_adjunto_correo(
                 conn=conn_db,
@@ -198,6 +187,25 @@ class EmailListener:
 
             # Subir a S3
             subir_archivo_s3(adj_zip.ruta, uri_zip)
+
+            if not validacion.es_valido or not validacion.pares:
+                self._alert_manager.adjunto_incompleto(
+                    email_uid=id_mensaje,
+                    archivos=validacion.archivos_encontrados,
+                    motivo=validacion.motivo_error or "ZIP sin pares XML+PDF válidos",
+                )
+                logger.error(
+                    "Validación ZIP falló: %s | %s",
+                    adj_zip.nombre_original, validacion.motivo_error,
+                )
+                self._repository.crear_proceso_ingesta(
+                    conn=conn_db, adjunto_id=id_adjunto_zip,
+                    id_proceso=IdTipoProceso.validacion_contenido_zip,
+                    observacion=f"ZIP rechazado: {validacion.motivo_error}",
+                    id_estado=IdEstadoProceso.error,
+                    id_error=validacion.id_error or IdTipoError.zip_corrupto,
+                )
+                continue
 
             # Si hay ZIPs anidados, registrarlos también
             zips_anidados_ids = {}
@@ -317,6 +325,7 @@ class EmailListener:
                     id_proceso=IdTipoProceso.escaneo_malware,
                     observacion=f"XML rechazado: {scan_xml.detalle}",
                     id_estado=IdEstadoProceso.procesado,
+                    id_error=IdTipoError.malware_detectado,
                 )
             return None
 
@@ -334,6 +343,7 @@ class EmailListener:
                         id_proceso=IdTipoProceso.escaneo_malware,
                         observacion=f"PDF rechazado: {scan_pdf.detalle}",
                         id_estado=IdEstadoProceso.procesado,
+                        id_error=IdTipoError.malware_detectado,
                     )
                 # PDF infectado, pero el XML se puede procesar
                 par.pdf_path = None
@@ -386,11 +396,9 @@ class EmailListener:
             logger.warning(f"No se extrajeron XMLs embebidos de {par.xml_path.name}: {contenidos_xml}")
 
         # 6. Registrar procesos de ingesta realizados
-        obs_malware = "Escaneo completado: XML seguro"
+        obs_malware = "Escaneo malware exitoso."
         if par.pdf_faltante:
-            obs_malware += " | PDF no disponible: requiere revisión humana"
-        elif par.pdf_path:
-            obs_malware += ", PDF seguro"
+            obs_malware += " (PDF faltante)"
 
         self._repository.crear_proceso_ingesta(
             conn=conn_db, adjunto_id=id_adjunto_xml,
@@ -399,11 +407,9 @@ class EmailListener:
             id_estado=IdEstadoProceso.procesado,
         )
 
-        obs_descarga = f"XML subido a S3: {uri_xml}"
-        if uri_pdf:
-            obs_descarga += f", PDF subido a S3: {uri_pdf}"
-        else:
-            obs_descarga += " | PDF faltante: pendiente revisión humana en correo"
+        obs_descarga = "XML subido correctamente a S3."
+        if not uri_pdf:
+            obs_descarga += " (PDF faltante)"
 
         self._repository.crear_proceso_ingesta(
             conn=conn_db, adjunto_id=id_adjunto_xml,
@@ -413,9 +419,7 @@ class EmailListener:
         )
 
         if par.zip_origen:
-            obs_zip = f"ZIP validado: contiene XML ({par.zip_origen.name})"
-            if par.pdf_faltante:
-                obs_zip += " | PDF no encontrado en ZIP"
+            obs_zip = "ZIP validado exitosamente."
             self._repository.crear_proceso_ingesta(
                 conn=conn_db, adjunto_id=id_adjunto_xml,
                 id_proceso=IdTipoProceso.validacion_contenido_zip,
@@ -590,7 +594,7 @@ class EmailListener:
                             self._publisher.publish(evento, db_conn=conn_db)
 
                         conn.uid("store", uid, "+FLAGS", "\\Seen")
-                        logger.info(
+                        logger.debug(
                             "Correo procesado: %s | %d facturas encoladas",
                             id_mensaje, len(todos_resultados),
                         )

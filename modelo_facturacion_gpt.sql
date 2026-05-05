@@ -93,13 +93,8 @@ INSERT INTO FACTURACION.TIPO_ERROR (ID_TIPO_ERROR, CODIGO_REFERENCIA, DESCRIPCIO
 (19, 'CUFE_NO_ENCONTRADO',           'No se encontró el CUFE en el XML'),
 (20, 'CUFE_INVALIDO',                'El CUFE del XML no es válido o no coincide con el recalculado'),
 (21, 'XML_PARSE_ERROR',              'Error al parsear el XML descargado de S3'),
-(22, 'DATOS_EMISOR_INVALIDOS',       'No se pudieron extraer los datos del emisor'),
-(23, 'DATOS_ADQUIRIENTE_INVALIDOS',  'No se pudieron extraer los datos del adquiriente'),
-(24, 'NUMERACION_INVALIDA',          'La numeración de la factura no es válida'),
-(25, 'FECHA_GENERACION_INVALIDA',    'Fecha de generación inválida o futura'),
 (26, 'FECHA_VALIDACION_INVALIDA',    'Fecha de validación DIAN inválida'),
 (27, 'VALIDACION_DIAN_FALLO',        'El documento no fue validado por la DIAN'),
-(28, 'LINEAS_INVALIDAS',             'Las líneas de la factura no cumplen los requisitos'),
 (29, 'VALOR_TOTAL_INCONSISTENTE',    'El valor total no coincide con la sumatoria de líneas'),
 (30, 'FORMA_PAGO_INVALIDA',          'Forma de pago inválida o faltante'),
 (31, 'MEDIO_PAGO_INVALIDO',          'Medio de pago inválido (requerido para pago de contado)'),
@@ -110,7 +105,23 @@ INSERT INTO FACTURACION.TIPO_ERROR (ID_TIPO_ERROR, CODIGO_REFERENCIA, DESCRIPCIO
 (36, 'ANEXO_TECNICO_INVALIDO',       'El XML no cumple con el anexo técnico UBL'),
 (37, 'SOFTWARE_PROVEEDOR_FALTANTE',  'No se informó el fabricante de software'),
 (38, 'ERROR_REGISTRO_FACTURA',       'Error al registrar la factura en la BD'),
-(39, 'MAX_REINTENTOS_EXCEDIDO',      'Se excedió el máximo de reintentos')
+(39, 'MAX_REINTENTOS_EXCEDIDO',      'Se excedió el máximo de reintentos'),
+(40, 'EMISOR_SIN_NOMBRE',            'El emisor no tiene nombre o razón social'),
+(41, 'EMISOR_SIN_DOCUMENTO',         'El emisor no tiene número de documento o NIT'),
+(42, 'EMISOR_DOCUMENTO_INVALIDO',    'El documento del emisor tiene un formato inválido'),
+(43, 'EMISOR_DV_INVALIDO',           'El dígito de verificación del emisor es incorrecto'),
+(44, 'ADQUIRIENTE_SIN_NOMBRE',       'El adquiriente no tiene nombre o razón social'),
+(45, 'ADQUIRIENTE_SIN_DOCUMENTO',    'El adquiriente no tiene número de documento o NIT'),
+(46, 'ADQUIRIENTE_DOCUMENTO_INVALIDO', 'El documento del adquiriente tiene un formato inválido'),
+(47, 'ADQUIRIENTE_DV_INVALIDO',      'El dígito de verificación del adquiriente es incorrecto'),
+(48, 'NUMERACION_SIN_RANGO_AUTORIZADO', 'La factura no incluye la información del rango de numeración autorizado'),
+(49, 'NUMERACION_FUERA_DE_RANGO',    'El número de factura está fuera del rango autorizado por la DIAN'),
+(50, 'NUMERACION_VENCIDA',           'La autorización de numeración de la factura se encuentra vencida'),
+(51, 'FECHA_GENERACION_FUTURA',      'La fecha de generación de la factura es una fecha futura'),
+(52, 'FECHA_GENERACION_FORMATO_INVALIDO', 'El formato de la fecha de generación es inválido o no se pudo extraer'),
+(53, 'LINEA_SIN_DESCRIPCION',        'Una o más líneas de la factura no tienen descripción del ítem'),
+(54, 'LINEA_VALOR_INVALIDO',         'Una o más líneas tienen valores nulos o inválidos en precios o cantidades'),
+(55, 'LINEA_CANTIDAD_INVALIDA',      'Una o más líneas tienen una cantidad reportada inválida')
 ON CONFLICT DO NOTHING;
 
 
@@ -274,8 +285,6 @@ CREATE TABLE FACTURACION.TERCERO (
     NUMERO_DOCUMENTO   VARCHAR(20) NOT NULL,
     DIGITO_VERIFICADOR VARCHAR(2) NULL,
     ID_TIPO_DOCUMENTO  VARCHAR(2) NULL REFERENCES FACTURACION.TIPO_DOCUMENTO_IDENTIDAD(ID_TIPO_DOCUMENTO),
-    RAZON_SOCIAL       VARCHAR(300) NOT NULL,
-    NOMBRE_COMERCIAL   VARCHAR(300) NULL,
     CORREO_CONTACTO    VARCHAR(320) NULL,
     TELEFONO_CONTACTO  VARCHAR(50) NULL,
     CODIGO_PAIS        CHAR(2) NOT NULL DEFAULT 'CO',
@@ -316,7 +325,9 @@ CREATE TABLE FACTURACION.FACTURA (
     PREFIJO_FACTURACION     VARCHAR(20) NOT NULL DEFAULT '',
     NUMERO_FACTURA          VARCHAR(50) NOT NULL,
     ID_TERCERO_EMISOR       BIGINT NOT NULL REFERENCES FACTURACION.TERCERO(ID_TERCERO),
+    RAZON_SOCIAL_EMISOR     VARCHAR(300) NULL,
     ID_TERCERO_ADQUIRIENTE  BIGINT NOT NULL REFERENCES FACTURACION.TERCERO(ID_TERCERO),
+    RAZON_SOCIAL_ADQUIRIENTE VARCHAR(300) NULL,
     ID_AUTORIZACION         BIGINT NULL REFERENCES FACTURACION.AUTORIZACION_NUMERACION_DIAN(ID_AUTORIZACION),
     FECHA_GENERACION        TIMESTAMPTZ NOT NULL,
     FECHA_EXPEDICION        TIMESTAMPTZ NULL,
@@ -387,19 +398,7 @@ CREATE TABLE FACTURACION.DETALLE_FACTURA (
     CONSTRAINT UQ_FACTURA_LINEA UNIQUE (ID_FACTURA, NUMERO_LINEA)
 );
 
--- =========================
--- IMPUESTOS A NIVEL DETALLE/LÍNEA
--- Múltiples registros por línea
--- =========================
 
-CREATE TABLE FACTURACION.IMPUESTO_DETALLE_FACTURA (
-    ID_DETALLE     BIGINT NOT NULL REFERENCES FACTURACION.DETALLE_FACTURA(ID_DETALLE),
-    ID_IMPUESTO    INT NOT NULL REFERENCES FACTURACION.TIPO_IMPUESTO(ID_IMPUESTO),
-    TARIFA         NUMERIC(9,4) NOT NULL CHECK (TARIFA >= 0),
-    BASE_GRAVABLE  NUMERIC(18,2) NOT NULL CHECK (BASE_GRAVABLE >= 0),
-    VALOR_IMPUESTO NUMERIC(18,2) NOT NULL CHECK (VALOR_IMPUESTO >= 0),
-    PRIMARY KEY (ID_DETALLE, ID_IMPUESTO, TARIFA)
-);
 
 -- =========================
 -- IMPUESTOS A NIVEL FACTURA (req_13)
@@ -415,23 +414,7 @@ CREATE TABLE FACTURACION.IMPUESTO_FACTURA (
     PRIMARY KEY (ID_FACTURA, ID_IMPUESTO, TARIFA)
 );
 
--- =========================
--- VALIDACIÓN DIAN (req_06, req_07)
--- Puede haber múltiples validaciones (reintentos)
--- =========================
 
-CREATE TABLE FACTURACION.VALIDACION_DIAN (
-    ID_VALIDACION              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    ID_FACTURA                 BIGINT NOT NULL REFERENCES FACTURACION.FACTURA(ID_FACTURA),
-    ID_PROCESO_INGESTA         BIGINT NULL REFERENCES FACTURACION.PROCESO_INGESTA(ID_PROCESO_INGESTA),
-    FECHA_VALIDACION           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    IDENTIFICADOR_RASTREO      VARCHAR(120) NULL,
-    CODIGO_RESPUESTA           VARCHAR(40) NULL,
-    DESCRIPCION_RESPUESTA      VARCHAR(500) NULL,
-    ID_ESTADO_PROCESO          INT NOT NULL REFERENCES FACTURACION.TIPO_ESTADO_PROCESO(ID_ESTADO_PROCESO),
-    CUFE_VALIDADO              VARCHAR(100) NULL,
-    CONTENIDO_QR_VALIDADO      TEXT NULL
-);
 
 -- =========================
 -- FABRICANTE DE SOFTWARE (req_18)
@@ -480,4 +463,3 @@ CREATE INDEX IX_ADJUNTO_CORREO ON FACTURACION.ADJUNTOS_CORREO (CORREO_ID);
 CREATE INDEX IX_ADJUNTO_SHA256 ON FACTURACION.ADJUNTOS_CORREO (SHA256);
 CREATE INDEX IX_PROCESO_ESTADO ON FACTURACION.PROCESO_INGESTA (ID_ESTADO);
 CREATE INDEX IX_PROCESO_ADJUNTO ON FACTURACION.PROCESO_INGESTA (ADJUNTO_ID);
-CREATE INDEX IX_VALIDACION_FACTURA ON FACTURACION.VALIDACION_DIAN (ID_FACTURA, FECHA_VALIDACION DESC);

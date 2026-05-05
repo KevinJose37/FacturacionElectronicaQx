@@ -6,6 +6,7 @@ import logging
 
 # Third-party imports
 from lxml import etree
+from metadata.db_metadata import IdTipoError
 
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ def validar_denominacion_v1(xml_factura: etree._Element) -> dict:
     resultado = {
         'valido': resultado_validacion,
         'mensaje': mensaje,
+        'id_error': IdTipoError.error_procesamiento_general if not resultado_validacion else None,
         'datos': {
             'denominacion': denominacion,
         }

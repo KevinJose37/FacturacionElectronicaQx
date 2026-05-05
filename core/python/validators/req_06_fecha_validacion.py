@@ -6,6 +6,7 @@ import logging
 
 # Third-party imports
 from lxml import etree
+from metadata.db_metadata import IdTipoError
 
 # Local application imports
 from core.python.utils.validacion import validar_fecha_futura
@@ -83,6 +84,7 @@ def validar_fecha_validacion_dian_v1(xml_factura: etree._Element) -> dict:
     resultado = {
         'valido': resultado_validacion,
         'mensaje': mensaje,
+        'id_error': IdTipoError.fecha_validacion_invalida if not resultado_validacion else None,
         'datos': {
             'fecha_validacion': fecha,
             'hora_validacion': hora,

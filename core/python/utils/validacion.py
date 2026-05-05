@@ -28,6 +28,8 @@ from signxml import SignatureConfiguration
 from signxml.exceptions import InvalidSignature
 from signxml.exceptions import InvalidCertificate
 
+from metadata.db_metadata import IdTipoError
+
 
 def calcular_dv_nit_v1(nit: str) -> int:
     """Calcula el dígito de verificación DIAN para un NIT, basado en el algoritmo
@@ -240,8 +242,8 @@ def parsear_decimal_2dp(valor_texto: str | None) -> Decimal | None:
 
 
 def validar_datos_persona(
-    nombre: str, nit: str, scheme_name: str, dv_xml: str
-    ) -> tuple[str, bool]:
+    nombre: str, nit: str, scheme_name: str, dv_xml: str, rol: str = 'emisor'
+    ) -> dict:
     """Valida el nombre y NIT de una persona (emisor o adquiriente) según las reglas de la
      resolución 000165 de 2023.
      
@@ -250,35 +252,44 @@ def validar_datos_persona(
         nit: NIT de la persona.
         scheme_name: Valor del atributo schemeName del nodo CompanyID.
         dv_xml: Valor del atributo schemeID del nodo CompanyID (dígito de verificación).
+        rol: 'emisor' o 'adquiriente'.
         
     Returns:
-        Tupla (mensaje, resultado_validacion) donde:
+        Diccionario con:
         - mensaje: Descripción del resultado de la validación.
-        - resultado_validacion: True si los datos son válidos, False en caso contrario.
+        - resultado: True si los datos son válidos, False en caso contrario.
+        - id_error: Código de error granular si es inválido.
     
     """
     resultado_validacion = False
+    id_error = None
     
+    is_emisor = (rol == 'emisor')
+
     if not nombre:
         mensaje = 'No se encontró nombre de la persona.'
-
-    elif scheme_name != '31':
-        mensaje = f'Nombre válido: "{nombre}". No requiere validación de NIT.'
-        resultado_validacion = True
+        id_error = IdTipoError.emisor_sin_nombre if is_emisor else IdTipoError.adquiriente_sin_nombre
 
     elif not nit:
-        mensaje = f'Se encontró nombre "{nombre}" pero no NIT.'
+        mensaje = f'Se encontró nombre "{nombre}" pero no documento.'
+        id_error = IdTipoError.emisor_sin_documento if is_emisor else IdTipoError.adquiriente_sin_documento
+
+    elif scheme_name != '31':
+        mensaje = f'Datos válidos: "{nombre}" con documento {nit}.'
+        resultado_validacion = True
 
     elif not (6 <= len(nit) <= 15) or not nit.isdigit():
         mensaje = (
             f'Se encontró nombre "{nombre}" pero el NIT "{nit}" no es válido.'
         )
+        id_error = IdTipoError.emisor_documento_invalido if is_emisor else IdTipoError.adquiriente_documento_invalido
 
     elif dv_xml is None or not dv_xml.isdigit():
         mensaje = (
             f'Se encontró nombre "{nombre}" y NIT "{nit}" '
             f'pero sin dígito de verificación válido.'
         )
+        id_error = IdTipoError.emisor_dv_invalido if is_emisor else IdTipoError.adquiriente_dv_invalido
 
     else:
         dv_xml = int(dv_xml)
@@ -289,6 +300,7 @@ def validar_datos_persona(
                 f'Se encontró nombre "{nombre}" y NIT "{nit}" pero DV incorrecto '
                 f'(XML: {dv_xml}, Calculado: {dv_calculado}).'
             )
+            id_error = IdTipoError.emisor_dv_invalido if is_emisor else IdTipoError.adquiriente_dv_invalido
 
         else:
             mensaje = f'Datos válidos: "{nombre}" con NIT {nit}-{dv_xml}.'
@@ -296,7 +308,8 @@ def validar_datos_persona(
     
     resultado = {
         'mensaje': mensaje,
-        'resultado': resultado_validacion
+        'resultado': resultado_validacion,
+        'id_error': id_error
     }
     
     return resultado

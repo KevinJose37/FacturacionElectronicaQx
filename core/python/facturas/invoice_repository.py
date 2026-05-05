@@ -239,6 +239,7 @@ class InvoiceRepository:
         id_proceso: int,
         observacion: str,
         id_estado: int = IdEstadoProceso.procesado,
+        id_error: Optional[int] = None,
     ) -> int:
         """Crea un registro en PROCESO_INGESTA.
 
@@ -248,6 +249,7 @@ class InvoiceRepository:
             id_proceso: Tipo de proceso (FK a TIPO_PROCESO).
             observacion: Descripción del resultado.
             id_estado: Estado del proceso.
+            id_error: Tipo de error (FK a TIPO_ERROR), opcional.
 
         Returns:
             ID del proceso creado, o -1 si hubo error.
@@ -257,12 +259,12 @@ class InvoiceRepository:
                 cur.execute(
                     """
                     INSERT INTO FACTURACION.PROCESO_INGESTA (
-                        ADJUNTO_ID, ID_PROCESO, ID_ESTADO, OBSERVACION
+                        ADJUNTO_ID, ID_PROCESO, ID_ESTADO, OBSERVACION, ID_ERROR
                     )
-                    VALUES (%s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s)
                     RETURNING ID_PROCESO_INGESTA
                     """,
-                    (adjunto_id, id_proceso, id_estado, observacion[:255]),
+                    (adjunto_id, id_proceso, id_estado, observacion[:255], id_error),
                 )
                 resultado = cur.fetchone()
                 return resultado[0] if resultado else -1
@@ -332,7 +334,7 @@ class InvoiceRepository:
                 """
                 INSERT INTO FACTURACION.FACTURA (
                     CUFE, DENOMINACION, PREFIJO_FACTURACION, NUMERO_FACTURA,
-                    ID_TERCERO_EMISOR, ID_TERCERO_ADQUIRIENTE,
+                    ID_TERCERO_EMISOR, RAZON_SOCIAL_EMISOR, ID_TERCERO_ADQUIRIENTE, RAZON_SOCIAL_ADQUIRIENTE,
                     ID_AUTORIZACION, FECHA_GENERACION, FECHA_EXPEDICION,
                     FECHA_VENCIMIENTO, CODIGO_MONEDA, VALOR_TOTAL,
                     HASH_FIRMA_DIGITAL, CONTENIDO_QR,
@@ -340,7 +342,7 @@ class InvoiceRepository:
                 )
                 VALUES (
                     %(cufe)s, %(denominacion)s, %(prefijo)s, %(numero_factura)s,
-                    %(id_tercero_emisor)s, %(id_tercero_adquiriente)s,
+                    %(id_tercero_emisor)s, %(razon_social_emisor)s, %(id_tercero_adquiriente)s, %(razon_social_adquiriente)s,
                     %(id_autorizacion)s, %(fecha_generacion)s, %(fecha_expedicion)s,
                     %(fecha_vencimiento)s, %(moneda)s, %(valor_total)s,
                     %(hash_firma)s, %(contenido_qr)s,
@@ -348,6 +350,8 @@ class InvoiceRepository:
                 )
                 ON CONFLICT (CUFE) DO UPDATE SET
                     DENOMINACION = EXCLUDED.DENOMINACION,
+                    RAZON_SOCIAL_EMISOR = EXCLUDED.RAZON_SOCIAL_EMISOR,
+                    RAZON_SOCIAL_ADQUIRIENTE = EXCLUDED.RAZON_SOCIAL_ADQUIRIENTE,
                     VALOR_TOTAL = EXCLUDED.VALOR_TOTAL,
                     HASH_FIRMA_DIGITAL = EXCLUDED.HASH_FIRMA_DIGITAL,
                     CONTENIDO_QR = EXCLUDED.CONTENIDO_QR,
@@ -384,20 +388,16 @@ class InvoiceRepository:
                 """
                 INSERT INTO FACTURACION.TERCERO (
                     ID_ROL_TERCERO, NUMERO_DOCUMENTO, DIGITO_VERIFICADOR,
-                    RAZON_SOCIAL, NOMBRE_COMERCIAL,
                     CORREO_CONTACTO, TELEFONO_CONTACTO,
                     ID_TIPO_DOCUMENTO
                 )
                 VALUES (
                     %(id_rol_tercero)s, %(numero_documento)s, %(digito_verificador)s,
-                    %(razon_social)s, %(nombre_comercial)s,
                     %(correo_contacto)s, %(telefono_contacto)s,
                     %(id_tipo_documento)s
                 )
                 ON CONFLICT (ID_ROL_TERCERO, NUMERO_DOCUMENTO) DO UPDATE SET
                     DIGITO_VERIFICADOR = COALESCE(EXCLUDED.DIGITO_VERIFICADOR, FACTURACION.TERCERO.DIGITO_VERIFICADOR),
-                    RAZON_SOCIAL = COALESCE(EXCLUDED.RAZON_SOCIAL, FACTURACION.TERCERO.RAZON_SOCIAL),
-                    NOMBRE_COMERCIAL = COALESCE(EXCLUDED.NOMBRE_COMERCIAL, FACTURACION.TERCERO.NOMBRE_COMERCIAL),
                     CORREO_CONTACTO = COALESCE(EXCLUDED.CORREO_CONTACTO, FACTURACION.TERCERO.CORREO_CONTACTO),
                     TELEFONO_CONTACTO = COALESCE(EXCLUDED.TELEFONO_CONTACTO, FACTURACION.TERCERO.TELEFONO_CONTACTO),
                     ID_TIPO_DOCUMENTO = COALESCE(EXCLUDED.ID_TIPO_DOCUMENTO, FACTURACION.TERCERO.ID_TIPO_DOCUMENTO)
@@ -646,4 +646,74 @@ class InvoiceRepository:
                 WHERE ADJUNTO_ID = %s
                 """,
                 (id_estado, adjunto_id),
+            )
+
+    # ------------------------------------------------------------------
+    # Operaciones de SOFTWARE
+    # ------------------------------------------------------------------
+
+    def insertar_fabricante_software(
+        self,
+        conn: Connection,
+        numero_documento: str,
+        razon_social: str,
+    ) -> int:
+        """Inserta o actualiza un fabricante de software."""
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO FACTURACION.FABRICANTE_SOFTWARE (
+                    NUMERO_DOCUMENTO, RAZON_SOCIAL
+                )
+                VALUES (%s, %s)
+                ON CONFLICT (NUMERO_DOCUMENTO) DO UPDATE SET
+                    RAZON_SOCIAL = EXCLUDED.RAZON_SOCIAL
+                RETURNING ID_FABRICANTE_SOFTWARE
+                """,
+                (numero_documento, razon_social),
+            )
+            resultado = cur.fetchone()
+            return resultado[0] if resultado else -1
+
+    def insertar_producto_software(
+        self,
+        conn: Connection,
+        id_fabricante: int,
+        nombre_software: str,
+    ) -> int:
+        """Inserta o actualiza un producto de software."""
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO FACTURACION.PRODUCTO_SOFTWARE (
+                    ID_FABRICANTE_SOFTWARE, NOMBRE_SOFTWARE
+                )
+                VALUES (%s, %s)
+                ON CONFLICT (ID_FABRICANTE_SOFTWARE, NOMBRE_SOFTWARE, COALESCE(VERSION_SOFTWARE, ''))
+                DO UPDATE SET NOMBRE_SOFTWARE = EXCLUDED.NOMBRE_SOFTWARE
+                RETURNING ID_PRODUCTO_SOFTWARE
+                """,
+                (id_fabricante, nombre_software),
+            )
+            resultado = cur.fetchone()
+            return resultado[0] if resultado else -1
+
+    def insertar_software_factura(
+        self,
+        conn: Connection,
+        id_factura: int,
+        id_producto: int,
+        id_proveedor_tecnologico: Optional[int] = None,
+    ) -> None:
+        """Asocia el software a la factura."""
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO FACTURACION.SOFTWARE_FACTURA (
+                    ID_FACTURA, ID_PRODUCTO_SOFTWARE, ID_PROVEEDOR_TECNOLOGICO
+                )
+                VALUES (%s, %s, %s)
+                ON CONFLICT (ID_FACTURA) DO NOTHING
+                """,
+                (id_factura, id_producto, id_proveedor_tecnologico),
             )

@@ -6,6 +6,7 @@ import logging
 
 # Third-party imports
 from lxml import etree
+from metadata.db_metadata import IdTipoError
 
 # Local application imports
 from core.python.utils.validacion import extraer_texto_xpath
@@ -110,6 +111,7 @@ def validar_proveedor_software_v1(xml_invoice: etree._Element | None) -> dict:
     resultado = {
         'valido': resultado_validacion,
         'mensaje': mensaje,
+        'id_error': IdTipoError.software_proveedor_faltante if not resultado_validacion else None,
         'datos': {
             'nit_proveedor': nit_proveedor,
             'nombre_proveedor': nombre_proveedor,

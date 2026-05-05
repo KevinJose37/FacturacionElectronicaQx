@@ -6,6 +6,7 @@ import logging
 
 # Third-party imports
 from lxml import etree
+from metadata.db_metadata import IdTipoError
 
 # Local application imports
 from core.python.utils.validacion import (
@@ -107,6 +108,7 @@ def validar_cufe_v1(xml_invoice: etree._Element | None) -> dict:
     resultado = {
         'valido': resultado_validacion,
         'mensaje': mensaje,
+        'id_error': IdTipoError.cufe_invalido if not resultado_validacion else None,
         'datos': {
             'cufe': cufe_xml,
             'cufe_calculado': cufe_calculado,

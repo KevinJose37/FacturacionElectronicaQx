@@ -6,6 +6,7 @@ import logging
 # Third-party imports
 from lxml import etree
 
+from metadata.db_metadata import IdTipoError
 
 logger = logging.getLogger(__name__)
 
@@ -70,17 +71,21 @@ def validar_numeracion_dian_v1(xml_factura: etree._Element) -> dict:
     fecha_fin = (nodo_end_date[0].text or '').strip() if nodo_end_date else None
 
     resultado_validacion = False
+    id_error = None
     prefijo_detectado = ''
     numero_consecutivo = None
 
     if not id_factura:
         mensaje = 'No se encontró número de factura (cbc:ID).'
+        id_error = IdTipoError.numeracion_sin_rango_autorizado
 
     elif not autorizacion:
         mensaje = f'Factura "{id_factura}" sin número de autorización DIAN.'
+        id_error = IdTipoError.numeracion_sin_rango_autorizado
 
     elif not rango_from or not rango_to:
         mensaje = f'Factura "{id_factura}" sin rango autorizado DIAN.'
+        id_error = IdTipoError.numeracion_sin_rango_autorizado
 
     else:
         numero_str = id_factura
@@ -91,6 +96,7 @@ def validar_numeracion_dian_v1(xml_factura: etree._Element) -> dict:
 
         if not numero_str.isdigit():
             mensaje = (f'Factura "{id_factura}" tiene un consecutivo no numérico.')
+            id_error = IdTipoError.numeracion_sin_rango_autorizado
 
         else:
             numero_consecutivo = int(numero_str)
@@ -104,6 +110,7 @@ def validar_numeracion_dian_v1(xml_factura: etree._Element) -> dict:
                     f'Factura "{id_factura}" tiene rango DIAN inválido '
                     f'({rango_from}-{rango_to}).'
                 )
+                id_error = IdTipoError.numeracion_sin_rango_autorizado
 
             else:
                 if not (rango_inicio <= numero_consecutivo <= rango_fin):
@@ -111,6 +118,7 @@ def validar_numeracion_dian_v1(xml_factura: etree._Element) -> dict:
                         f'Factura "{id_factura}" fuera de rango autorizado '
                         f'({rango_inicio}-{rango_fin}).'
                     )
+                    id_error = IdTipoError.numeracion_fuera_de_rango
 
                 else:
                     mensaje = (
@@ -124,6 +132,7 @@ def validar_numeracion_dian_v1(xml_factura: etree._Element) -> dict:
     resultado = {
         'valido': resultado_validacion,
         'mensaje': mensaje,
+        'id_error': id_error,
         'datos': {
             'numero_factura': id_factura,
             'numero_autorizacion': autorizacion,

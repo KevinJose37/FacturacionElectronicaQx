@@ -5,6 +5,7 @@ import logging
 
 # Third-party imports
 from lxml import etree
+from metadata.db_metadata import IdTipoError
 
 # Local application imports
 from core.python.utils.validacion import extraer_texto_xpath
@@ -62,8 +63,13 @@ def validar_qr_code_v1(
             (nodo_qr[0].text or '').strip() if nodo_qr else None
         )
 
+        if contenido_qr:
+            idx_http = contenido_qr.find('https://')
+            if idx_http != -1:
+                contenido_qr = contenido_qr[idx_http:].split()[0]
+
         if not contenido_qr:
-            mensaje = 'No se encontró el código QR (sts:QRCode) en el XML.'
+            mensaje = 'No se encontró el código QR (sts:QRCode) en el XML o no contiene URL.'
 
         else:
             # Intentar parsear como URL con query params
@@ -115,6 +121,7 @@ def validar_qr_code_v1(
     resultado = {
         'valido': resultado_validacion,
         'mensaje': mensaje,
+        'id_error': IdTipoError.qr_invalido if not resultado_validacion else None,
         'datos': {
             'contenido_qr': contenido_qr,
             'qr_datos_parseados': qr_datos if qr_datos else None,

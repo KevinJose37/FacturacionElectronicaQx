@@ -6,6 +6,7 @@ import logging
 # Third-party imports
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from lxml import etree
+from metadata.db_metadata import IdTipoError
 
 
 logger = logging.getLogger(__name__)
@@ -132,6 +133,7 @@ def validar_valor_total_v1(xml_invoice: etree._Element | None) -> dict:
     resultado = {
         'valido': resultado_validacion,
         'mensaje': mensaje,
+        'id_error': IdTipoError.valor_total_inconsistente if not resultado_validacion else None,
         'datos': datos,
     }
 

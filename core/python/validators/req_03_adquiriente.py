@@ -10,6 +10,7 @@ from lxml import etree
 # Local application imports
 from core.python.utils.validacion import calcular_dv_nit_v1
 from core.python.utils.validacion import validar_datos_persona
+from metadata.db_metadata import IdTipoError
 
 
 logger = logging.getLogger(__name__)
@@ -75,7 +76,10 @@ def validar_adquiriente_v1(xml_raw: etree._Element) -> dict:
     correo = (nodo_correo[0].text or '').strip() if nodo_correo else None
     telefono = (nodo_telefono[0].text or '').strip() if nodo_telefono else None
 
-    validacion = validar_datos_persona(nombre, nit, scheme_name, dv_xml)
+    validacion = validar_datos_persona(nombre, nit, scheme_name, dv_xml, rol='adquiriente')
+
+    if validacion['resultado']:
+        validacion['mensaje'] = 'Datos del adquiriente válidos.'
 
     logger.debug(validacion['mensaje'])
 
@@ -92,5 +96,8 @@ def validar_adquiriente_v1(xml_raw: etree._Element) -> dict:
             'telefono_contacto': telefono,
         }
     }
+
+    if not validacion['resultado']:
+        resultado['id_error'] = validacion.get('id_error')
 
     return resultado

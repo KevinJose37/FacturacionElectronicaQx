@@ -249,6 +249,54 @@ class IdTipoError:
     max_reintentos_excedido = 39
     """Se excedió el máximo de reintentos."""
 
+    emisor_sin_nombre = 40
+    """El emisor no tiene nombre o razón social."""
+
+    emisor_sin_documento = 41
+    """El emisor no tiene número de documento o NIT."""
+
+    emisor_documento_invalido = 42
+    """El documento del emisor tiene un formato inválido."""
+
+    emisor_dv_invalido = 43
+    """El dígito de verificación del emisor es incorrecto."""
+
+    adquiriente_sin_nombre = 44
+    """El adquiriente no tiene nombre o razón social."""
+
+    adquiriente_sin_documento = 45
+    """El adquiriente no tiene número de documento o NIT."""
+
+    adquiriente_documento_invalido = 46
+    """El documento del adquiriente tiene un formato inválido."""
+
+    adquiriente_dv_invalido = 47
+    """El dígito de verificación del adquiriente es incorrecto."""
+
+    numeracion_sin_rango_autorizado = 48
+    """La factura no incluye la información del rango de numeración autorizado."""
+
+    numeracion_fuera_de_rango = 49
+    """El número de factura está fuera del rango autorizado por la DIAN."""
+
+    numeracion_vencida = 50
+    """La autorización de numeración de la factura se encuentra vencida."""
+
+    fecha_generacion_futura = 51
+    """La fecha de generación de la factura es una fecha futura."""
+
+    fecha_generacion_formato_invalido = 52
+    """El formato de la fecha de generación es inválido o no se pudo extraer."""
+
+    linea_sin_descripcion = 53
+    """Una o más líneas de la factura no tienen descripción del ítem."""
+
+    linea_valor_invalido = 54
+    """Una o más líneas tienen valores nulos o inválidos en precios o cantidades."""
+
+    linea_cantidad_invalida = 55
+    """Una o más líneas tienen una cantidad reportada inválida."""
+
 
 class MensajesDB:
     """Mensajes de error y log del módulo de base de datos."""

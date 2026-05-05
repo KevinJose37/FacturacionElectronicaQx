@@ -17,6 +17,8 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from metadata.db_metadata import IdTipoError
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,6 +46,7 @@ class ValidationResult:
     motivo_error: Optional[str] = None
     xml_path: Optional[Path] = None
     pdf_path: Optional[Path] = None
+    id_error: Optional[int] = None
 
 
 @dataclass
@@ -62,6 +65,7 @@ class ZipValidacionCompleta:
     pares: List[ParXmlPdf] = field(default_factory=list)
     archivos_encontrados: List[str] = field(default_factory=list)
     tiene_zips_anidados: bool = False
+    id_error: Optional[int] = None
 
 
 class AttachmentValidator:
@@ -106,7 +110,7 @@ class AttachmentValidator:
             ValidationResult con el estado y rutas de archivos extraídos.
         """
         if not zipfile.is_zipfile(ruta_zip):
-            return ValidationResult(es_valido=False, motivo_error="Archivo no es un ZIP válido")
+            return ValidationResult(es_valido=False, motivo_error="Archivo no es un ZIP válido", id_error=IdTipoError.zip_corrupto)
 
         archivos_en_zip = []
         xml_file = None
@@ -126,7 +130,12 @@ class AttachmentValidator:
 
                 if not xml_file or not pdf_file:
                     motivo = "Falta " + ("XML" if not xml_file else "") + (" y " if not xml_file and not pdf_file else "") + ("PDF" if not pdf_file else "")
-                    return ValidationResult(es_valido=False, archivos_encontrados=archivos_en_zip, motivo_error=motivo)
+                    return ValidationResult(
+                        es_valido=False,
+                        archivos_encontrados=archivos_en_zip,
+                        motivo_error=motivo,
+                        id_error=IdTipoError.zip_sin_xml if not xml_file else IdTipoError.pdf_faltante
+                    )
 
                 # Extraer a carpeta temporal única para este ZIP
                 extract_dir = self.temp_root / ruta_zip.stem
@@ -144,7 +153,7 @@ class AttachmentValidator:
 
         except Exception as e:
             logger.error(f"Error procesando ZIP {ruta_zip}: {e}")
-            return ValidationResult(es_valido=False, motivo_error=f"Error interno: {str(e)}")
+            return ValidationResult(es_valido=False, motivo_error=f"Error interno: {str(e)}", id_error=IdTipoError.zip_corrupto)
 
     def validar_zip_completo(self, ruta_zip: Path, _depth: int = 0) -> ZipValidacionCompleta:
         """Valida un ZIP con soporte para ZIPs anidados (multi-nivel).
@@ -167,13 +176,15 @@ class AttachmentValidator:
         if _depth >= self.MAX_DEPTH:
             return ZipValidacionCompleta(
                 es_valido=False,
-                motivo_error=f"Profundidad máxima de ZIPs anidados excedida ({self.MAX_DEPTH})"
+                motivo_error=f"Profundidad máxima de ZIPs anidados excedida ({self.MAX_DEPTH})",
+                id_error=IdTipoError.zip_profundidad_excedida
             )
 
         if not zipfile.is_zipfile(ruta_zip):
             return ZipValidacionCompleta(
                 es_valido=False,
-                motivo_error="Archivo no es un ZIP válido"
+                motivo_error="Archivo no es un ZIP válido",
+                id_error=IdTipoError.zip_corrupto
             )
 
         try:
@@ -287,10 +298,15 @@ class AttachmentValidator:
                 # Evaluar resultado
                 if not pares:
                     motivo_parts = []
+                    id_error_asignado = IdTipoError.zip_corrupto
+                    
                     if not xml_files and not zip_files:
                         motivo_parts.append("no contiene archivos XML")
-                    if zip_files and not pares:
+                        id_error_asignado = IdTipoError.zip_sin_xml
+                    elif zip_files and not pares:
                         motivo_parts.append("ZIPs internos no contienen XMLs válidos")
+                        id_error_asignado = IdTipoError.zip_subzip_invalido
+                        
                     motivo = "ZIP inválido: " + ", ".join(motivo_parts) if motivo_parts else "ZIP vacío o sin contenido de factura"
 
                     return ZipValidacionCompleta(
@@ -298,6 +314,7 @@ class AttachmentValidator:
                         motivo_error=motivo,
                         archivos_encontrados=archivos_en_zip,
                         tiene_zips_anidados=tiene_zips_anidados,
+                        id_error=id_error_asignado,
                     )
 
                 return ZipValidacionCompleta(
@@ -311,7 +328,8 @@ class AttachmentValidator:
             logger.error("Error procesando ZIP %s: %s", ruta_zip, e)
             return ZipValidacionCompleta(
                 es_valido=False,
-                motivo_error=f"Error interno: {str(e)}"
+                motivo_error=f"Error interno: {str(e)}",
+                id_error=IdTipoError.zip_corrupto
             )
 
     def agrupar_pares_sueltos(

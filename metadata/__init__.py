@@ -7,7 +7,6 @@ Módulos disponibles:
     - chat_metadata: Mensajes de respuesta del chatbot Innti.
     - common_metadata: Textos por defecto compartidos.
     - db_metadata: Mensajes de error y log del pool de conexiones y cache.
-    - processor_metadata: Mensajes del procesador de facturas ZIP.
     - dashboard_metadata: KPIs, etapas de flujo y formateo de tiempo relativo.
     - log_service_metadata: Mensajes del servicio de logs.
 """

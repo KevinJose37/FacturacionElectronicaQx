@@ -1,79 +1,124 @@
-"""Módulo que contiene funciones para validar la información del fabricante del software y
- proveedor tecnológico"""
+"""Módulo que contiene funciones de validación del proveedor de software
+ tecnológico de la factura."""
+
+# Standard library imports
+import logging
 
 # Third-party imports
 from lxml import etree
+from metadata.db_metadata import IdTipoError
 
 # Local application imports
 from core.python.utils.validacion import extraer_texto_xpath
 
 
-def validar_software_y_proveedor_v1(xml_factura: etree._Element) -> bool:
-    """Valida la información del fabricante del software y proveedor tecnológico
-    según la resolución 000165 de 2023.
+logger = logging.getLogger(__name__)
 
-    Verifica:
-    - presencia de sts:SoftwareProvider
-    - presencia de NIT (ProviderID)
-    - presencia de razón social (ProviderName)
-    - presencia de SoftwareID
+NAMESPACES = {
+    'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+    'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+    'ext': 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2',
+    'sts': 'dian:gov:co:facturaelectronica:Structures-2-1',
+}
+
+
+def validar_proveedor_software_v1(xml_invoice: etree._Element | None) -> dict:
+    """Valida la información del proveedor de software tecnológico de la factura
+     electrónica según la resolución 000165 de 2023.
 
     Args:
-        xml_factura: Elemento raíz del XML de la factura (Invoice).
+        xml_invoice: Árbol XML del Invoice a validar.
 
     Returns:
-        True si la información del software/proveedor es válida, False en caso contrario.
+        Diccionario con:
+        - 'valido': bool indicando si los datos del proveedor son válidos.
+        - 'mensaje': str con la descripción del resultado.
+        - 'datos': dict con NIT, software ID, security code y PIN del proveedor.
     """
 
-    NAMESPACES = {
-        'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-        'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-        'ext': 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2',
-        'sts': 'dian:gov:co:facturaelectronica:Structures-2-1',
+    resultado_validacion = False
+    nit_proveedor = None
+    nombre_proveedor = None
+    id_software = None
+    security_code = None
+    pin = None
+
+    if xml_invoice is None:
+        mensaje = 'No se encontró el XML Invoice para validar proveedor de software.'
+
+    else:
+        # Extraer datos del proveedor desde SoftwareProvider
+        nit_proveedor = extraer_texto_xpath(
+            xml_invoice,
+            './/sts:SoftwareProvider/sts:ProviderID',
+            NAMESPACES
+        )
+
+        nombre_proveedor = extraer_texto_xpath(
+            xml_invoice,
+            './/sts:SoftwareProvider/sts:ProviderID',
+            NAMESPACES
+        )
+        # Intentar obtener el schemeName del ProviderID para el nombre
+        nodo_provider_id = xml_invoice.xpath(
+            './/sts:SoftwareProvider/sts:ProviderID', namespaces=NAMESPACES
+        )
+        if nodo_provider_id:
+            nombre_proveedor = nodo_provider_id[0].get('schemeName') or nit_proveedor
+
+        # Extraer ID del software
+        id_software = extraer_texto_xpath(
+            xml_invoice,
+            './/sts:SoftwareProvider/sts:SoftwareID',
+            NAMESPACES
+        )
+
+        # Extraer el código de seguridad del software
+        security_code = extraer_texto_xpath(
+            xml_invoice,
+            './/sts:SoftwareSecurityCode',
+            NAMESPACES
+        )
+
+        # Extraer PIN (si existe)
+        pin = extraer_texto_xpath(
+            xml_invoice,
+            './/sts:AuthorizationProvider/sts:AuthorizationProviderID',
+            NAMESPACES
+        )
+
+        if not nit_proveedor:
+            mensaje = (
+                'No se encontró el NIT del proveedor tecnológico '
+                '(sts:ProviderID).'
+            )
+
+        elif not id_software:
+            mensaje = (
+                f'Proveedor NIT {nit_proveedor} encontrado, '
+                f'pero sin ID de software (sts:SoftwareID).'
+            )
+
+        else:
+            resultado_validacion = True
+            mensaje = (
+                f'Proveedor de software válido: NIT {nit_proveedor}, '
+                f'Software ID {id_software}.'
+            )
+
+    logger.debug(mensaje)
+
+    resultado = {
+        'valido': resultado_validacion,
+        'mensaje': mensaje,
+        'id_error': IdTipoError.software_proveedor_faltante if not resultado_validacion else None,
+        'datos': {
+            'nit_proveedor': nit_proveedor,
+            'nombre_proveedor': nombre_proveedor,
+            'id_software': id_software,
+            'security_code': security_code,
+            'pin': pin,
+        }
     }
 
-    resultado_validacion = False
-
-    proveedor_nit = extraer_texto_xpath(
-        xml_factura,
-        './/sts:SoftwareProvider/sts:ProviderID',
-        NAMESPACES,
-    )
-
-    proveedor_nombre = extraer_texto_xpath(
-        xml_factura,
-        './/sts:SoftwareProvider/sts:ProviderName',
-        NAMESPACES,
-    )
-
-    software_id = extraer_texto_xpath(
-        xml_factura,
-        './/sts:SoftwareID',
-        NAMESPACES,
-    )
-
-    if not proveedor_nit:
-        mensaje = (
-            'No se informó el NIT del fabricante del software o proveedor tecnológico '
-            '(sts:SoftwareProvider/sts:ProviderID).'
-        )
-    elif not proveedor_nombre:
-        mensaje = (
-            'No se informó la razón social del fabricante del software o proveedor '
-            'tecnológico (sts:SoftwareProvider/sts:ProviderName).'
-        )
-    elif not software_id:
-        mensaje = (
-            'No se informó el identificador del software (sts:SoftwareID).'
-        )
-    else:
-        resultado_validacion = True
-        mensaje = (
-            'Se informó correctamente el fabricante del software/proveedor tecnológico. '
-            f'NIT: {proveedor_nit}, Nombre: {proveedor_nombre}, '
-            f'SoftwareID: {software_id}.'
-        )
-
-    enviar_log_validacion(mensaje)
-
-    return resultado_validacion
+    return resultado

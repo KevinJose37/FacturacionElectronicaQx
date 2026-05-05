@@ -13,8 +13,16 @@ CREATE TABLE FACTURACION.TIPO_ESTADO_PROCESO (
 INSERT INTO FACTURACION.TIPO_ESTADO_PROCESO (ID_ESTADO_PROCESO, CODIGO_REFERENCIA, DESCRIPCION) VALUES
 (1, 'PENDIENTE', 'Pendiente de procesamiento'),
 (2, 'EN_PROCESO', 'En proceso de ingesta'),
-(3, 'PROCESADO', 'Procesado de ingesta')
+(3, 'PROCESADO', 'Procesado de ingesta'),
+(4, 'ERROR', 'Estado de error en el procesamiento'),
+(5, 'FALLIDO', 'Estado de fallo definitivo (agotó reintentos)')
 ON CONFLICT DO NOTHING;
+
+CREATE TABLE FACTURACION.TIPO_ARCHIVO (
+    ID_TIPO_ARCHIVO   INT PRIMARY KEY,
+    CODIGO_REFERENCIA VARCHAR(30) UNIQUE NOT NULL,
+    DESCRIPCION       VARCHAR(150) NOT NULL
+);
 
 INSERT INTO FACTURACION.TIPO_ARCHIVO (ID_TIPO_ARCHIVO, CODIGO_REFERENCIA, DESCRIPCION) VALUES
 (1, 'ZIP', 'Archivo ZIP'),
@@ -30,11 +38,30 @@ CREATE TABLE FACTURACION.TIPO_PROCESO (
 );
 
 INSERT INTO FACTURACION.TIPO_PROCESO (ID_TIPO_PROCESO, CODIGO_REFERENCIA, DESCRIPCION) VALUES
-(1, 'ESCANEO_MALWARE', 'Verificación de archivos contra virus y malware'),
-(2, 'DESCARGA_ALMACENAMIENTO', 'Descarga y almacenamiento del archivo en S3'),
-(3, 'VALIDACION_CONTENIDO_ZIP', 'Verificación de que el ZIP contiene XML y PDF completos'),
-(4, 'EXTRACCION_ZIP', 'Extracción de archivos del ZIP'),
-(5, 'REGISTRO_ADJUNTOS', 'Registro de adjuntos en la base de datos')
+(1,  'ESCANEO_MALWARE',              'Verificación de archivos contra virus y malware'),
+(2,  'DESCARGA_ALMACENAMIENTO',      'Descarga y almacenamiento del archivo en S3'),
+(3,  'VALIDACION_CONTENIDO_ZIP',     'Verificación de que el ZIP contiene XML y PDF completos'),
+(4,  'EXTRACCION_ZIP',               'Extracción de archivos del ZIP'),
+(5,  'REGISTRO_ADJUNTOS',            'Registro de adjuntos en la base de datos'),
+(6,  'VALIDACION_CUFE',              'Validación y extracción del CUFE'),
+(7,  'VALIDACION_DENOMINACION',      'Validar denominación como factura electrónica de venta'),
+(8,  'EXTRACCION_EMISOR',            'Extracción datos del vendedor/emisor'),
+(9,  'EXTRACCION_ADQUIRIENTE',       'Extracción datos del adquiriente'),
+(10, 'VALIDACION_NUMERACION',        'Validación de la numeración autorizada DIAN'),
+(11, 'VALIDACION_FECHA_GENERACION',  'Validar fecha y hora de generación'),
+(12, 'VALIDACION_FECHA_VALIDACION',  'Validar fecha y hora de validación/expedición DIAN'),
+(13, 'VALIDACION_DOCUMENTO_DIAN',    'Validar documento «Documento validado por la DIAN»'),
+(14, 'EXTRACCION_LINEAS',            'Extracción de líneas/ítems de la factura'),
+(15, 'VALIDACION_VALOR_TOTAL',       'Validar valor total vs sumatoria de líneas'),
+(16, 'EXTRACCION_FORMA_PAGO',        'Extracción de la forma de pago'),
+(17, 'EXTRACCION_MEDIO_PAGO',        'Extracción del medio de pago'),
+(18, 'EXTRACCION_CALIDAD_TRIBUTARIA','Extracción de la calidad tributaria del emisor'),
+(19, 'EXTRACCION_IMPUESTOS',         'Extracción de impuestos a nivel factura'),
+(20, 'VALIDACION_FIRMA_DIGITAL',     'Validación de la firma digital del facturador'),
+(21, 'EXTRACCION_QR',                'Extracción y validación del código QR'),
+(22, 'VALIDACION_ANEXO_TECNICO',     'Validación del anexo técnico UBL'),
+(23, 'EXTRACCION_SOFTWARE',          'Extracción datos del software y proveedor tecnológico'),
+(24, 'REGISTRO_FACTURA',             'Registro final de la factura en BD')
 ON CONFLICT DO NOTHING;
 
 
@@ -45,24 +72,56 @@ CREATE TABLE FACTURACION.TIPO_ERROR (
 );
 
 INSERT INTO FACTURACION.TIPO_ERROR (ID_TIPO_ERROR, CODIGO_REFERENCIA, DESCRIPCION) VALUES
-(1,  'MALWARE_DETECTADO',          'Se detectó virus o malware en el archivo'),
-(2,  'EXTENSION_PROHIBIDA',        'El archivo tiene una extensión peligrosa (.exe, .bat, etc.)'),
-(3,  'TAMANO_EXCEDIDO',            'El archivo excede el tamaño máximo permitido'),
-(4,  'ZIP_CORRUPTO',               'El archivo ZIP está corrupto o no es válido'),
-(5,  'ZIP_SIN_XML',                'El ZIP no contiene archivos XML de factura'),
-(6,  'ZIP_PROFUNDIDAD_EXCEDIDA',   'ZIPs anidados exceden la profundidad máxima permitida'),
-(7,  'ZIP_SUBZIP_INVALIDO',        'Un sub-ZIP dentro del ZIP principal no contiene pares válidos'),
-(8,  'FALLO_DESCARGA_ADJUNTOS',    'No se pudieron descargar los adjuntos del correo'),
-(9,  'FALLO_SUBIDA_S3',            'Error al subir el archivo a S3'),
-(10, 'FALLO_REGISTRO_BD',          'Error al registrar el adjunto en la base de datos'),
-(11, 'XML_EMBEBIDO_NO_ENCONTRADO', 'No se encontraron los XMLs de Invoice o ApplicationResponse embebidos'),
-(12, 'XML_EMBEBIDO_PARSE_ERROR',   'Error al parsear el XML AttachedDocument para extraer embebidos'),
-(13, 'PDF_FALTANTE',               'No se encontró un PDF correspondiente al XML'),
-(14, 'PDF_SIN_XML',                'Se encontró un PDF sin XML correspondiente'),
-(15, 'CORREO_SIN_ADJUNTOS_VALIDOS','El correo de facturación no contiene adjuntos válidos'),
-(16, 'CORREO_RECHAZADO_FILTRO',    'El correo no cumple los criterios del filtro de facturación'),
-(17, 'ERROR_PROCESAMIENTO_GENERAL','Error inesperado durante el procesamiento del correo'),
-(18, 'ADJUNTO_DUPLICADO',          'El adjunto ya fue procesado previamente (hash duplicado)')
+(1,  'MALWARE_DETECTADO',            'Se detectó virus o malware en el archivo'),
+(2,  'EXTENSION_PROHIBIDA',          'El archivo tiene una extensión peligrosa (.exe, .bat, etc.)'),
+(3,  'TAMANO_EXCEDIDO',              'El archivo excede el tamaño máximo permitido'),
+(4,  'ZIP_CORRUPTO',                 'El archivo ZIP está corrupto o no es válido'),
+(5,  'ZIP_SIN_XML',                  'El ZIP no contiene archivos XML de factura'),
+(6,  'ZIP_PROFUNDIDAD_EXCEDIDA',     'ZIPs anidados exceden la profundidad máxima permitida'),
+(7,  'ZIP_SUBZIP_INVALIDO',          'Un sub-ZIP dentro del ZIP principal no contiene pares válidos'),
+(8,  'FALLO_DESCARGA_ADJUNTOS',      'No se pudieron descargar los adjuntos del correo'),
+(9,  'FALLO_SUBIDA_S3',              'Error al subir el archivo a S3'),
+(10, 'FALLO_REGISTRO_BD',            'Error al registrar el adjunto en la base de datos'),
+(11, 'XML_EMBEBIDO_NO_ENCONTRADO',   'No se encontraron los XMLs de Invoice o ApplicationResponse embebidos'),
+(12, 'XML_EMBEBIDO_PARSE_ERROR',     'Error al parsear el XML AttachedDocument para extraer embebidos'),
+(13, 'PDF_FALTANTE',                 'No se encontró un PDF correspondiente al XML'),
+(14, 'PDF_SIN_XML',                  'Se encontró un PDF sin XML correspondiente'),
+(15, 'CORREO_SIN_ADJUNTOS_VALIDOS',  'El correo de facturación no contiene adjuntos válidos'),
+(16, 'CORREO_RECHAZADO_FILTRO',      'El correo no cumple los criterios del filtro de facturación'),
+(17, 'ERROR_PROCESAMIENTO_GENERAL',  'Error inesperado durante el procesamiento del correo'),
+(18, 'ADJUNTO_DUPLICADO',            'El adjunto ya fue procesado previamente (hash duplicado)'),
+(19, 'CUFE_NO_ENCONTRADO',           'No se encontró el CUFE en el XML'),
+(20, 'CUFE_INVALIDO',                'El CUFE del XML no es válido o no coincide con el recalculado'),
+(21, 'XML_PARSE_ERROR',              'Error al parsear el XML descargado de S3'),
+(26, 'FECHA_VALIDACION_INVALIDA',    'Fecha de validación DIAN inválida'),
+(27, 'VALIDACION_DIAN_FALLO',        'El documento no fue validado por la DIAN'),
+(29, 'VALOR_TOTAL_INCONSISTENTE',    'El valor total no coincide con la sumatoria de líneas'),
+(30, 'FORMA_PAGO_INVALIDA',          'Forma de pago inválida o faltante'),
+(31, 'MEDIO_PAGO_INVALIDO',          'Medio de pago inválido (requerido para pago de contado)'),
+(32, 'CALIDAD_TRIBUTARIA_FALTANTE',  'No se informó la calidad tributaria del emisor'),
+(33, 'IMPUESTOS_INVALIDOS',          'Impuestos con datos faltantes o inconsistentes'),
+(34, 'FIRMA_DIGITAL_INVALIDA',       'La firma digital no es válida'),
+(35, 'QR_INVALIDO',                  'El código QR es inválido o inconsistente'),
+(36, 'ANEXO_TECNICO_INVALIDO',       'El XML no cumple con el anexo técnico UBL'),
+(37, 'SOFTWARE_PROVEEDOR_FALTANTE',  'No se informó el fabricante de software'),
+(38, 'ERROR_REGISTRO_FACTURA',       'Error al registrar la factura en la BD'),
+(39, 'MAX_REINTENTOS_EXCEDIDO',      'Se excedió el máximo de reintentos'),
+(40, 'EMISOR_SIN_NOMBRE',            'El emisor no tiene nombre o razón social'),
+(41, 'EMISOR_SIN_DOCUMENTO',         'El emisor no tiene número de documento o NIT'),
+(42, 'EMISOR_DOCUMENTO_INVALIDO',    'El documento del emisor tiene un formato inválido'),
+(43, 'EMISOR_DV_INVALIDO',           'El dígito de verificación del emisor es incorrecto'),
+(44, 'ADQUIRIENTE_SIN_NOMBRE',       'El adquiriente no tiene nombre o razón social'),
+(45, 'ADQUIRIENTE_SIN_DOCUMENTO',    'El adquiriente no tiene número de documento o NIT'),
+(46, 'ADQUIRIENTE_DOCUMENTO_INVALIDO', 'El documento del adquiriente tiene un formato inválido'),
+(47, 'ADQUIRIENTE_DV_INVALIDO',      'El dígito de verificación del adquiriente es incorrecto'),
+(48, 'NUMERACION_SIN_RANGO_AUTORIZADO', 'La factura no incluye la información del rango de numeración autorizado'),
+(49, 'NUMERACION_FUERA_DE_RANGO',    'El número de factura está fuera del rango autorizado por la DIAN'),
+(50, 'NUMERACION_VENCIDA',           'La autorización de numeración de la factura se encuentra vencida'),
+(51, 'FECHA_GENERACION_FUTURA',      'La fecha de generación de la factura es una fecha futura'),
+(52, 'FECHA_GENERACION_FORMATO_INVALIDO', 'El formato de la fecha de generación es inválido o no se pudo extraer'),
+(53, 'LINEA_SIN_DESCRIPCION',        'Una o más líneas de la factura no tienen descripción del ítem'),
+(54, 'LINEA_VALOR_INVALIDO',         'Una o más líneas tienen valores nulos o inválidos en precios o cantidades'),
+(55, 'LINEA_CANTIDAD_INVALIDA',      'Una o más líneas tienen una cantidad reportada inválida')
 ON CONFLICT DO NOTHING;
 
 
@@ -133,6 +192,30 @@ INSERT INTO FACTURACION.TIPO_ROL_TERCERO (ID_ROL_TERCERO, CODIGO_REFERENCIA, DES
 (4, 'PROVEEDOR_TECNOLOGICO', 'Proveedor tecnológico')
 ON CONFLICT DO NOTHING;
 
+
+-- Tipos de documento de identificación tributaria (Anexo 1.9 DIAN).
+-- Códigos provienen del schemeName de cbc:CompanyID / sts:ProviderID.
+CREATE TABLE FACTURACION.TIPO_DOCUMENTO_IDENTIDAD (
+    ID_TIPO_DOCUMENTO   VARCHAR(2) PRIMARY KEY,
+    CODIGO_REFERENCIA   VARCHAR(40) UNIQUE NOT NULL,
+    DESCRIPCION         VARCHAR(120) NOT NULL
+);
+
+INSERT INTO FACTURACION.TIPO_DOCUMENTO_IDENTIDAD (ID_TIPO_DOCUMENTO, CODIGO_REFERENCIA, DESCRIPCION) VALUES
+('11', 'REGISTRO_CIVIL',      'Registro civil'),
+('12', 'TARJETA_IDENTIDAD',   'Tarjeta de identidad'),
+('13', 'CEDULA_CIUDADANIA',   'Cédula de ciudadanía'),
+('21', 'TARJETA_EXTRANJERIA', 'Tarjeta de extranjería'),
+('22', 'CEDULA_EXTRANJERIA',  'Cédula de extranjería'),
+('31', 'NIT',                 'NIT'),
+('41', 'PASAPORTE',           'Pasaporte'),
+('42', 'DOCUMENTO_EXTRANJERO','Documento de identificación extranjero'),
+('47', 'PEP',                 'PEP (Permiso Especial de Permanencia)'),
+('48', 'PPT',                 'PPT (Permiso Protección Temporal)'),
+('50', 'NIT_OTRO_PAIS',       'NIT de otro país'),
+('91', 'NUIP',                'NUIP')
+ON CONFLICT DO NOTHING;
+
 -- =========================
 -- CORREO DE ENTRADA
 -- =========================
@@ -201,14 +284,15 @@ CREATE TABLE FACTURACION.TERCERO (
     ID_ROL_TERCERO     INT NOT NULL REFERENCES FACTURACION.TIPO_ROL_TERCERO(ID_ROL_TERCERO),
     NUMERO_DOCUMENTO   VARCHAR(20) NOT NULL,
     DIGITO_VERIFICADOR VARCHAR(2) NULL,
-    RAZON_SOCIAL       VARCHAR(300) NOT NULL,
-    NOMBRE_COMERCIAL   VARCHAR(300) NULL,
+    ID_TIPO_DOCUMENTO  VARCHAR(2) NULL REFERENCES FACTURACION.TIPO_DOCUMENTO_IDENTIDAD(ID_TIPO_DOCUMENTO),
     CORREO_CONTACTO    VARCHAR(320) NULL,
     TELEFONO_CONTACTO  VARCHAR(50) NULL,
     CODIGO_PAIS        CHAR(2) NOT NULL DEFAULT 'CO',
     FECHA_CREACION     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT UQ_TERCERO_DOCUMENTO_ROL UNIQUE (ID_ROL_TERCERO, NUMERO_DOCUMENTO)
 );
+
+CREATE INDEX IX_TERCERO_TIPO_DOCUMENTO ON FACTURACION.TERCERO (ID_TIPO_DOCUMENTO);
 
 -- =========================
 -- NUMERACIÓN AUTORIZADA DIAN (req_04)
@@ -241,13 +325,15 @@ CREATE TABLE FACTURACION.FACTURA (
     PREFIJO_FACTURACION     VARCHAR(20) NOT NULL DEFAULT '',
     NUMERO_FACTURA          VARCHAR(50) NOT NULL,
     ID_TERCERO_EMISOR       BIGINT NOT NULL REFERENCES FACTURACION.TERCERO(ID_TERCERO),
+    RAZON_SOCIAL_EMISOR     VARCHAR(300) NULL,
     ID_TERCERO_ADQUIRIENTE  BIGINT NOT NULL REFERENCES FACTURACION.TERCERO(ID_TERCERO),
-    ID_AUTORIZACION         BIGINT NOT NULL REFERENCES FACTURACION.AUTORIZACION_NUMERACION_DIAN(ID_AUTORIZACION),
+    RAZON_SOCIAL_ADQUIRIENTE VARCHAR(300) NULL,
+    ID_AUTORIZACION         BIGINT NULL REFERENCES FACTURACION.AUTORIZACION_NUMERACION_DIAN(ID_AUTORIZACION),
     FECHA_GENERACION        TIMESTAMPTZ NOT NULL,
-    FECHA_EXPEDICION        TIMESTAMPTZ NOT NULL,
+    FECHA_EXPEDICION        TIMESTAMPTZ NULL,
     FECHA_VENCIMIENTO       DATE NULL,
     CODIGO_MONEDA           CHAR(3) NOT NULL DEFAULT 'COP',
-    VALOR_TOTAL             NUMERIC(18,2) NOT NULL CHECK (VALOR_TOTAL >= 0),
+    VALOR_TOTAL             NUMERIC(18,2) NULL CHECK (VALOR_TOTAL IS NULL OR VALOR_TOTAL >= 0),
     HASH_FIRMA_DIGITAL      VARCHAR(128) NULL,
     CONTENIDO_QR            TEXT NULL,
     ADJUNTO_ID              BIGINT NULL REFERENCES FACTURACION.ADJUNTOS_CORREO(ADJUNTO_ID),
@@ -312,19 +398,7 @@ CREATE TABLE FACTURACION.DETALLE_FACTURA (
     CONSTRAINT UQ_FACTURA_LINEA UNIQUE (ID_FACTURA, NUMERO_LINEA)
 );
 
--- =========================
--- IMPUESTOS A NIVEL DETALLE/LÍNEA
--- Múltiples registros por línea
--- =========================
 
-CREATE TABLE FACTURACION.IMPUESTO_DETALLE_FACTURA (
-    ID_DETALLE     BIGINT NOT NULL REFERENCES FACTURACION.DETALLE_FACTURA(ID_DETALLE),
-    ID_IMPUESTO    INT NOT NULL REFERENCES FACTURACION.TIPO_IMPUESTO(ID_IMPUESTO),
-    TARIFA         NUMERIC(9,4) NOT NULL CHECK (TARIFA >= 0),
-    BASE_GRAVABLE  NUMERIC(18,2) NOT NULL CHECK (BASE_GRAVABLE >= 0),
-    VALOR_IMPUESTO NUMERIC(18,2) NOT NULL CHECK (VALOR_IMPUESTO >= 0),
-    PRIMARY KEY (ID_DETALLE, ID_IMPUESTO, TARIFA)
-);
 
 -- =========================
 -- IMPUESTOS A NIVEL FACTURA (req_13)
@@ -340,23 +414,7 @@ CREATE TABLE FACTURACION.IMPUESTO_FACTURA (
     PRIMARY KEY (ID_FACTURA, ID_IMPUESTO, TARIFA)
 );
 
--- =========================
--- VALIDACIÓN DIAN (req_06, req_07)
--- Puede haber múltiples validaciones (reintentos)
--- =========================
 
-CREATE TABLE FACTURACION.VALIDACION_DIAN (
-    ID_VALIDACION              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    ID_FACTURA                 BIGINT NOT NULL REFERENCES FACTURACION.FACTURA(ID_FACTURA),
-    ID_PROCESO_INGESTA         BIGINT NULL REFERENCES FACTURACION.PROCESO_INGESTA(ID_PROCESO_INGESTA),
-    FECHA_VALIDACION           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    IDENTIFICADOR_RASTREO      VARCHAR(120) NULL,
-    CODIGO_RESPUESTA           VARCHAR(40) NULL,
-    DESCRIPCION_RESPUESTA      VARCHAR(500) NULL,
-    ID_ESTADO_PROCESO          INT NOT NULL REFERENCES FACTURACION.TIPO_ESTADO_PROCESO(ID_ESTADO_PROCESO),
-    CUFE_VALIDADO              VARCHAR(100) NULL,
-    CONTENIDO_QR_VALIDADO      TEXT NULL
-);
 
 -- =========================
 -- FABRICANTE DE SOFTWARE (req_18)
@@ -405,4 +463,3 @@ CREATE INDEX IX_ADJUNTO_CORREO ON FACTURACION.ADJUNTOS_CORREO (CORREO_ID);
 CREATE INDEX IX_ADJUNTO_SHA256 ON FACTURACION.ADJUNTOS_CORREO (SHA256);
 CREATE INDEX IX_PROCESO_ESTADO ON FACTURACION.PROCESO_INGESTA (ID_ESTADO);
 CREATE INDEX IX_PROCESO_ADJUNTO ON FACTURACION.PROCESO_INGESTA (ADJUNTO_ID);
-CREATE INDEX IX_VALIDACION_FACTURA ON FACTURACION.VALIDACION_DIAN (ID_FACTURA, FECHA_VALIDACION DESC);

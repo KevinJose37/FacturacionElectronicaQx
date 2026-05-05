@@ -1,74 +1,118 @@
-"""Módulo que contiene funciones de validación de la forma de pago de la factura"""
+"""Módulo que contiene funciones de validación de la forma de pago de la factura."""
 
 # Standard library imports
-from datetime import datetime
+import logging
 
 # Third-party imports
 from lxml import etree
+from metadata.db_metadata import IdTipoError
 
 
-def validar_forma_pago_v1(xml_factura: etree._Element) -> bool:
-    """Valida la forma de pago de la factura y su fecha de vencimiento según la
-     resolución 000165 de 2023.
+logger = logging.getLogger(__name__)
+
+# Formas de pago según la resolución 000165 de 2023 (DIAN)
+FORMAS_PAGO = {
+    '1': 'Contado',
+    '2': 'Crédito',
+}
+
+
+def validar_forma_pago_v1(xml_invoice: etree._Element | None) -> dict:
+    """Valida la forma de pago de la factura electrónica según la resolución
+     000165 de 2023.
 
     Args:
-        xml_factura: Elemento raíz del XML de la factura.
-    
+        xml_invoice: Árbol XML de la factura electrónica a validar.
+
     Returns:
-        True si la forma de pago y su fecha de vencimiento son válidas, False en caso
-         contrario.
-    
+        Diccionario con:
+        - 'valido': bool indicando si la forma de pago es válida.
+        - 'mensaje': str con la descripción del resultado.
+        - 'datos': dict con forma de pago, fecha de vencimiento, y duración.
     """
 
     NAMESPACES = {
-        'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
         'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+        'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2'
     }
 
     resultado_validacion = False
+    codigo_forma_pago = None
+    nombre_forma_pago = None
+    fecha_vencimiento = None
+    duracion_plazo = None
 
-    nodo_payment_means = xml_factura.xpath(
-        './cac:PaymentMeans', namespaces=NAMESPACES
-    )
+    if xml_invoice is None:
+        mensaje = 'No se encontró el XML Invoice para validar forma de pago.'
 
-    if not nodo_payment_means:
-        mensaje = 'No se encontró cac:PaymentMeans.'
-    
     else:
-        nodo_id = nodo_payment_means[0].xpath(
-            './cbc:ID', namespaces=NAMESPACES
+        nodos_payment_means = xml_invoice.xpath(
+            './cac:PaymentMeans', namespaces=NAMESPACES
         )
 
-        nodo_due_date = nodo_payment_means[0].xpath(
-            './cbc:PaymentDueDate', namespaces=NAMESPACES
-        )
+        if not nodos_payment_means:
+            mensaje = 'No se encontró la sección de forma de pago (PaymentMeans).'
 
-        forma_pago = nodo_id[0].text.strip() if nodo_id else None
-        due_date = nodo_due_date[0].text.strip() if nodo_due_date else None
+        else:
+            payment_means = nodos_payment_means[0]
 
-        if forma_pago not in ('1', '2'):
-            mensaje = (
-                f'Forma de pago inválida: {forma_pago}. '
-                'Debe ser 1 (contado) o 2 (crédito).'
+            # cbc:ID es la forma de pago (1=contado, 2=crédito)
+            nodo_id = payment_means.xpath('./cbc:ID', namespaces=NAMESPACES)
+            codigo_forma_pago = (
+                (nodo_id[0].text or '').strip() if nodo_id else None
+            )
+            nombre_forma_pago = FORMAS_PAGO.get(codigo_forma_pago)
+
+            # Fecha de vencimiento
+            nodo_vencimiento = payment_means.xpath(
+                './cbc:PaymentDueDate', namespaces=NAMESPACES
+            )
+            fecha_vencimiento = (
+                (nodo_vencimiento[0].text or '').strip()
+                if nodo_vencimiento else None
             )
 
-        elif forma_pago == '2':  # crédito
-            if not due_date:
+            # Duración del plazo (PaymentTerms)
+            nodo_duracion = xml_invoice.xpath(
+                './cac:PaymentTerms/cbc:ReferenceEventCode',
+                namespaces=NAMESPACES
+            )
+            duracion_plazo = (
+                (nodo_duracion[0].text or '').strip()
+                if nodo_duracion else None
+            )
+
+            if not codigo_forma_pago:
+                mensaje = 'No se encontró el código de forma de pago (cbc:ID).'
+
+            elif codigo_forma_pago not in FORMAS_PAGO:
                 mensaje = (
-                    'La factura es a crédito pero no tiene '
-                    'cbc:PaymentDueDate.'
+                    f'Código de forma de pago no válido: "{codigo_forma_pago}". '
+                    f'Esperado: {list(FORMAS_PAGO.keys())}.'
                 )
 
             else:
-                mensaje = (
-                    f'Factura a crédito válida con plazo: {due_date}.'
-                )
                 resultado_validacion = True
+                mensaje = (
+                    f'Forma de pago válida: {nombre_forma_pago} '
+                    f'(código {codigo_forma_pago}).'
+                )
 
-        else:  # contado
-            mensaje = 'Factura de contado válida.'
-            resultado_validacion = True
+                if codigo_forma_pago == '2' and not fecha_vencimiento:
+                    mensaje += ' ALERTA: Crédito sin fecha de vencimiento.'
 
-    enviar_log_validacion(mensaje)
+    logger.debug(mensaje)
 
-    return resultado_validacion
+    resultado = {
+        'valido': resultado_validacion,
+        'mensaje': mensaje,
+        'id_error': IdTipoError.forma_pago_invalida if not resultado_validacion else None,
+        'datos': {
+            'codigo_forma_pago': codigo_forma_pago,
+            'nombre_forma_pago': nombre_forma_pago,
+            'fecha_vencimiento': fecha_vencimiento,
+            'duracion_plazo': duracion_plazo,
+        }
+    }
+
+    return resultado

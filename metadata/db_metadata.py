@@ -56,6 +56,65 @@ class IdTipoProceso:
     registro_adjuntos = 5
     """Registro de adjuntos en la base de datos."""
 
+    # -- Procesamiento de factura electrónica --
+
+    validacion_cufe = 6
+    """Validación y extracción del CUFE."""
+
+    validacion_denominacion = 7
+    """Validar denominación como factura electrónica de venta."""
+
+    extraccion_emisor = 8
+    """Extracción datos del vendedor/emisor."""
+
+    extraccion_adquiriente = 9
+    """Extracción datos del adquiriente."""
+
+    validacion_numeracion = 10
+    """Validación de la numeración autorizada DIAN."""
+
+    validacion_fecha_generacion = 11
+    """Validar fecha y hora de generación."""
+
+    validacion_fecha_validacion = 12
+    """Validar fecha y hora de validación/expedición DIAN."""
+
+    validacion_documento_dian = 13
+    """Validar el documento «Documento validado por la DIAN»."""
+
+    extraccion_lineas = 14
+    """Extracción de líneas/ítems de la factura."""
+
+    validacion_valor_total = 15
+    """Validar valor total vs sumatoria de líneas."""
+
+    extraccion_forma_pago = 16
+    """Extracción de la forma de pago."""
+
+    extraccion_medio_pago = 17
+    """Extracción del medio de pago."""
+
+    extraccion_calidad_tributaria = 18
+    """Extracción de la calidad tributaria del emisor."""
+
+    extraccion_impuestos = 19
+    """Extracción de impuestos a nivel factura."""
+
+    validacion_firma_digital = 20
+    """Validación de la firma digital del facturador."""
+
+    extraccion_qr = 21
+    """Extracción y validación del código QR."""
+
+    validacion_anexo_tecnico = 22
+    """Validación del anexo técnico UBL."""
+
+    extraccion_software = 23
+    """Extracción datos del software y proveedor tecnológico."""
+
+    registro_factura = 24
+    """Registro final de la factura en BD."""
+
 
 class IdTipoError:
     """Tipos de error en el procesamiento de ingesta.
@@ -124,6 +183,119 @@ class IdTipoError:
 
     adjunto_duplicado = 18
     """El adjunto ya fue procesado previamente (hash duplicado)."""
+
+    # -- Procesamiento de factura electrónica --
+
+    cufe_no_encontrado = 19
+    """No se encontró el CUFE en el XML."""
+
+    cufe_invalido = 20
+    """El CUFE del XML no es válido o no coincide con el recalculado."""
+
+    xml_parse_error = 21
+    """Error al parsear el XML descargado de S3."""
+
+    datos_emisor_invalidos = 22
+    """No se pudieron extraer los datos del emisor."""
+
+    datos_adquiriente_invalidos = 23
+    """No se pudieron extraer los datos del adquiriente."""
+
+    numeracion_invalida = 24
+    """La numeración de la factura no es válida."""
+
+    fecha_generacion_invalida = 25
+    """Fecha de generación inválida o futura."""
+
+    fecha_validacion_invalida = 26
+    """Fecha de validación DIAN inválida."""
+
+    validacion_dian_fallo = 27
+    """El documento no fue validado por la DIAN."""
+
+    lineas_invalidas = 28
+    """Las líneas de la factura no cumplen los requisitos."""
+
+    valor_total_inconsistente = 29
+    """El valor total no coincide con la sumatoria de líneas."""
+
+    forma_pago_invalida = 30
+    """Forma de pago inválida o faltante."""
+
+    medio_pago_invalido = 31
+    """Medio de pago inválido (requerido para pago de contado)."""
+
+    calidad_tributaria_faltante = 32
+    """No se informó la calidad tributaria del emisor."""
+
+    impuestos_invalidos = 33
+    """Impuestos con datos faltantes o inconsistentes."""
+
+    firma_digital_invalida = 34
+    """La firma digital no es válida."""
+
+    qr_invalido = 35
+    """El código QR es inválido o inconsistente."""
+
+    anexo_tecnico_invalido = 36
+    """El XML no cumple con el anexo técnico UBL."""
+
+    software_proveedor_faltante = 37
+    """No se informó el fabricante de software."""
+
+    error_registro_factura = 38
+    """Error al registrar la factura en la BD."""
+
+    max_reintentos_excedido = 39
+    """Se excedió el máximo de reintentos."""
+
+    emisor_sin_nombre = 40
+    """El emisor no tiene nombre o razón social."""
+
+    emisor_sin_documento = 41
+    """El emisor no tiene número de documento o NIT."""
+
+    emisor_documento_invalido = 42
+    """El documento del emisor tiene un formato inválido."""
+
+    emisor_dv_invalido = 43
+    """El dígito de verificación del emisor es incorrecto."""
+
+    adquiriente_sin_nombre = 44
+    """El adquiriente no tiene nombre o razón social."""
+
+    adquiriente_sin_documento = 45
+    """El adquiriente no tiene número de documento o NIT."""
+
+    adquiriente_documento_invalido = 46
+    """El documento del adquiriente tiene un formato inválido."""
+
+    adquiriente_dv_invalido = 47
+    """El dígito de verificación del adquiriente es incorrecto."""
+
+    numeracion_sin_rango_autorizado = 48
+    """La factura no incluye la información del rango de numeración autorizado."""
+
+    numeracion_fuera_de_rango = 49
+    """El número de factura está fuera del rango autorizado por la DIAN."""
+
+    numeracion_vencida = 50
+    """La autorización de numeración de la factura se encuentra vencida."""
+
+    fecha_generacion_futura = 51
+    """La fecha de generación de la factura es una fecha futura."""
+
+    fecha_generacion_formato_invalido = 52
+    """El formato de la fecha de generación es inválido o no se pudo extraer."""
+
+    linea_sin_descripcion = 53
+    """Una o más líneas de la factura no tienen descripción del ítem."""
+
+    linea_valor_invalido = 54
+    """Una o más líneas tienen valores nulos o inválidos en precios o cantidades."""
+
+    linea_cantidad_invalida = 55
+    """Una o más líneas tienen una cantidad reportada inválida."""
 
 
 class MensajesDB:

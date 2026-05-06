@@ -49,9 +49,6 @@ def subir_archivo_s3(
                 region_name=aws_cfg.get('region_name')
             )
             s3_client.upload_file(str(ruta), target_bucket, destino_s3)
-            logger.info(
-                f'Archivo subido a S3 exitosamente: s3://{target_bucket}/{destino_s3}'
-            )
             es_exitoso = True
         except (BotoCoreError, ClientError) as error:
             logger.error(f'Error de AWS al subir el archivo {ruta_local} a S3: {error}')
@@ -106,10 +103,6 @@ def copiar_archivo_s3(
             Key=destino_key,
             CopySource={'Bucket': source_bucket, 'Key': origen_key},
         )
-        logger.info(
-            'Archivo copiado en S3: s3://%s/%s -> s3://%s/%s',
-            source_bucket, origen_key, target_bucket, destino_key,
-        )
         es_exitoso = True
     except (BotoCoreError, ClientError) as error:
         logger.error(
@@ -151,7 +144,6 @@ def obtener_xml_s3(
         respuesta = s3_client.get_object(Bucket=target_bucket, Key=s3_key)
         contenido_bytes = respuesta['Body'].read()
         arbol_xml = etree.fromstring(contenido_bytes)
-        logger.info(f'XML procesado exitosamente desde s3://{target_bucket}/{s3_key}')
     except (BotoCoreError, ClientError) as error:
         logger.error(f'Error de AWS al obtener s3://{target_bucket}/{s3_key}: {error}')
     except etree.XMLSyntaxError as error:

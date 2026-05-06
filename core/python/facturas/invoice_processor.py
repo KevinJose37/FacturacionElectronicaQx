@@ -21,12 +21,10 @@ from typing import Optional
 
 from config import get_postgres_config
 from core.python.facturas.invoice_repository import InvoiceRepository
-from core.python.utils.xml_utils import parsear_xml_bytes
 from metadata.db_metadata import (
     IdEstadoProceso,
     IdTipoArchivo,
     IdTipoProceso,
-    IdTipoError,
 )
 from metadata.path_s3 import RutasS3
 from utils.s3_utils import copiar_archivo_s3, obtener_xml_s3
@@ -308,6 +306,7 @@ class InvoiceProcessor:
             conn, adjunto_id, cufe, res_denom, res_emisor, res_adq,
             res_num, res_fecha, res_valor, res_firma, res_qr,
             res_items, res_imp, res_forma, res_medio, res_fiscal, res_sw,
+            res_dian,
         )
 
         # 8. Marcar eventos como procesados
@@ -466,7 +465,7 @@ class InvoiceProcessor:
     def _poblar_tablas(self, conn, adjunto_id, cufe, res_denom, res_emisor,
                        res_adq, res_num, res_fecha, res_valor, res_firma,
                        res_qr, res_items, res_imp, res_forma, res_medio,
-                       res_fiscal, res_sw) -> None:
+                       res_fiscal, res_sw, res_dian) -> None:
         """Puebla las tablas de facturación con los datos validados."""
         try:
             # TERCERO emisor
@@ -542,6 +541,7 @@ class InvoiceProcessor:
             id_factura = self._repo.insertar_factura(conn, {
                 'cufe': cufe,
                 'denominacion': d_denom.get('denominacion'),
+                'codigo_tipo_documento_dian': d_denom.get('codigo_tipo_documento'),
                 'prefijo': datos_num.get('prefijo') or '',
                 'numero_factura': datos_num.get('numero_factura') or cufe[:20],
                 'id_tercero_emisor': id_emisor,
@@ -611,9 +611,23 @@ class InvoiceProcessor:
                         conn, id_fabricante, id_software
                     )
                     if id_producto > 0:
+                        # Solo vincular al proveedor tecnológico si está autorizado
+                        nit_pt = nit_proveedor if d_sw.get('es_autorizado') else None
                         self._repo.insertar_software_factura(
-                            conn, id_factura, id_producto, None
+                            conn, id_factura, id_producto, nit_pt
                         )
+
+            # EVENTO_DIAN_FACTURA
+            d_dian = res_dian['datos']
+            codigo_evento = d_dian.get('codigo_evento')
+            if codigo_evento:
+                self._repo.insertar_evento_dian_factura(
+                    conn,
+                    id_factura=id_factura,
+                    codigo_evento=codigo_evento,
+                    descripcion=d_dian.get('descripcion_respuesta'),
+                    id_rastreo=d_dian.get('id_rastreo'),
+                )
 
             # Copia de adjuntos originales (.zip, .xml, .pdf) a la zona
             # `processed/facturas/{proveedor}/{year}/{month}/{day}/` en S3.

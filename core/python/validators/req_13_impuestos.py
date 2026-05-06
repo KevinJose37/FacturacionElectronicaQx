@@ -6,20 +6,35 @@ import logging
 # Third-party imports
 from decimal import Decimal, ROUND_HALF_UP
 from lxml import etree
-from metadata.db_metadata import IdTipoError
+from metadata.db_metadata import IdTipoError, IdTipoImpuesto
 
 
 logger = logging.getLogger(__name__)
 
-# Códigos de impuestos DIAN
+# Mapeo de códigos DIAN a nombres legibles (fuente: TIPO_IMPUESTO)
 CODIGOS_IMPUESTOS = {
-    '01': 'IVA',
-    '02': 'Impuesto al Consumo',
-    '03': 'ICA',
-    '04': 'Impuesto Nacional al Consumo',
-    '05': 'ReteICA',
-    '06': 'ReteIVA',
-    'ZZ': 'Nombre del tributo (otros)',
+    IdTipoImpuesto.iva: 'IVA',
+    IdTipoImpuesto.ic: 'IC',
+    IdTipoImpuesto.ica: 'ICA',
+    IdTipoImpuesto.inc: 'INC',
+    IdTipoImpuesto.rete_iva: 'ReteIVA',
+    IdTipoImpuesto.rete_renta: 'ReteRenta',
+    IdTipoImpuesto.rete_ica: 'ReteICA',
+    IdTipoImpuesto.ic_porcentual: 'IC Porcentual',
+    IdTipoImpuesto.fto_horticultura: 'FtoHorticultura',
+    IdTipoImpuesto.timbre: 'Timbre',
+    IdTipoImpuesto.inc_bolsas: 'INC Bolsas',
+    IdTipoImpuesto.in_carbono: 'INCarbono',
+    IdTipoImpuesto.in_combustibles: 'INCombustibles',
+    IdTipoImpuesto.sobretasa_combustibles: 'Sobretasa Combustibles',
+    IdTipoImpuesto.sordicom: 'Sordicom',
+    IdTipoImpuesto.ic_datos: 'IC Datos',
+    IdTipoImpuesto.icl: 'ICL',
+    IdTipoImpuesto.inpp: 'INPP',
+    IdTipoImpuesto.ibua: 'IBUA',
+    IdTipoImpuesto.icui: 'ICUI',
+    IdTipoImpuesto.adv: 'ADV',
+    IdTipoImpuesto.otros: 'Otros',
 }
 
 

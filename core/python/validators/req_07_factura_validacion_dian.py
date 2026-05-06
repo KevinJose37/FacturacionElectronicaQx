@@ -6,7 +6,7 @@ import logging
 
 # Third-party imports
 from lxml import etree
-from metadata.db_metadata import IdTipoError
+from metadata.db_metadata import IdTipoError, IdTipoEventoDian
 
 
 logger = logging.getLogger(__name__)
@@ -98,13 +98,13 @@ def validar_documento_validacion_dian_v1(
                 'descripcion': (nodo_resp_desc[0].text or '').strip() if nodo_resp_desc else None,
             })
 
-        if not descripcion_respuesta:
-            mensaje = 'No se encontró la descripción de validación DIAN.'
+        if not codigo_respuesta:
+            mensaje = 'No se encontró el código de validación DIAN.'
 
-        elif 'Documento validado por la DIAN'.casefold() not in descripcion_respuesta.casefold():
+        elif codigo_respuesta != IdTipoEventoDian.documento_validado_dian:
             mensaje = (
-                f'Se encontró descripción "{descripcion_respuesta}" '
-                f'pero no corresponde a "Documento validado por la DIAN".'
+                f'Se encontró código "{codigo_respuesta}" ({descripcion_respuesta}) '
+                f'pero no corresponde a "Documento validado por la DIAN" ({IdTipoEventoDian.documento_validado_dian}).'
             )
 
         else:
@@ -119,6 +119,7 @@ def validar_documento_validacion_dian_v1(
         'id_error': IdTipoError.validacion_dian_fallo if not resultado_validacion else None,
         'datos': {
             'id_rastreo': id_rastreo,
+            'codigo_evento': codigo_respuesta,
             'codigo_respuesta': codigo_respuesta,
             'descripcion_respuesta': descripcion_respuesta,
             'cufe_validado': cufe_validado,

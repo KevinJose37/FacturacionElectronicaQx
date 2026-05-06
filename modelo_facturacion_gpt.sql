@@ -125,57 +125,161 @@ INSERT INTO FACTURACION.TIPO_ERROR (ID_TIPO_ERROR, CODIGO_REFERENCIA, DESCRIPCIO
 ON CONFLICT DO NOTHING;
 
 
+CREATE TABLE FACTURACION.TIPO_EVENTO_DIAN (
+    CODIGO_EVENTO     VARCHAR(10) PRIMARY KEY,
+    NOMBRE_EVENTO     VARCHAR(150) NOT NULL
+);
+
+INSERT INTO FACTURACION.TIPO_EVENTO_DIAN (CODIGO_EVENTO, NOMBRE_EVENTO) VALUES
+('02', 'Documento validado por la DIAN'),
+('04', 'Documento rechazado por la DIAN'),
+('030', 'Acuse de recibo de Factura Electrónica de Venta'),
+('031', 'Reclamo de la Factura Electrónica de Venta'),
+('032', 'Recibo del bien o prestación del servicio'),
+('033', 'Aceptación expresa'),
+('034', 'Aceptación Tácita')
+ON CONFLICT DO NOTHING;
+
+
 CREATE TABLE FACTURACION.TIPO_FORMA_PAGO (
-    ID_FORMA_PAGO     INT PRIMARY KEY,
-    CODIGO_REFERENCIA VARCHAR(20) UNIQUE NOT NULL,
+    CODIGO_FORMA_PAGO VARCHAR(10) PRIMARY KEY,
     DESCRIPCION       VARCHAR(100) NOT NULL
 );
 
-INSERT INTO FACTURACION.TIPO_FORMA_PAGO (ID_FORMA_PAGO, CODIGO_REFERENCIA, DESCRIPCION) VALUES
-(1, 'CONTADO', 'Contado'),
-(2, 'CREDITO', 'Crédito')
+INSERT INTO FACTURACION.TIPO_FORMA_PAGO (CODIGO_FORMA_PAGO, DESCRIPCION) VALUES
+('1', 'Contado'),
+('2', 'Crédito')
 ON CONFLICT DO NOTHING;
 
 
 CREATE TABLE FACTURACION.TIPO_MEDIO_PAGO (
-    ID_MEDIO_PAGO     INT PRIMARY KEY,
-    CODIGO_REFERENCIA VARCHAR(30) UNIQUE NOT NULL,
-    DESCRIPCION       VARCHAR(100) NOT NULL
+    CODIGO_MEDIO_PAGO VARCHAR(10) PRIMARY KEY,
+    DESCRIPCION       VARCHAR(200) NOT NULL
 );
 
-INSERT INTO FACTURACION.TIPO_MEDIO_PAGO (ID_MEDIO_PAGO, CODIGO_REFERENCIA, DESCRIPCION) VALUES
-(1, 'EFECTIVO', 'Efectivo'),
-(2, 'TARJETA_CREDITO', 'Tarjeta crédito'),
-(3, 'TARJETA_DEBITO', 'Tarjeta débito'),
-(4, 'TRANSFERENCIA', 'Transferencia electrónica'),
-(5, 'OTRO', 'Otro medio')
+INSERT INTO FACTURACION.TIPO_MEDIO_PAGO (CODIGO_MEDIO_PAGO, DESCRIPCION) VALUES
+('1',   'Instrumento no definido'),
+('2',   'Crédito ACH'),
+('3',   'Débito ACH'),
+('4',   'Reversión débito de demanda ACH'),
+('5',   'Reversión crédito de demanda ACH'),
+('6',   'Crédito de demanda ACH'),
+('7',   'Débito de demanda ACH'),
+('9',   'Clearing Nacional o Regional'),
+('10',  'Efectivo'),
+('11',  'Reversión Crédito Ahorro'),
+('12',  'Reversión Débito Ahorro'),
+('13',  'Crédito Ahorro'),
+('14',  'Débito Ahorro'),
+('15',  'Bookentry Crédito'),
+('16',  'Bookentry Débito'),
+('17',  'Desembolso Crédito (CCD)'),
+('18',  'Desembolso (CCD) débito'),
+('19',  'Crédito Pago negocio corporativo (CTP)'),
+('20',  'Cheque'),
+('21',  'Proyecto bancario'),
+('22',  'Proyecto bancario certificado'),
+('23',  'Cheque bancario de gerencia'),
+('24',  'Nota cambiaria esperando aceptación'),
+('25',  'Cheque certificado'),
+('26',  'Cheque Local'),
+('27',  'Débito Pago Negocio Corporativo (CTP)'),
+('28',  'Crédito Negocio Intercambio Corporativo (CTX)'),
+('29',  'Débito Negocio Intercambio Corporativo (CTX)'),
+('30',  'Transferencia Crédito'),
+('31',  'Transferencia Débito'),
+('32',  'Desembolso Crédito plus (CCD+)'),
+('33',  'Desembolso Débito plus (CCD+)'),
+('34',  'Pago y depósito pre acordado (PPD)'),
+('35',  'Desembolso Crédito (CCD)'),
+('36',  'Desembolso Débito (CCD)'),
+('37',  'Pago Negocio Corporativo Ahorros Crédito (CTP)'),
+('38',  'Pago Negocio Corporativo Ahorros Débito (CTP)'),
+('39',  'Crédito Intercambio Corporativo (CTX)'),
+('40',  'Débito Intercambio Corporativo (CTX)'),
+('41',  'Desembolso Crédito plus (CCD+)'),
+('42',  'Consignación bancaria'),
+('43',  'Desembolso Débito plus (CCD+)'),
+('44',  'Nota cambiaria'),
+('45',  'Transferencia Crédito Bancario'),
+('46',  'Transferencia Débito Interbancario'),
+('47',  'Transferencia Débito Bancaria'),
+('48',  'Tarjeta Crédito'),
+('49',  'Tarjeta Débito'),
+('50',  'Postgiro'),
+('51',  'Telex estándar bancario'),
+('52',  'Pago comercial urgente'),
+('53',  'Pago Tesorería Urgente'),
+('60',  'Nota promisoria'),
+('61',  'Nota promisoria firmada por el acreedor'),
+('62',  'Nota promisoria firmada por el acreedor, avalada por el banco'),
+('63',  'Nota promisoria firmada por el acreedor, avalada por un tercero'),
+('64',  'Nota promisoria firmada por el banco'),
+('65',  'Nota promisoria firmada por un banco avalada por otro banco'),
+('66',  'Nota promisoria firmada'),
+('67',  'Nota promisoria firmada por un tercero avalada por un banco'),
+('70',  'Retiro de nota por el acreedor'),
+('71',  'Bonos'),
+('72',  'Vales'),
+('74',  'Retiro de nota por el acreedor sobre un banco'),
+('75',  'Retiro de nota por el acreedor, avalada por otro banco'),
+('76',  'Retiro de nota por el acreedor, sobre un banco avalada por un tercero'),
+('77',  'Retiro de una nota por el acreedor sobre un tercero'),
+('78',  'Retiro de una nota por el acreedor sobre un tercero avalada por un banco'),
+('91',  'Nota bancaria transferible'),
+('92',  'Cheque local transferible'),
+('93',  'Giro referenciado'),
+('94',  'Giro urgente'),
+('95',  'Giro formato abierto'),
+('96',  'Método de pago solicitado no usado'),
+('97',  'Clearing entre partners'),
+('ZZZ', 'Otro')
 ON CONFLICT DO NOTHING;
 
 
 CREATE TABLE FACTURACION.TIPO_IMPUESTO (
-    ID_IMPUESTO       INT PRIMARY KEY,
-    CODIGO_REFERENCIA VARCHAR(20) UNIQUE NOT NULL,
-    DESCRIPCION       VARCHAR(150) NOT NULL
+    CODIGO_IMPUESTO   VARCHAR(10) PRIMARY KEY,
+    NOMBRE            VARCHAR(80) NOT NULL,
+    DESCRIPCION       VARCHAR(200) NOT NULL
 );
 
-INSERT INTO FACTURACION.TIPO_IMPUESTO (ID_IMPUESTO, CODIGO_REFERENCIA, DESCRIPCION) VALUES
-(1, 'IVA', 'Impuesto sobre las ventas'),
-(2, 'INC', 'Impuesto nacional al consumo'),
-(3, 'INC_BOLSAS', 'Impuesto nacional al consumo de bolsas plásticas')
+INSERT INTO FACTURACION.TIPO_IMPUESTO (CODIGO_IMPUESTO, NOMBRE, DESCRIPCION) VALUES
+('01', 'IVA',                    'Impuesto sobre la Ventas'),
+('02', 'IC',                     'Impuesto al Consumo Departamental Nominal'),
+('03', 'ICA',                    'Impuesto de Industria, Comercio y Aviso'),
+('04', 'INC',                    'Impuesto Nacional al Consumo'),
+('05', 'ReteIVA',                'Retención sobre el IVA'),
+('06', 'ReteRenta',              'Retención sobre Renta'),
+('07', 'ReteICA',                'Retención sobre el ICA'),
+('08', 'IC Porcentual',          'Impuesto al Consumo Departamental Porcentual'),
+('20', 'FtoHorticultura',        'Cuota de Fomento Hortifrutícola'),
+('21', 'Timbre',                 'Impuesto de Timbre'),
+('22', 'INC Bolsas',             'Impuesto Nacional al Consumo de Bolsa Plástica'),
+('23', 'INCarbono',              'Impuesto Nacional del Carbono'),
+('24', 'INCombustibles',         'Impuesto Nacional a los Combustibles'),
+('25', 'Sobretasa Combustibles', 'Sobretasa a los combustibles'),
+('26', 'Sordicom',               'Contribución minoristas (Combustibles)'),
+('30', 'IC Datos',               'Impuesto al Consumo de Datos'),
+('32', 'ICL',                    'Impuesto al Consumo de Licores'),
+('33', 'INPP',                   'Impuesto nacional productos plásticos'),
+('34', 'IBUA',                   'Impuesto a las bebidas ultraprocesadas azucaradas'),
+('35', 'ICUI',                   'Impuesto a los productos comestibles ultraprocesados industrialmente y/o con alto contenido de azúcares añadidos, sodio o grasas saturadas'),
+('36', 'ADV',                    'AD VALOREM'),
+('ZZ', 'Otros',                  'Otros tributos, tasas, contribuciones, y similares')
 ON CONFLICT DO NOTHING;
 
 
 CREATE TABLE FACTURACION.TIPO_CONDICION_FISCAL (
-    ID_CONDICION_FISCAL INT PRIMARY KEY,
-    CODIGO_REFERENCIA   VARCHAR(40) UNIQUE NOT NULL,
-    DESCRIPCION         VARCHAR(150) NOT NULL
+    CODIGO_RESPONSABILIDAD VARCHAR(20) PRIMARY KEY,
+    DESCRIPCION            VARCHAR(150) NOT NULL
 );
 
-INSERT INTO FACTURACION.TIPO_CONDICION_FISCAL (ID_CONDICION_FISCAL, CODIGO_REFERENCIA, DESCRIPCION) VALUES
-(1, 'AGENTE_RETENEDOR_IVA', 'Agente retenedor de IVA'),
-(2, 'AUTORRETENEDOR_RENTA', 'Autorretenedor de renta'),
-(3, 'GRAN_CONTRIBUYENTE', 'Gran contribuyente'),
-(4, 'SIMPLE', 'Contribuyente SIMPLE')
+INSERT INTO FACTURACION.TIPO_CONDICION_FISCAL (CODIGO_RESPONSABILIDAD, DESCRIPCION) VALUES
+('O-13',    'Gran contribuyente'),
+('O-15',    'Autorretenedor'),
+('O-23',    'Agente de retención IVA'),
+('O-47',    'Régimen simple de tributación'),
+('R-99-PN', 'No aplica – Otros')
 ON CONFLICT DO NOTHING;
 
 
@@ -196,24 +300,46 @@ ON CONFLICT DO NOTHING;
 -- Tipos de documento de identificación tributaria (Anexo 1.9 DIAN).
 -- Códigos provienen del schemeName de cbc:CompanyID / sts:ProviderID.
 CREATE TABLE FACTURACION.TIPO_DOCUMENTO_IDENTIDAD (
-    ID_TIPO_DOCUMENTO   VARCHAR(2) PRIMARY KEY,
+    ID_TIPO_DOCUMENTO   VARCHAR(10) PRIMARY KEY,
     CODIGO_REFERENCIA   VARCHAR(40) UNIQUE NOT NULL,
-    DESCRIPCION         VARCHAR(120) NOT NULL
+    DESCRIPCION         VARCHAR(200) NOT NULL
 );
 
 INSERT INTO FACTURACION.TIPO_DOCUMENTO_IDENTIDAD (ID_TIPO_DOCUMENTO, CODIGO_REFERENCIA, DESCRIPCION) VALUES
-('11', 'REGISTRO_CIVIL',      'Registro civil'),
-('12', 'TARJETA_IDENTIDAD',   'Tarjeta de identidad'),
-('13', 'CEDULA_CIUDADANIA',   'Cédula de ciudadanía'),
-('21', 'TARJETA_EXTRANJERIA', 'Tarjeta de extranjería'),
-('22', 'CEDULA_EXTRANJERIA',  'Cédula de extranjería'),
-('31', 'NIT',                 'NIT'),
-('41', 'PASAPORTE',           'Pasaporte'),
-('42', 'DOCUMENTO_EXTRANJERO','Documento de identificación extranjero'),
-('47', 'PEP',                 'PEP (Permiso Especial de Permanencia)'),
-('48', 'PPT',                 'PPT (Permiso Protección Temporal)'),
-('50', 'NIT_OTRO_PAIS',       'NIT de otro país'),
-('91', 'NUIP',                'NUIP')
+('10', 'CERTIFICADO_NACIDO_VIVO', 'Certificado de nacido vivo'),
+('11', 'REGISTRO_CIVIL',          'Registro civil'),
+('12', 'TARJETA_IDENTIDAD',       'Tarjeta de identidad'),
+('13', 'CEDULA_CIUDADANIA',       'Cédula de ciudadanía'),
+('21', 'TARJETA_EXTRANJERIA',     'Tarjeta de extranjería'),
+('22', 'CEDULA_EXTRANJERIA',      'Cédula de extranjería'),
+('31', 'NIT',                     'NIT'),
+('41', 'PASAPORTE',               'Pasaporte'),
+('42', 'DOCUMENTO_EXTRANJERO',    'Documento de identificación extranjero'),
+('47', 'PEP',                     'PEP (Permiso Especial de Permanencia)'),
+('48', 'PPT',                     'PPT (Permiso Protección Temporal)'),
+('50', 'NIT_OTRO_PAIS',           'NIT de otro país'),
+('91', 'NUIP',                    'NUIP')
+ON CONFLICT DO NOTHING;
+
+-- =========================
+-- TIPO DE DOCUMENTO DIAN (Código de tipo de facturación electrónica)
+-- =========================
+
+CREATE TABLE FACTURACION.TIPO_DOCUMENTO_DIAN (
+    CODIGO_TIPO_DOCUMENTO VARCHAR(10) PRIMARY KEY,
+    NOMBRE                VARCHAR(120) NOT NULL,
+    DESCRIPCION           VARCHAR(250) NULL,
+    ADMITE_EVENTOS        BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+INSERT INTO FACTURACION.TIPO_DOCUMENTO_DIAN (CODIGO_TIPO_DOCUMENTO, NOMBRE, DESCRIPCION, ADMITE_EVENTOS) VALUES
+('01', 'Factura electrónica de Venta',                              NULL, TRUE),
+('02', 'Factura electrónica de venta - exportación',                 NULL, TRUE),
+('03', 'Instrumento electrónico de transmisión - tipo 03',           'Transcripción de la factura de talonario o papel', TRUE),
+('04', 'Factura electrónica de Venta - tipo 04',                     NULL, TRUE),
+('91', 'Nota Crédito',                                               'Exclusivo en referencias a documentos (elementos DocumentReference)', FALSE),
+('92', 'Nota Débito',                                                NULL, FALSE),
+('96', 'Eventos (ApplicationResponse)',                              NULL, FALSE)
 ON CONFLICT DO NOTHING;
 
 -- =========================
@@ -322,6 +448,7 @@ CREATE TABLE FACTURACION.FACTURA (
     ID_FACTURA              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     CUFE                    VARCHAR(100) NOT NULL,
     DENOMINACION            VARCHAR(50) NULL,
+    CODIGO_TIPO_DOCUMENTO_DIAN VARCHAR(10) NULL REFERENCES FACTURACION.TIPO_DOCUMENTO_DIAN(CODIGO_TIPO_DOCUMENTO),
     PREFIJO_FACTURACION     VARCHAR(20) NOT NULL DEFAULT '',
     NUMERO_FACTURA          VARCHAR(50) NOT NULL,
     ID_TERCERO_EMISOR       BIGINT NOT NULL REFERENCES FACTURACION.TERCERO(ID_TERCERO),
@@ -353,11 +480,11 @@ CREATE INDEX IX_FACTURA_FECHA_EXPEDICION ON FACTURACION.FACTURA (FECHA_EXPEDICIO
 -- =========================
 
 CREATE TABLE FACTURACION.CONDICION_FISCAL_FACTURA (
-    ID_FACTURA          BIGINT NOT NULL REFERENCES FACTURACION.FACTURA(ID_FACTURA),
-    ID_CONDICION_FISCAL INT NOT NULL REFERENCES FACTURACION.TIPO_CONDICION_FISCAL(ID_CONDICION_FISCAL),
-    ES_APLICABLE        BOOLEAN NOT NULL DEFAULT TRUE,
-    NOTAS_ADICIONALES   VARCHAR(300) NULL,
-    PRIMARY KEY (ID_FACTURA, ID_CONDICION_FISCAL)
+    ID_FACTURA               BIGINT NOT NULL REFERENCES FACTURACION.FACTURA(ID_FACTURA),
+    CODIGO_RESPONSABILIDAD   VARCHAR(20) NOT NULL REFERENCES FACTURACION.TIPO_CONDICION_FISCAL(CODIGO_RESPONSABILIDAD),
+    ES_APLICABLE             BOOLEAN NOT NULL DEFAULT TRUE,
+    NOTAS_ADICIONALES        VARCHAR(300) NULL,
+    PRIMARY KEY (ID_FACTURA, CODIGO_RESPONSABILIDAD)
 );
 
 -- =========================
@@ -366,15 +493,15 @@ CREATE TABLE FACTURACION.CONDICION_FISCAL_FACTURA (
 -- =========================
 
 CREATE TABLE FACTURACION.PAGO_FACTURA (
-    ID_FACTURA        BIGINT PRIMARY KEY REFERENCES FACTURACION.FACTURA(ID_FACTURA),
-    ID_FORMA_PAGO     INT NOT NULL REFERENCES FACTURACION.TIPO_FORMA_PAGO(ID_FORMA_PAGO),
-    ID_MEDIO_PAGO     INT NULL REFERENCES FACTURACION.TIPO_MEDIO_PAGO(ID_MEDIO_PAGO),
-    PLAZO_EN_DIAS     INTEGER NULL CHECK (PLAZO_EN_DIAS >= 0),
-    NOTAS_ADICIONALES VARCHAR(300) NULL,
+    ID_FACTURA          BIGINT PRIMARY KEY REFERENCES FACTURACION.FACTURA(ID_FACTURA),
+    CODIGO_FORMA_PAGO   VARCHAR(10) NOT NULL REFERENCES FACTURACION.TIPO_FORMA_PAGO(CODIGO_FORMA_PAGO),
+    CODIGO_MEDIO_PAGO   VARCHAR(10) NULL REFERENCES FACTURACION.TIPO_MEDIO_PAGO(CODIGO_MEDIO_PAGO),
+    PLAZO_EN_DIAS       INTEGER NULL CHECK (PLAZO_EN_DIAS >= 0),
+    NOTAS_ADICIONALES   VARCHAR(300) NULL,
     CONSTRAINT CK_MEDIO_SI_CONTADO CHECK (
-        (ID_FORMA_PAGO = 1 AND ID_MEDIO_PAGO IS NOT NULL)
+        (CODIGO_FORMA_PAGO = '1' AND CODIGO_MEDIO_PAGO IS NOT NULL)
         OR
-        (ID_FORMA_PAGO = 2)
+        (CODIGO_FORMA_PAGO = '2')
     )
 );
 
@@ -406,15 +533,121 @@ CREATE TABLE FACTURACION.DETALLE_FACTURA (
 -- =========================
 
 CREATE TABLE FACTURACION.IMPUESTO_FACTURA (
-    ID_FACTURA     BIGINT NOT NULL REFERENCES FACTURACION.FACTURA(ID_FACTURA),
-    ID_IMPUESTO    INT NOT NULL REFERENCES FACTURACION.TIPO_IMPUESTO(ID_IMPUESTO),
-    TARIFA         NUMERIC(9,4) NOT NULL CHECK (TARIFA >= 0),
-    BASE_GRAVABLE  NUMERIC(18,2) NOT NULL CHECK (BASE_GRAVABLE >= 0),
-    VALOR_IMPUESTO NUMERIC(18,2) NOT NULL CHECK (VALOR_IMPUESTO >= 0),
-    PRIMARY KEY (ID_FACTURA, ID_IMPUESTO, TARIFA)
+    ID_FACTURA        BIGINT NOT NULL REFERENCES FACTURACION.FACTURA(ID_FACTURA),
+    CODIGO_IMPUESTO   VARCHAR(10) NOT NULL REFERENCES FACTURACION.TIPO_IMPUESTO(CODIGO_IMPUESTO),
+    TARIFA            NUMERIC(9,4) NOT NULL CHECK (TARIFA >= 0),
+    BASE_GRAVABLE     NUMERIC(18,2) NOT NULL CHECK (BASE_GRAVABLE >= 0),
+    VALOR_IMPUESTO    NUMERIC(18,2) NOT NULL CHECK (VALOR_IMPUESTO >= 0),
+    PRIMARY KEY (ID_FACTURA, CODIGO_IMPUESTO, TARIFA)
 );
 
 
+
+-- =========================
+-- PROVEEDORES TECNOLÓGICOS AUTORIZADOS DIAN (req_18)
+-- Registro oficial de proveedores tecnológicos habilitados
+-- =========================
+
+CREATE TABLE FACTURACION.PROVEEDOR_TECNOLOGICO (
+    NIT_PROVEEDOR     VARCHAR(20) PRIMARY KEY,
+    RAZON_SOCIAL      VARCHAR(300) NOT NULL,
+    CODIGO_PT         VARCHAR(10) NOT NULL UNIQUE
+);
+
+INSERT INTO FACTURACION.PROVEEDOR_TECNOLOGICO (NIT_PROVEEDOR, RAZON_SOCIAL, CODIGO_PT) VALUES
+('901020203', 'ACEPTA S A S',                                                            '030'),
+('830099008', 'ALIADDO SAS',                                                              '045'),
+('901037591', 'APG CONSULTING COLOMBIA S.A.S.',                                           '074'),
+('900464969', 'ASISTENCIA MOVIL S.A.S.',                                                  '047'),
+('900965992', 'ATEB COLOMBIA S A S',                                                      '011'),
+('900372288', 'AVANCES SOFTWARE S.A.S.',                                                  '065'),
+('900297700', 'AVANCYS S.A.S.',                                                           '090'),
+('901137226', 'BCN CONSULTORES COLOMBIA S.A.S.',                                          '005'),
+('901066054', 'BILLY FACTUREX SAS',                                                       '013'),
+('830005677', 'BIT CONSULTING S.A.S',                                                     '010'),
+('900011395', 'BPM CONSULTING LTDA',                                                      '061'),
+('901121154', 'BRITEK TRIBUTO S.A.S',                                                     '071'),
+('900665411', 'BYTHEWAVE S.A.S',                                                          '024'),
+('890930534', 'CADENA S.A.',                                                              '021'),
+('800096812', 'CARVAJAL SOLUCIONES DE COMUNICACION S.A.S.',                               '094'),
+('890321151', 'CARVAJAL TECNOLOGIA Y SERVICIOS S.A.S.',                                   '027'),
+('805012299', 'CODESA',                                                                   '075'),
+('830057860', 'COMERCIO ELECTRONICO EN INTERNET S.A. CENET S.A.',                         '017'),
+('800150249', 'COMPUNET S.A',                                                             '060'),
+('900646251', 'COMPUTEC OUTSOURCING S.A.S',                                               '019'),
+('901180226', 'CONEXUSIT SAS',                                                            '070'),
+('900457033', 'CONTROLTECH SERVICES S.A.S.',                                              '077'),
+('900949812', 'DATA EXPRESS LATINOAMERICA S.A.S.',                                        '046'),
+('901223648', 'DATAICO S.A.S',                                                            '089'),
+('900918004', 'DBNET COLOMBIA SAS',                                                       '056'),
+('860028581', 'DELCOP COLOMBIA SAS',                                                      '032'),
+('860028580', 'DISPAPELES S.A.S',                                                         '007'),
+('800088155', 'DOMINA ENTREGA TOTAL S.A.S',                                               '069'),
+('805018674', 'ECOM S.A.S.',                                                              '054'),
+('900680995', 'EDICOM S.A.S',                                                             '033'),
+('900957899', 'EDX COLOMBIA S A S',                                                       '050'),
+('901081604', 'EKOMERCIO ELECTRÓNICO SAS',                                                '036'),
+('900984424', 'ESDINAMICO SAS',                                                           '034'),
+('900306823', 'F Y M TECHNOLOGY S.A.S.',                                                  '006'),
+('900273836', 'F1 TOP POINT LTDA',                                                        '073'),
+('900896085', 'FACELE S A S',                                                             '086'),
+('900875062', 'FACTURA1 S.A.S.',                                                          '003'),
+('901187615', 'FACTURAXION COLOMBIA SAS',                                                 '066'),
+('900399741', 'FACTURE S.A.S',                                                            '004'),
+('890901481', 'FEDERACION NACIONAL DE COMERCIANTES FENALCO SECCIONAL ANTIOQUIA',          '058'),
+('900204272', 'GESTION DE SEGURIDAD ELECTRONICA S.A',                                     '088'),
+('900730535', 'GESTION FRANCA S.A.S',                                                     '068'),
+('900133732', 'GLOBALTEK DEVELOPMENT S A',                                                '041'),
+('900711544', 'GRUPO FLA SAS',                                                            '093'),
+('901014886', 'GURUSOFT S.A.S',                                                           '040'),
+('811021438', 'HERRAMIENTAS DE GESTION INFORMATICA S.A.S',                                '028'),
+('890941901', 'ILIMITADA INGENIERIA DE SISTEMAS S.A.S.',                                  '076'),
+('901183470', 'IMAGINE INTEGRATORS S.A.S.',                                               '078'),
+('900556261', 'INDIGO TECHNOLOGIES S.A.S.',                                               '095'),
+('900123011', 'INFORMATIX DE COLOMBIA LTDA.',                                             '072'),
+('900738794', 'INNAPSIS APPFLOW SAS',                                                     '044'),
+('860502327', 'JAIME TORRES C Y CIA S A',                                                 '022'),
+('860515402', 'LEXCO S.A.',                                                               '048'),
+('800255858', 'MAKRO SOFT LTDA',                                                          '063'),
+('900176162', 'NEIA S.A.S',                                                               '081'),
+('901285179', 'NODEXUM',                                                                  '084'),
+('830074854', 'NOVA CORP SAS',                                                            '043'),
+('900521653', 'NUBOX COLOMBIA S A S',                                                     '039'),
+('830003840', 'OASISCOM SAS',                                                             '052'),
+('900032774', 'OLIMPIA MANAGEMENT S A',                                                   '038'),
+('830135010', 'OPENTECNOLOGIA S.A.',                                                      '014'),
+('900749874', 'PAPERLESS S.A.S.',                                                         '053'),
+('800101428', 'PARADIGMA S A S',                                                          '020'),
+('830502641', 'PHIDIAS S.A.S',                                                            '083'),
+('900013664', 'PLATAFORMA COLOMBIA S.A.S.',                                               '042'),
+('890923937', 'PRODUCTORA DE SOFTWARE S.A.S',                                             '029'),
+('830096620', 'PROFESIONALES EN TRANSACCIONES ELECTRONICAS S.A. PTESA',                   '009'),
+('900299474', 'Q10 SOLUCIONES S.A.S.',                                                    '082'),
+('800026212', 'RICOH COLOMBIA S.A.',                                                      '067'),
+('900606963', 'SAPHETY - TRANSACCIONES ELECTRONICAS S A S',                               '025'),
+('900035507', 'SAVE COLOMBIA COMPANY S.A.S.',                                             '037'),
+('901356496', 'SEDISOLUTIONS SAS',                                                        '091'),
+('900508908', 'SIGNATURE SOUTH CONSULTING COLOMBIA S.A.S',                                '051'),
+('830048145', 'SIIGO S.A',                                                                '008'),
+('901098244', 'SIMBA SOFTWARE SAS',                                                       '018'),
+('890319193', 'SISTEMAS DE INFORMACION EMPRESARIAL S.A',                                  '015'),
+('830084433', 'SOCIEDAD CAMERAL DE CERTIFICACION DIGITAL CERTICAMARA S A',                '026'),
+('900379787', 'SOCIEDAD DE EXPLOTACION DE REDES ELECTRONICAS Y SERVICIOS DE COLOMBIA S.A.S.', '064'),
+('900364710', 'SOFTWARE COLOMBIA SERVICIOS INFORMATICOS SAS',                             '031'),
+('900395252', 'SOFTWARE ESTRATÉGICO S.A.S',                                               '062'),
+('900559088', 'SOLUCIONES ALEGRA S.A.S',                                                  '085'),
+('901361537', 'SOLUCIONES EMPRESARIALES EN LA NUBE S.A.S. SENSAS',                        '092'),
+('800157786', 'SOLUCIONES INTEGRALES DE OFICINA S.A.S EN REORGANIZACION',                 '087'),
+('900083058', 'SYSCAFE S.A.S',                                                            '079'),
+('830020470', 'TELEINTE S A S',                                                           '055'),
+('900390126', 'THE FACTORY HKA COLOMBIA S.A.S.',                                          '016'),
+('900423948', 'TN COLOMBIA S.A.S',                                                        '059'),
+('800182856', 'TNS SAS',                                                                  '057'),
+('900032159', 'TRANSFIRIENDO S.A.',                                                       '023'),
+('901034990', 'VISUALSOFT COLOMBIA SAS',                                                  '080'),
+('811026198', 'VSDC S.A.S.',                                                              '012'),
+('900534356', 'WORLD OFFICE COLOMBIA S.A.S',                                              '035')
+ON CONFLICT DO NOTHING;
 
 -- =========================
 -- FABRICANTE DE SOFTWARE (req_18)
@@ -450,8 +683,23 @@ CREATE UNIQUE INDEX UQ_SOFTWARE_PRODUCTO ON FACTURACION.PRODUCTO_SOFTWARE (ID_FA
 CREATE TABLE FACTURACION.SOFTWARE_FACTURA (
     ID_FACTURA               BIGINT PRIMARY KEY REFERENCES FACTURACION.FACTURA(ID_FACTURA),
     ID_PRODUCTO_SOFTWARE     BIGINT NOT NULL REFERENCES FACTURACION.PRODUCTO_SOFTWARE(ID_PRODUCTO_SOFTWARE),
-    ID_PROVEEDOR_TECNOLOGICO BIGINT NULL REFERENCES FACTURACION.TERCERO(ID_TERCERO),
+    NIT_PROVEEDOR_TECNOLOGICO VARCHAR(20) NULL REFERENCES FACTURACION.PROVEEDOR_TECNOLOGICO(NIT_PROVEEDOR),
     NOTAS_ADICIONALES        VARCHAR(300) NULL
+);
+
+-- =========================
+-- EVENTOS DIAN DE LA FACTURA
+-- Múltiples eventos por factura (Validación, Acuse, Recibo, Aceptación, Reclamo)
+-- =========================
+
+CREATE TABLE FACTURACION.EVENTO_DIAN_FACTURA (
+    ID_EVENTO_FACTURA BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    ID_FACTURA        BIGINT NOT NULL REFERENCES FACTURACION.FACTURA(ID_FACTURA),
+    CODIGO_EVENTO     VARCHAR(10) NOT NULL REFERENCES FACTURACION.TIPO_EVENTO_DIAN(CODIGO_EVENTO),
+    FECHA_EVENTO      TIMESTAMPTZ NULL,
+    DESCRIPCION       VARCHAR(500) NULL,
+    ID_RASTREO        VARCHAR(100) NULL,
+    FECHA_CREACION    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- =========================
@@ -463,3 +711,4 @@ CREATE INDEX IX_ADJUNTO_CORREO ON FACTURACION.ADJUNTOS_CORREO (CORREO_ID);
 CREATE INDEX IX_ADJUNTO_SHA256 ON FACTURACION.ADJUNTOS_CORREO (SHA256);
 CREATE INDEX IX_PROCESO_ESTADO ON FACTURACION.PROCESO_INGESTA (ID_ESTADO);
 CREATE INDEX IX_PROCESO_ADJUNTO ON FACTURACION.PROCESO_INGESTA (ADJUNTO_ID);
+CREATE INDEX IX_EVENTO_DIAN_FACTURA_RECIENTE ON FACTURACION.EVENTO_DIAN_FACTURA (ID_FACTURA, FECHA_CREACION DESC);

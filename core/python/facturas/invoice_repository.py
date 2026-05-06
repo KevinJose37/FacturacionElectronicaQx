@@ -6,7 +6,7 @@ Encapsula las operaciones de base de datos para:
 - Insertar/actualizar FACTURA, TERCERO y tablas relacionadas.
 - Registrar procesos en PROCESO_INGESTA.
 """
-
+# Standard library imports
 from __future__ import annotations
 
 import logging
@@ -14,11 +14,17 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, Any
 
+# Third-party imports
 import psycopg
 from psycopg import Connection
 
+# Local application imports
 from config import get_postgres_config
+
 from metadata.db_metadata import IdEstadoProceso
+from metadata.db_metadata import IdFormaPago
+from metadata.db_metadata import IdMedioPago
+from metadata.db_metadata import IdResponsabilidadFiscal
 
 logger = logging.getLogger(__name__)
 
@@ -333,7 +339,8 @@ class InvoiceRepository:
             cur.execute(
                 """
                 INSERT INTO FACTURACION.FACTURA (
-                    CUFE, DENOMINACION, PREFIJO_FACTURACION, NUMERO_FACTURA,
+                    CUFE, DENOMINACION, CODIGO_TIPO_DOCUMENTO_DIAN,
+                    PREFIJO_FACTURACION, NUMERO_FACTURA,
                     ID_TERCERO_EMISOR, RAZON_SOCIAL_EMISOR, ID_TERCERO_ADQUIRIENTE, RAZON_SOCIAL_ADQUIRIENTE,
                     ID_AUTORIZACION, FECHA_GENERACION, FECHA_EXPEDICION,
                     FECHA_VENCIMIENTO, CODIGO_MONEDA, VALOR_TOTAL,
@@ -341,7 +348,8 @@ class InvoiceRepository:
                     ADJUNTO_ID, ID_ESTADO_PROCESO
                 )
                 VALUES (
-                    %(cufe)s, %(denominacion)s, %(prefijo)s, %(numero_factura)s,
+                    %(cufe)s, %(denominacion)s, %(codigo_tipo_documento_dian)s,
+                    %(prefijo)s, %(numero_factura)s,
                     %(id_tercero_emisor)s, %(razon_social_emisor)s, %(id_tercero_adquiriente)s, %(razon_social_adquiriente)s,
                     %(id_autorizacion)s, %(fecha_generacion)s, %(fecha_expedicion)s,
                     %(fecha_vencimiento)s, %(moneda)s, %(valor_total)s,
@@ -350,6 +358,7 @@ class InvoiceRepository:
                 )
                 ON CONFLICT (CUFE) DO UPDATE SET
                     DENOMINACION = EXCLUDED.DENOMINACION,
+                    CODIGO_TIPO_DOCUMENTO_DIAN = EXCLUDED.CODIGO_TIPO_DOCUMENTO_DIAN,
                     RAZON_SOCIAL_EMISOR = EXCLUDED.RAZON_SOCIAL_EMISOR,
                     RAZON_SOCIAL_ADQUIRIENTE = EXCLUDED.RAZON_SOCIAL_ADQUIRIENTE,
                     VALOR_TOTAL = EXCLUDED.VALOR_TOTAL,
@@ -515,15 +524,16 @@ class InvoiceRepository:
         impuesto: dict,
     ) -> int:
         """Inserta un impuesto a nivel de factura."""
-        # Mapeo de códigos DIAN a IDs de TIPO_IMPUESTO
-        mapa_impuesto = {
-            '01': 1, 'IVA': 1,
-            '04': 2, 'INC': 2,
-            '22': 3, 'INC_BOLSAS': 3,
-        }
-        codigo = (impuesto.get('codigo_impuesto') or '').upper()
-        nombre = (impuesto.get('nombre_impuesto') or '').upper()
-        id_impuesto = mapa_impuesto.get(codigo) or mapa_impuesto.get(nombre) or 1
+        from metadata.db_metadata import IdTipoImpuesto
+
+        codigo = (impuesto.get('codigo_impuesto') or '').strip()
+        if not IdTipoImpuesto.es_codigo_valido(codigo):
+            # Código no reconocido: registrar como 'ZZ' (Otros)
+            logger.warning(
+                'Código de impuesto "%s" no reconocido, usando ZZ (Otros).',
+                codigo,
+            )
+            codigo = IdTipoImpuesto.otros
 
         base = Decimal(str(impuesto['base_gravable'])) if impuesto.get('base_gravable') else Decimal('0')
         if base < 0:
@@ -539,14 +549,14 @@ class InvoiceRepository:
             cur.execute(
                 """
                 INSERT INTO FACTURACION.IMPUESTO_FACTURA (
-                    ID_FACTURA, ID_IMPUESTO, TARIFA, BASE_GRAVABLE, VALOR_IMPUESTO
+                    ID_FACTURA, CODIGO_IMPUESTO, TARIFA, BASE_GRAVABLE, VALOR_IMPUESTO
                 )
                 VALUES (%s, %s, %s, %s, %s)
-                ON CONFLICT (ID_FACTURA, ID_IMPUESTO, TARIFA) DO NOTHING
+                ON CONFLICT (ID_FACTURA, CODIGO_IMPUESTO, TARIFA) DO NOTHING
                 """,
-                (id_factura, id_impuesto, tarifa, base, valor),
+                (id_factura, codigo, tarifa, base, valor),
             )
-            return id_impuesto
+            return 0
 
     def insertar_pago_factura(
         self,
@@ -555,21 +565,23 @@ class InvoiceRepository:
         datos_pago: dict,
     ) -> int:
         """Inserta los datos de pago de la factura."""
-        # Mapeo de códigos DIAN a IDs internos
-        cf_raw = str(datos_pago.get('codigo_forma_pago') or '').strip()
-        try:
-            id_forma = int(cf_raw) if cf_raw in ('1', '2') else 1
-        except (TypeError, ValueError):
-            id_forma = 1  # CONTADO por defecto
 
-        # Si es CONTADO, el medio de pago es obligatorio (default: OTRO=5)
-        cm_raw = str(datos_pago.get('codigo_medio_pago') or '').strip()
-        try:
-            id_medio = int(cm_raw) if cm_raw.isdigit() and 1 <= int(cm_raw) <= 5 else None
-        except (TypeError, ValueError):
-            id_medio = None
-        if id_forma == 1 and id_medio is None:
-            id_medio = 5  # OTRO
+        codigo_forma = str(datos_pago.get('codigo_forma_pago') or '').strip()
+        if not IdFormaPago.es_codigo_valido(codigo_forma):
+            codigo_forma = IdFormaPago.contado  # Contado por defecto
+
+        # Medio de pago: código DIAN directo
+        codigo_medio = str(datos_pago.get('codigo_medio_pago') or '').strip() or None
+        if codigo_medio and not IdMedioPago.es_codigo_valido(codigo_medio):
+            logger.warning(
+                'Código de medio de pago "%s" no reconocido, usando ZZZ (Otro).',
+                codigo_medio,
+            )
+            codigo_medio = IdMedioPago.otro
+
+        # Si es CONTADO, el medio de pago es obligatorio
+        if codigo_forma == IdFormaPago.contado and not codigo_medio:
+            codigo_medio = IdMedioPago.otro
 
         plazo = datos_pago.get('duracion_plazo')
         try:
@@ -583,12 +595,12 @@ class InvoiceRepository:
             cur.execute(
                 """
                 INSERT INTO FACTURACION.PAGO_FACTURA (
-                    ID_FACTURA, ID_FORMA_PAGO, ID_MEDIO_PAGO, PLAZO_EN_DIAS
+                    ID_FACTURA, CODIGO_FORMA_PAGO, CODIGO_MEDIO_PAGO, PLAZO_EN_DIAS
                 )
                 VALUES (%s, %s, %s, %s)
                 ON CONFLICT (ID_FACTURA) DO NOTHING
                 """,
-                (id_factura, id_forma, id_medio, plazo),
+                (id_factura, codigo_forma, codigo_medio, plazo),
             )
             return id_factura
 
@@ -601,19 +613,16 @@ class InvoiceRepository:
         responsabilidades: list[dict],
     ) -> None:
         """Inserta las condiciones fiscales de un tercero en la factura."""
-        # Mapeo de códigos de responsabilidad DIAN a IDs de TIPO_CONDICION_FISCAL
-        mapa_cond = {
-            'O-11': 1, 'AGENTE_RETENEDOR_IVA': 1,
-            'O-15': 2, 'AUTORRETENEDOR_RENTA': 2, 'O-23': 2,
-            'O-13': 3, 'GRAN_CONTRIBUYENTE': 3,
-            'O-47': 4, 'SIMPLE': 4,
-        }
+
         with conn.cursor() as cur:
             for resp in responsabilidades:
-                codigo = (resp.get('codigo') or '').upper().strip()
-                id_cond = mapa_cond.get(codigo)
-                if id_cond is None:
-                    continue  # responsabilidad sin mapeo, se omite
+                codigo = (resp.get('codigo') or '').strip()
+                if not IdResponsabilidadFiscal.es_codigo_valido(codigo):
+                    logger.debug(
+                        'Código de responsabilidad fiscal "%s" no catalogado, omitiendo.',
+                        codigo,
+                    )
+                    continue
 
                 nota = (resp.get('descripcion') or '')[:300] or None
                 if tipo_tercero:
@@ -623,12 +632,12 @@ class InvoiceRepository:
                 cur.execute(
                     """
                     INSERT INTO FACTURACION.CONDICION_FISCAL_FACTURA (
-                        ID_FACTURA, ID_CONDICION_FISCAL, ES_APLICABLE, NOTAS_ADICIONALES
+                        ID_FACTURA, CODIGO_RESPONSABILIDAD, ES_APLICABLE, NOTAS_ADICIONALES
                     )
                     VALUES (%s, %s, TRUE, %s)
-                    ON CONFLICT (ID_FACTURA, ID_CONDICION_FISCAL) DO NOTHING
+                    ON CONFLICT (ID_FACTURA, CODIGO_RESPONSABILIDAD) DO NOTHING
                     """,
-                    (id_factura, id_cond, nota),
+                    (id_factura, codigo, nota),
                 )
 
     def marcar_evento_procesado(
@@ -703,17 +712,69 @@ class InvoiceRepository:
         conn: Connection,
         id_factura: int,
         id_producto: int,
-        id_proveedor_tecnologico: Optional[int] = None,
+        nit_proveedor_tecnologico: Optional[str] = None,
     ) -> None:
         """Asocia el software a la factura."""
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO FACTURACION.SOFTWARE_FACTURA (
-                    ID_FACTURA, ID_PRODUCTO_SOFTWARE, ID_PROVEEDOR_TECNOLOGICO
+                    ID_FACTURA, ID_PRODUCTO_SOFTWARE, NIT_PROVEEDOR_TECNOLOGICO
                 )
                 VALUES (%s, %s, %s)
                 ON CONFLICT (ID_FACTURA) DO NOTHING
                 """,
-                (id_factura, id_producto, id_proveedor_tecnologico),
+                (id_factura, id_producto, nit_proveedor_tecnologico),
             )
+
+    # ------------------------------------------------------------------
+    # Operaciones de EVENTO_DIAN_FACTURA
+    # ------------------------------------------------------------------
+
+    def insertar_evento_dian_factura(
+        self,
+        conn: Connection,
+        id_factura: int,
+        codigo_evento: str,
+        descripcion: Optional[str] = None,
+        id_rastreo: Optional[str] = None,
+        fecha_evento: Optional[datetime] = None,
+    ) -> int:
+        """Inserta un evento DIAN asociado a una factura.
+
+        Args:
+            conn: Conexión activa.
+            id_factura: ID de la factura.
+            codigo_evento: Código del evento DIAN (FK a TIPO_EVENTO_DIAN).
+            descripcion: Descripción textual del evento.
+            id_rastreo: Número de rastreo del documento DIAN.
+            fecha_evento: Fecha/hora del evento, si se conoce.
+
+        Returns:
+            ID del evento creado, o -1 si hubo error.
+        """
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO FACTURACION.EVENTO_DIAN_FACTURA (
+                        ID_FACTURA, CODIGO_EVENTO, FECHA_EVENTO,
+                        DESCRIPCION, ID_RASTREO
+                    )
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING ID_EVENTO_FACTURA
+                    """,
+                    (
+                        id_factura, codigo_evento, fecha_evento,
+                        (descripcion or '')[:500] if descripcion else None,
+                        id_rastreo,
+                    ),
+                )
+                resultado = cur.fetchone()
+                return resultado[0] if resultado else -1
+        except Exception as err:
+            logger.error(
+                'Error al insertar EVENTO_DIAN_FACTURA (factura=%s, evento=%s): %s',
+                id_factura, codigo_evento, err,
+            )
+            return -1

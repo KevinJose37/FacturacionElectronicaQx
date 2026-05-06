@@ -2,8 +2,6 @@
  electrónicas."""
 
 # Standard library imports
-import os
-
 from base64 import b64decode
 
 from datetime import datetime
@@ -18,7 +16,6 @@ from typing import Tuple
 from cryptography import x509
 
 from decimal import Decimal
-from decimal import InvalidOperation
 from decimal import ROUND_HALF_UP
 
 from lxml import etree
@@ -29,6 +26,7 @@ from signxml.exceptions import InvalidSignature
 from signxml.exceptions import InvalidCertificate
 
 from metadata.db_metadata import IdTipoError
+from metadata.db_metadata import IdTipoDocumentoIdentidad
 
 
 def calcular_dv_nit_v1(nit: str) -> int:
@@ -250,7 +248,8 @@ def validar_datos_persona(
     Args:
         nombre: Nombre o razón social de la persona.
         nit: NIT de la persona.
-        scheme_name: Valor del atributo schemeName del nodo CompanyID.
+        scheme_name: Valor del atributo schemeName del nodo CompanyID (código de
+            tipo de documento según TIPO_DOCUMENTO_IDENTIDAD).
         dv_xml: Valor del atributo schemeID del nodo CompanyID (dígito de verificación).
         rol: 'emisor' o 'adquiriente'.
         
@@ -274,7 +273,22 @@ def validar_datos_persona(
         mensaje = f'Se encontró nombre "{nombre}" pero no documento.'
         id_error = IdTipoError.emisor_sin_documento if is_emisor else IdTipoError.adquiriente_sin_documento
 
-    elif scheme_name != '31':
+    elif scheme_name and not IdTipoDocumentoIdentidad.es_codigo_valido(scheme_name):
+        mensaje = (
+            f'Se encontró nombre "{nombre}" con documento {nit}, pero el tipo '
+            f'de documento "{scheme_name}" no es un código DIAN válido.'
+        )
+        id_error = IdTipoError.emisor_documento_invalido if is_emisor else IdTipoError.adquiriente_documento_invalido
+
+    elif is_emisor and scheme_name and not IdTipoDocumentoIdentidad.es_valido_para_emisor(scheme_name):
+        mensaje = (
+            f'Se encontró nombre "{nombre}" con documento {nit}, pero el tipo '
+            f'de documento "{scheme_name}" no es válido para un emisor.'
+        )
+        id_error = IdTipoError.emisor_documento_invalido
+
+    elif not IdTipoDocumentoIdentidad.requiere_dv(scheme_name):
+        # Documento que no requiere DV: válido si tiene nombre y número
         mensaje = f'Datos válidos: "{nombre}" con documento {nit}.'
         resultado_validacion = True
 

@@ -298,6 +298,333 @@ class IdTipoError:
     """Una o más líneas tienen una cantidad reportada inválida."""
 
 
+class IdFormaPago:
+    """Formas de pago según catálogo DIAN.
+
+    Corresponden a la tabla TIPO_FORMA_PAGO.
+    """
+
+    contado = '1'
+    """Contado."""
+
+    credito = '2'
+    """Crédito."""
+
+    CODIGOS_VALIDOS = {'1', '2'}
+
+    @classmethod
+    def es_codigo_valido(cls, codigo: str) -> bool:
+        """Verifica si un código de forma de pago es válido."""
+        return codigo in cls.CODIGOS_VALIDOS
+
+
+class IdMedioPago:
+    """Medios de pago según catálogo DIAN (ISO 4217/UN/EDIFACT TRED 4461).
+
+    Corresponden a la tabla TIPO_MEDIO_PAGO.
+    Solo se nombran los códigos más frecuentes; el set completo está en
+    CODIGOS_VALIDOS.
+    """
+
+    instrumento_no_definido = '1'
+    """Instrumento no definido."""
+
+    credito_ach = '2'
+    """Crédito ACH."""
+
+    debito_ach = '3'
+    """Débito ACH."""
+
+    efectivo = '10'
+    """Efectivo."""
+
+    cheque = '20'
+    """Cheque."""
+
+    transferencia_credito = '30'
+    """Transferencia Crédito."""
+
+    transferencia_debito = '31'
+    """Transferencia Débito."""
+
+    consignacion_bancaria = '42'
+    """Consignación bancaria."""
+
+    tarjeta_credito = '48'
+    """Tarjeta Crédito."""
+
+    tarjeta_debito = '49'
+    """Tarjeta Débito."""
+
+    otro = 'ZZZ'
+    """Otro."""
+
+    CODIGOS_VALIDOS = {
+        '1', '2', '3', '4', '5', '6', '7', '9',
+        '10', '11', '12', '13', '14', '15', '16', '17', '18', '19',
+        '20', '21', '22', '23', '24', '25', '26', '27', '28', '29',
+        '30', '31', '32', '33', '34', '35', '36', '37', '38', '39',
+        '40', '41', '42', '43', '44', '45', '46', '47', '48', '49',
+        '50', '51', '52', '53',
+        '60', '61', '62', '63', '64', '65', '66', '67',
+        '70', '71', '72', '74', '75', '76', '77', '78',
+        '91', '92', '93', '94', '95', '96', '97',
+        'ZZZ',
+    }
+
+    @classmethod
+    def es_codigo_valido(cls, codigo: str) -> bool:
+        """Verifica si un código de medio de pago es válido."""
+        return codigo in cls.CODIGOS_VALIDOS
+
+
+class IdResponsabilidadFiscal:
+    """Responsabilidades fiscales DIAN (TaxLevelCode).
+
+    Corresponden a la tabla TIPO_CONDICION_FISCAL.
+    """
+
+    gran_contribuyente = 'O-13'
+    """Gran contribuyente."""
+
+    autorretenedor = 'O-15'
+    """Autorretenedor."""
+
+    agente_retencion_iva = 'O-23'
+    """Agente de retención IVA."""
+
+    regimen_simple = 'O-47'
+    """Régimen simple de tributación."""
+
+    no_aplica_otros = 'R-99-PN'
+    """No aplica – Otros."""
+
+    CODIGOS_VALIDOS = {'O-13', 'O-15', 'O-23', 'O-47', 'R-99-PN'}
+
+    @classmethod
+    def es_codigo_valido(cls, codigo: str) -> bool:
+        """Verifica si un código de responsabilidad fiscal es válido."""
+        return codigo in cls.CODIGOS_VALIDOS
+
+
+class IdTipoDocumentoIdentidad:
+    """Tipos de documento de identificación tributaria (Anexo 1.9 DIAN).
+
+    Corresponden a la tabla TIPO_DOCUMENTO_IDENTIDAD.
+    Los códigos provienen del schemeName de cbc:CompanyID / sts:ProviderID.
+    """
+
+    certificado_nacido_vivo = '10'
+    """Certificado de nacido vivo."""
+
+    registro_civil = '11'
+    """Registro civil."""
+
+    tarjeta_identidad = '12'
+    """Tarjeta de identidad."""
+
+    cedula_ciudadania = '13'
+    """Cédula de ciudadanía."""
+
+    tarjeta_extranjeria = '21'
+    """Tarjeta de extranjería."""
+
+    cedula_extranjeria = '22'
+    """Cédula de extranjería."""
+
+    nit = '31'
+    """NIT."""
+
+    pasaporte = '41'
+    """Pasaporte."""
+
+    documento_extranjero = '42'
+    """Documento de identificación extranjero."""
+
+    pep = '47'
+    """PEP (Permiso Especial de Permanencia)."""
+
+    ppt = '48'
+    """PPT (Permiso Protección Temporal)."""
+
+    nit_otro_pais = '50'
+    """NIT de otro país."""
+
+    nuip = '91'
+    """NUIP (solo para adquiriente)."""
+
+    # Todos los códigos válidos
+    CODIGOS_VALIDOS = {
+        '10', '11', '12', '13', '21', '22', '31',
+        '41', '42', '47', '48', '50', '91',
+    }
+
+    # Códigos que NO aplican para el emisor (solo adquiriente)
+    CODIGOS_SOLO_ADQUIRIENTE = {'91'}
+
+    @classmethod
+    def es_codigo_valido(cls, codigo: str) -> bool:
+        """Verifica si un código de documento es válido."""
+        return codigo in cls.CODIGOS_VALIDOS
+
+    @classmethod
+    def es_valido_para_emisor(cls, codigo: str) -> bool:
+        """Verifica si el código es válido para un emisor/vendedor."""
+        return codigo in cls.CODIGOS_VALIDOS and codigo not in cls.CODIGOS_SOLO_ADQUIRIENTE
+
+    @classmethod
+    def requiere_dv(cls, codigo: str) -> bool:
+        """Verifica si el tipo de documento requiere dígito de verificación."""
+        return codigo == cls.nit
+
+
+class IdTipoDocumentoDian:
+    """Tipos de documento electrónico DIAN (InvoiceTypeCode).
+
+    Corresponden a la tabla TIPO_DOCUMENTO_DIAN.
+    """
+
+    factura_electronica = '01'
+    """Factura electrónica de Venta."""
+
+    factura_exportacion = '02'
+    """Factura electrónica de venta - exportación."""
+
+    instrumento_transmision = '03'
+    """Instrumento electrónico de transmisión - tipo 03."""
+
+    factura_tipo_04 = '04'
+    """Factura electrónica de Venta - tipo 04."""
+
+    nota_credito = '91'
+    """Nota Crédito."""
+
+    nota_debito = '92'
+    """Nota Débito."""
+
+    eventos = '96'
+    """Eventos (ApplicationResponse)."""
+
+    # Códigos de factura válidos para el flujo de ingesta
+    CODIGOS_FACTURA_VALIDOS = {'01', '02', '03', '04'}
+
+    @classmethod
+    def es_factura_valida(cls, codigo: str) -> bool:
+        """Verifica si el código corresponde a una factura electrónica válida."""
+        return codigo in cls.CODIGOS_FACTURA_VALIDOS
+
+
+class IdTipoImpuesto:
+    """Tipos de impuesto según catálogo DIAN.
+
+    Corresponden a la tabla TIPO_IMPUESTO.
+    Los códigos son los definidos por la DIAN en el Anexo Técnico.
+    """
+
+    iva = '01'
+    """Impuesto sobre la Ventas."""
+
+    ic = '02'
+    """Impuesto al Consumo Departamental Nominal."""
+
+    ica = '03'
+    """Impuesto de Industria, Comercio y Aviso."""
+
+    inc = '04'
+    """Impuesto Nacional al Consumo."""
+
+    rete_iva = '05'
+    """Retención sobre el IVA."""
+
+    rete_renta = '06'
+    """Retención sobre Renta."""
+
+    rete_ica = '07'
+    """Retención sobre el ICA."""
+
+    ic_porcentual = '08'
+    """Impuesto al Consumo Departamental Porcentual."""
+
+    fto_horticultura = '20'
+    """Cuota de Fomento Hortifrutícola."""
+
+    timbre = '21'
+    """Impuesto de Timbre."""
+
+    inc_bolsas = '22'
+    """Impuesto Nacional al Consumo de Bolsa Plástica."""
+
+    in_carbono = '23'
+    """Impuesto Nacional del Carbono."""
+
+    in_combustibles = '24'
+    """Impuesto Nacional a los Combustibles."""
+
+    sobretasa_combustibles = '25'
+    """Sobretasa a los combustibles."""
+
+    sordicom = '26'
+    """Contribución minoristas (Combustibles)."""
+
+    ic_datos = '30'
+    """Impuesto al Consumo de Datos."""
+
+    icl = '32'
+    """Impuesto al Consumo de Licores."""
+
+    inpp = '33'
+    """Impuesto nacional productos plásticos."""
+
+    ibua = '34'
+    """Impuesto a las bebidas ultraprocesadas azucaradas."""
+
+    icui = '35'
+    """Impuesto a los productos comestibles ultraprocesados industrialmente."""
+
+    adv = '36'
+    """AD VALOREM."""
+
+    otros = 'ZZ'
+    """Otros tributos, tasas, contribuciones, y similares."""
+
+    @classmethod
+    def es_codigo_valido(cls, codigo: str) -> bool:
+        """Verifica si un código de impuesto es válido."""
+        codigos = {
+            v for k, v in vars(cls).items()
+            if not k.startswith('_') and isinstance(v, str)
+        }
+        return codigo in codigos
+
+
+class IdTipoEventoDian:
+    """Tipos de eventos de la DIAN.
+    
+    Corresponden a la tabla TIPO_EVENTO_DIAN.
+    """
+
+    documento_validado_dian = '02'
+    """Documento validado por la DIAN."""
+
+    documento_rechazado_dian = '04'
+    """Documento rechazado por la DIAN."""
+
+    acuse_recibo_fev = '030'
+    """Acuse de recibo de Factura Electrónica de Venta."""
+
+    reclamo_fev = '031'
+    """Reclamo de la Factura Electrónica de Venta."""
+
+    recibo_bien_prestacion_servicio = '032'
+    """Recibo del bien o prestación del servicio."""
+
+    aceptacion_expresa = '033'
+    """Aceptación expresa."""
+
+    aceptacion_tacita = '034'
+    """Aceptación Tácita."""
+
+
 class MensajesDB:
     """Mensajes de error y log del módulo de base de datos."""
 

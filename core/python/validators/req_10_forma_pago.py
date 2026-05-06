@@ -5,15 +5,15 @@ import logging
 
 # Third-party imports
 from lxml import etree
-from metadata.db_metadata import IdTipoError
+from metadata.db_metadata import IdTipoError, IdFormaPago
 
 
 logger = logging.getLogger(__name__)
 
-# Formas de pago según la resolución 000165 de 2023 (DIAN)
+# Formas de pago según la resolución 000165 de 2023 (TIPO_FORMA_PAGO)
 FORMAS_PAGO = {
-    '1': 'Contado',
-    '2': 'Crédito',
+    IdFormaPago.contado: 'Contado',
+    IdFormaPago.credito: 'Crédito',
 }
 
 
@@ -85,10 +85,10 @@ def validar_forma_pago_v1(xml_invoice: etree._Element | None) -> dict:
             if not codigo_forma_pago:
                 mensaje = 'No se encontró el código de forma de pago (cbc:ID).'
 
-            elif codigo_forma_pago not in FORMAS_PAGO:
+            elif not IdFormaPago.es_codigo_valido(codigo_forma_pago):
                 mensaje = (
                     f'Código de forma de pago no válido: "{codigo_forma_pago}". '
-                    f'Esperado: {list(FORMAS_PAGO.keys())}.'
+                    f'Esperado: {sorted(IdFormaPago.CODIGOS_VALIDOS)}.'
                 )
 
             else:
@@ -98,7 +98,7 @@ def validar_forma_pago_v1(xml_invoice: etree._Element | None) -> dict:
                     f'(código {codigo_forma_pago}).'
                 )
 
-                if codigo_forma_pago == '2' and not fecha_vencimiento:
+                if codigo_forma_pago == IdFormaPago.credito and not fecha_vencimiento:
                     mensaje += ' ALERTA: Crédito sin fecha de vencimiento.'
 
     logger.debug(mensaje)

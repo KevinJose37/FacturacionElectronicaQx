@@ -5,20 +5,18 @@ import logging
 
 # Third-party imports
 from lxml import etree
-from metadata.db_metadata import IdTipoError
+from metadata.db_metadata import IdTipoError, IdResponsabilidadFiscal
 
 
 logger = logging.getLogger(__name__)
 
-# Responsabilidades fiscales según catálogo DIAN
+# Responsabilidades fiscales según catálogo DIAN (TIPO_CONDICION_FISCAL)
 RESPONSABILIDADES_FISCALES = {
-    'O-13': 'Gran contribuyente',
-    'O-15': 'Autorretenedor',
-    'O-23': 'Agente de retención del IVA',
-    'O-47': 'Régimen simple de tributación',
-    'R-99-PN': 'No aplica – Otros',
-    'ZZ': 'No responsable',
-    'ZA': 'IVA',
+    IdResponsabilidadFiscal.gran_contribuyente: 'Gran contribuyente',
+    IdResponsabilidadFiscal.autorretenedor: 'Autorretenedor',
+    IdResponsabilidadFiscal.agente_retencion_iva: 'Agente de retención IVA',
+    IdResponsabilidadFiscal.regimen_simple: 'Régimen simple de tributación',
+    IdResponsabilidadFiscal.no_aplica_otros: 'No aplica – Otros',
 }
 
 

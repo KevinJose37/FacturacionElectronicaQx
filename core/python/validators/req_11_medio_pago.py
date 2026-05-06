@@ -5,27 +5,10 @@ import logging
 
 # Third-party imports
 from lxml import etree
-from metadata.db_metadata import IdTipoError
+from metadata.db_metadata import IdTipoError, IdMedioPago, IdFormaPago
 
 
 logger = logging.getLogger(__name__)
-
-# Medios de pago según catálogo DIAN (basado en ISO 4217/UN/EDIFACT TRED 4461)
-MEDIOS_PAGO = {
-    '1': 'Instrumento no definido',
-    '2': 'Crédito ACH',
-    '3': 'Débito ACH',
-    '10': 'Efectivo',
-    '20': 'Cheque',
-    '30': 'Transferencia crédito',
-    '31': 'Transferencia débito',
-    '32': 'Concentración flujo de efectivo',
-    '42': 'Transferencia bancaria',
-    '47': 'Transferencia entre cuentas',
-    '48': 'Tarjeta crédito',
-    '49': 'Tarjeta débito',
-    'ZZZ': 'Mutuo acuerdo',
-}
 
 
 def validar_medio_pago_v1(
@@ -70,10 +53,9 @@ def validar_medio_pago_v1(
             (nodos_payment_means[0].text or '').strip()
             if nodos_payment_means else None
         )
-        nombre_medio_pago = MEDIOS_PAGO.get(codigo_medio_pago)
 
         if not codigo_medio_pago:
-            es_contado = codigo_forma_pago == '1'
+            es_contado = codigo_forma_pago == IdFormaPago.contado
 
             if es_contado:
                 mensaje = (
@@ -88,16 +70,16 @@ def validar_medio_pago_v1(
                 )
                 resultado_validacion = True
 
-        elif codigo_medio_pago not in MEDIOS_PAGO:
+        elif not IdMedioPago.es_codigo_valido(codigo_medio_pago):
             mensaje = (
                 f'Código de medio de pago no reconocido: "{codigo_medio_pago}".'
             )
 
         else:
             resultado_validacion = True
+            nombre_medio_pago = codigo_medio_pago  # Se resuelve en la BD
             mensaje = (
-                f'Medio de pago válido: {nombre_medio_pago} '
-                f'(código {codigo_medio_pago}).'
+                f'Medio de pago válido: código {codigo_medio_pago}.'
             )
 
     logger.debug(mensaje)

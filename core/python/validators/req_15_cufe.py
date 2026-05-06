@@ -17,14 +17,6 @@ from core.python.utils.validacion import (
 
 logger = logging.getLogger(__name__)
 
-NAMESPACES = {
-    'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-    'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-    'ext': 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2',
-    'sts': 'dian:gov:co:facturaelectronica:Structures-2-1',
-    'ds': 'http://www.w3.org/2000/09/xmldsig#',
-}
-
 
 def validar_cufe_v1(xml_invoice: etree._Element | None) -> dict:
     """Valida el CUFE de la factura electrónica según la resolución 000165
@@ -42,6 +34,13 @@ def validar_cufe_v1(xml_invoice: etree._Element | None) -> dict:
         - 'mensaje': str con la descripción del resultado.
         - 'datos': dict con CUFE extraído y recalculado.
     """
+    NAMESPACES = {
+        'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+        'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+        'ext': 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2',
+        'sts': 'dian:gov:co:facturaelectronica:Structures-2-1',
+        'ds': 'http://www.w3.org/2000/09/xmldsig#',
+    }
 
     resultado_validacion = False
     cufe_xml = None

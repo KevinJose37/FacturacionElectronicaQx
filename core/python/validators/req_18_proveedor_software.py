@@ -14,14 +14,6 @@ from core.python.utils.validacion import extraer_texto_xpath
 
 logger = logging.getLogger(__name__)
 
-NAMESPACES = {
-    'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-    'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-    'ext': 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2',
-    'sts': 'dian:gov:co:facturaelectronica:Structures-2-1',
-}
-
-
 def validar_proveedor_software_v1(xml_invoice: etree._Element | None) -> dict:
     """Valida la información del proveedor de software tecnológico de la factura
      electrónica según la resolución 000165 de 2023.
@@ -35,6 +27,12 @@ def validar_proveedor_software_v1(xml_invoice: etree._Element | None) -> dict:
         - 'mensaje': str con la descripción del resultado.
         - 'datos': dict con NIT, software ID, security code y PIN del proveedor.
     """
+    NAMESPACES = {
+        'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+        'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+        'ext': 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2',
+        'sts': 'dian:gov:co:facturaelectronica:Structures-2-1',
+    }
 
     resultado_validacion = False
     nit_proveedor = None

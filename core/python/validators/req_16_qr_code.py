@@ -13,14 +13,6 @@ from core.python.utils.validacion import extraer_texto_xpath
 
 logger = logging.getLogger(__name__)
 
-NAMESPACES = {
-    'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-    'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-    'ext': 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2',
-    'sts': 'dian:gov:co:facturaelectronica:Structures-2-1',
-}
-
-
 def validar_qr_code_v1(
     xml_invoice: etree._Element | None,
     cufe: str | None = None,
@@ -41,6 +33,12 @@ def validar_qr_code_v1(
         - 'mensaje': str con la descripción del resultado.
         - 'datos': dict con contenido del QR y datos extraídos.
     """
+    NAMESPACES = {
+        'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+        'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+        'ext': 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2',
+        'sts': 'dian:gov:co:facturaelectronica:Structures-2-1',
+    }
 
     resultado_validacion = False
     contenido_qr = None

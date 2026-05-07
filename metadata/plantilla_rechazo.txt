@@ -1,0 +1,12 @@
+Estimado Proveedor,
+
+Se ha recibido una comunicación desde su dirección de correo electrónico ({remitente}) con el asunto: "{asunto}".
+
+Sin embargo, el proceso de recepción automática de facturación electrónica ha detectado las siguientes inconsistencias que impiden el registro de la(s) factura(s):
+
+{listado_inconsistencias}
+
+Por favor, valide la información y reenvíe los documentos correctamente (formato ZIP conteniendo XML y PDF) para que puedan ser procesados por nuestro sistema.
+
+Atentamente,
+Equipo de Facturación Electrónica - QUIPUX SAS

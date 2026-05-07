@@ -1,3 +1,10 @@
+"""Módulo para la exportación de datos de facturación a formato Excel (.xlsx).
+
+Este módulo utiliza la librería openpyxl para generar archivos de Excel siguiendo
+un formato estándar corporativo (Quipux SAS). Incluye configuraciones de estilos,
+encabezados combinados, bordes y formatos de fuente específicos.
+"""
+
 import json
 import os
 from datetime import datetime
@@ -6,7 +13,14 @@ from openpyxl.styles import Font, Fill, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 class ExcelExporter:
+    """Clase encargada de la generación de archivos Excel para reportes de control.
+    
+    Carga la configuración de columnas y estilos desde un archivo de metadatos
+    y aplica el formato requerido a las hojas de cálculo.
+    """
+
     def __init__(self):
+        """Inicializa el exportador cargando la configuración desde excel_config.json."""
         config_path = os.path.join("metadata", "excel_config.json")
         with open(config_path, "r", encoding="utf-8") as f:
             self.config = json.load(f)
@@ -15,6 +29,16 @@ class ExcelExporter:
         self.columns = self.config["columns"]
 
     def generate_excel(self, data, month_name, year):
+        """Genera un objeto Workbook con los datos y formatos especificados.
+
+        Args:
+            data (list[dict]): Lista de diccionarios con los registros de la base de datos.
+            month_name (str): Nombre del mes o rango de fechas para el encabezado.
+            year (str/int): Año del reporte para el encabezado.
+
+        Returns:
+            Workbook: Objeto de openpyxl listo para ser guardado o transmitido.
+        """
         wb = Workbook()
         ws = wb.active
         ws.title = self.config.get("sheet_name", "Facturas")

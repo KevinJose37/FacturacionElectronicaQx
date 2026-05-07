@@ -9,4 +9,5 @@ Sin embargo, el proceso de recepción automática de facturación electrónica h
 Por favor, valide la información y reenvíe los documentos correctamente (formato ZIP conteniendo XML y PDF) para que puedan ser procesados por nuestro sistema.
 
 Atentamente,
+
 Equipo de Facturación Electrónica - QUIPUX SAS

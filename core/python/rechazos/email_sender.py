@@ -21,18 +21,33 @@ class EmailSender:
         self.smtp_server = "smtp.gmail.com"
         self.smtp_port = 587
 
-    def enviar_correo(self, destinatario, asunto, cuerpo, max_reintentos=3):
+    def enviar_correo(
+        self,
+        destinatario: str,
+        asunto: str,
+        cuerpo: str,
+        max_reintentos: int = 3,
+    ) -> bool:
         """Envía un correo electrónico con política de reintentos.
-        
+
+        Args:
+            destinatario: Dirección de correo del receptor.
+            asunto: Título del mensaje.
+            cuerpo: Contenido del mensaje en texto plano.
+            max_reintentos: Cantidad máxima de intentos en caso de fallo.
+
         Returns:
             bool: True si se envió exitosamente, False de lo contrario.
         """
+        exito = False
         if not self.user or not self.password:
-            logger.error("No se han configurado las credenciales de correo (EMAIL_USER/EMAIL_PASSWORD)")
-            return False
+            logger.error(
+                'No se han configurado las credenciales de correo (EMAIL_USER/EMAIL_PASSWORD)',
+            )
+            return exito
 
         intentos = 0
-        while intentos < max_reintentos:
+        while intentos < max_reintentos and not exito:
             try:
                 msg = MIMEMultipart()
                 msg['From'] = self.user
@@ -45,14 +60,26 @@ class EmailSender:
                 server.login(self.user, self.password)
                 server.send_message(msg)
                 server.quit()
-                
-                logger.info(f"Correo enviado exitosamente a {destinatario}")
-                return True
+
+                logger.info('Correo enviado exitosamente a %s', destinatario)
+                exito = True
             except Exception as e:
                 intentos += 1
-                logger.warning(f"Intento {intentos} fallido enviando correo a {destinatario}: {e}")
+                logger.warning(
+                    'Intento %d/%d fallido enviando correo a %s: %s',
+                    intentos,
+                    max_reintentos,
+                    destinatario,
+                    e,
+                )
                 if intentos < max_reintentos:
-                    time.sleep(2 ** intentos) # Exponential backoff
-        
-        logger.error(f"No se pudo enviar el correo a {destinatario} tras {max_reintentos} intentos.")
-        return False
+                    time.sleep(2**intentos)  # Exponential backoff
+
+        if not exito:
+            logger.error(
+                'No se pudo enviar el correo a %s tras %d intentos.',
+                destinatario,
+                max_reintentos,
+            )
+
+        return exito

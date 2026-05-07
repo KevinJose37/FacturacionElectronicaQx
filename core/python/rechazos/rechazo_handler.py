@@ -20,17 +20,22 @@ class RechazoHandler:
         with open(self.plantilla_path, "r", encoding="utf-8") as f:
             return f.read()
 
-    async def procesar_rechazo(self, correo_id, motivo_principal, inconsistencias=None):
-        """
-        Orquesta el flujo de rechazo:
-        1. Obtiene datos del correo original.
-        2. Registra en la tabla de devoluciones.
-        3. Envía correo al proveedor.
-        4. Actualiza estado de la devolución.
+    async def procesar_rechazo(
+        self,
+        correo_id: int,
+        motivo_principal: str,
+        inconsistencias: list[str] | None = None,
+    ) -> None:
+        """Orquesta el flujo de rechazo y notificación al proveedor.
+
+        Args:
+            correo_id: ID único del correo en la tabla correo_entrante.
+            motivo_principal: Descripción general de la falla.
+            inconsistencias: Listado detallado de errores encontrados.
         """
         pool = get_pool()
         inconsistencias = inconsistencias or []
-        
+
         async with pool.connection() as conn:
             # 1. Obtener datos del remitente y asunto original
             async with conn.cursor() as cur:

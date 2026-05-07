@@ -113,5 +113,3 @@ class ExcelExporter:
                 cell.alignment = Alignment(vertical="center")
 
         return wb
-
-        return wb

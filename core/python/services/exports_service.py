@@ -1,13 +1,15 @@
 """Servicio para la generación de reportes Excel."""
 
-import logging
-from datetime import datetime, date
 import calendar
+import logging
+from datetime import date, datetime
+ 
 from core.python.db import get_pool
 from core.python.exports.excel_exporter import ExcelExporter
-
+from metadata.fechas_metadata import MesesEspanol
+ 
 logger = logging.getLogger(__name__)
-
+ 
 async def generar_reporte_excel(fecha_inicio: date = None, fecha_fin: date = None):
     """
     Obtiene los datos de la base de datos y genera el objeto Workbook de Excel.
@@ -53,16 +55,9 @@ async def generar_reporte_excel(fecha_inicio: date = None, fecha_fin: date = Non
                 columnas = [desc[0] for desc in cur.description]
                 filas = await cur.fetchall()
                 data = [dict(zip(columnas, fila)) for fila in filas]
-
-    # Nombres de meses en español
-    meses = {
-        1: "ENERO", 2: "FEBRERO", 3: "MARZO", 4: "ABRIL", 
-        5: "MAYO", 6: "JUNIO", 7: "JULIO", 8: "AGOSTO", 
-        9: "SEPTIEMBRE", 10: "OCTUBRE", 11: "NOVIEMBRE", 12: "DICIEMBRE"
-    }
-    
+ 
     if not usa_filtros:
-        month_label = meses[fecha_inicio.month]
+        month_label = MesesEspanol.mapa[fecha_inicio.month]
         year_label = str(fecha_inicio.year)
         filename = f"Relación entrega facturas_MES {month_label}"
     else:

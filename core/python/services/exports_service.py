@@ -4,11 +4,14 @@ import calendar
 import logging
 from datetime import date, datetime
  
+from config import get_queries_excel
 from core.python.db import get_pool
 from core.python.exports.excel_exporter import ExcelExporter
 from metadata.fechas_metadata import MesesEspanol
  
 logger = logging.getLogger(__name__)
+ 
+_QUERIES = get_queries_excel().get('exportacion', {})
  
 async def generar_reporte_excel(fecha_inicio: date = None, fecha_fin: date = None):
     """
@@ -26,18 +29,8 @@ async def generar_reporte_excel(fecha_inicio: date = None, fecha_fin: date = Non
         fecha_inicio = hoy.replace(day=1)
         fecha_fin = hoy  # Hasta la fecha de la petición
     
-    # Consulta SQL directa a facturacion.factura con todos los campos
-    query = """
-        SELECT id_factura, cufe, denominacion, 
-               prefijo_facturacion, numero_factura, id_tercero_emisor, razon_social_emisor, 
-               id_tercero_adquiriente, razon_social_adquiriente, id_autorizacion, 
-               fecha_generacion, fecha_expedicion, fecha_vencimiento, codigo_moneda, 
-               valor_total, hash_firma_digital, contenido_qr, adjunto_id, 
-               id_estado_proceso, fecha_creacion, fecha_actualizacion
-        FROM facturacion.factura
-        WHERE fecha_generacion::date BETWEEN %s AND %s
-        ORDER BY fecha_creacion DESC
-    """
+    # Consulta SQL centralizada
+    query = _QUERIES['generar_reporte']
     
     try:
         async with pool.connection() as conn:

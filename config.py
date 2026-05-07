@@ -186,11 +186,35 @@ def get_queries_chat() -> dict:
 
 def get_queries_services() -> dict:
     """Obtiene las consultas SQL de los servicios del frontend.
-
+ 
     Carga queries desde ``input/queries/services/queries_services.yml``.
-
+ 
     Returns:
         Diccionario con las queries SQL organizadas por servicio.
     """
     queries = load_yaml_queries('services/queries_services.yml')
+    return queries
+ 
+ 
+def get_queries_email() -> dict:
+    """Obtiene las consultas SQL para notificaciones de email.
+ 
+    Carga queries desde ``input/queries/email/queries_email.yml``.
+ 
+    Returns:
+        Diccionario con las queries SQL para rechazos y notificaciones.
+    """
+    queries = load_yaml_queries('email/queries_email.yml')
+    return queries
+ 
+ 
+def get_queries_excel() -> dict:
+    """Obtiene las consultas SQL para exportación de Excel y consultas de tabla.
+ 
+    Carga queries desde ``input/queries/excel/queries_excel.yml``.
+ 
+    Returns:
+        Diccionario con las queries SQL para reportes Excel y paginación.
+    """
+    queries = load_yaml_queries('excel/queries_excel.yml')
     return queries

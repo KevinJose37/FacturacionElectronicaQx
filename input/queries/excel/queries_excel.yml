@@ -1,0 +1,27 @@
+# ──────────────────────────────────────────────
+# Queries SQL para el módulo de exportación a Excel y consultas paginadas
+# ──────────────────────────────────────────────
+
+exportacion:
+  generar_reporte: >
+    SELECT id_factura, cufe, denominacion, 
+           prefijo_facturacion, numero_factura, id_tercero_emisor, razon_social_emisor, 
+           id_tercero_adquiriente, razon_social_adquiriente, id_autorizacion, 
+           fecha_generacion, fecha_expedicion, fecha_vencimiento, codigo_moneda, 
+           valor_total, hash_firma_digital, contenido_qr, adjunto_id, 
+           id_estado_proceso, fecha_creacion, fecha_actualizacion
+    FROM facturacion.factura
+    WHERE fecha_generacion::date BETWEEN %s AND %s
+    ORDER BY fecha_creacion DESC
+
+  contar_facturas_rango: >
+    SELECT COUNT(*) FROM facturacion.factura 
+    WHERE fecha_generacion::date BETWEEN %s AND %s
+
+  listar_facturas_paginado: >
+    SELECT f.id_factura, f.numero_factura, t.razon_social_emisor, f.valor_total, f.fecha_generacion
+    FROM facturacion.factura f
+    JOIN facturacion.tercero t ON f.id_tercero_emisor = t.id_tercero
+    WHERE f.fecha_generacion::date BETWEEN %s AND %s
+    ORDER BY f.fecha_creacion DESC
+    LIMIT %s OFFSET %s

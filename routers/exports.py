@@ -1,13 +1,23 @@
 """Router para la exportación de datos a Excel."""
 
+import calendar
 import io
 from datetime import date
+ 
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
+ 
+from config import get_queries_excel
+from core.python.db import get_pool
 from core.python.services.exports_service import generar_reporte_excel
-from core.python.services.facturas_service import listar_facturas, obtener_estadisticas
+from core.python.services.facturas_service import (
+    listar_facturas,
+    obtener_estadisticas,
+)
+ 
+router = APIRouter(prefix='/api/exports', tags=['Exports'])
 
-router = APIRouter(prefix="/api/exports", tags=["Exports"])
+_QUERIES = get_queries_excel().get('exportacion', {})
 
 @router.get("/excel")
 async def export_excel(
@@ -30,21 +40,16 @@ async def export_excel(
         headers={"Content-Disposition": f"attachment; filename={filename}.xlsx"}
     )
 
-@router.get("/query")
+@router.get('/query')
 async def query_facturas(
     fecha_inicio: date = Query(None),
     fecha_fin: date = Query(None),
-    page: int = Query(1, alias="page", ge=1),
-    size: int = Query(10, alias="size", ge=1)
+    page: int = Query(1, alias='page', ge=1),
+    size: int = Query(10, alias='size', ge=1),
 ):
     """
     Endpoint para consultar la tabla de facturas con paginación y filtros de fecha.
     """
-    # Reutilizamos la lógica de listar_facturas pero ajustada a los nuevos requerimientos
-    # Para simplificar, implementamos la lógica directamente o extendemos el servicio existente.
-    from core.python.db import get_pool
-    import calendar
-    
     pool = get_pool()
     if not fecha_inicio or not fecha_fin:
         hoy = date.today()
@@ -54,18 +59,9 @@ async def query_facturas(
 
     offset = (page - 1) * size
     
-    # Query para contar total de registros con filtros
-    count_query = "SELECT COUNT(*) FROM facturacion.factura WHERE fecha_generacion::date BETWEEN %s AND %s"
-    
-    # Query para obtener datos paginados
-    data_query = """
-        SELECT f.id_factura, f.numero_factura, t.razon_social_emisor, f.valor_total, f.fecha_generacion
-        FROM facturacion.factura f
-        JOIN facturacion.tercero t ON f.id_tercero_emisor = t.id_tercero
-        WHERE f.fecha_generacion::date BETWEEN %s AND %s
-        ORDER BY f.fecha_creacion DESC
-        LIMIT %s OFFSET %s
-    """
+    # Queries centralizadas
+    count_query = _QUERIES['contar_facturas_rango']
+    data_query = _QUERIES['listar_facturas_paginado']
 
     async with pool.connection() as conn:
         async with conn.cursor() as cur:

@@ -5,8 +5,8 @@ un formato estándar corporativo (Quipux SAS). Incluye configuraciones de estilo
 encabezados combinados, bordes y formatos de fuente específicos.
 """
 
-import json
 import os
+import yaml
 from datetime import datetime
 from openpyxl import Workbook
 from openpyxl.styles import Font, Fill, PatternFill, Alignment, Border, Side
@@ -20,10 +20,10 @@ class ExcelExporter:
     """
 
     def __init__(self):
-        """Inicializa el exportador cargando la configuración desde excel_config.json."""
-        config_path = os.path.join("metadata", "excel_config.json")
+        """Inicializa el exportador cargando la configuración desde excel_config.yml."""
+        config_path = os.path.join("metadata", "excel_config.yml")
         with open(config_path, "r", encoding="utf-8") as f:
-            self.config = json.load(f)
+            self.config = yaml.safe_load(f)
         
         self.styles = self.config["styles"]
         self.columns = self.config["columns"]

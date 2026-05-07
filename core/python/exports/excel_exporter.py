@@ -28,16 +28,22 @@ class ExcelExporter:
         self.styles = self.config["styles"]
         self.columns = self.config["columns"]
 
-    def generate_excel(self, data, month_name, year):
+    def generate_excel(
+        self,
+        data: list[dict],
+        month_name: str,
+        year: str | int,
+    ) -> Workbook:
         """Genera un objeto Workbook con los datos y formatos especificados.
 
         Args:
-            data (list[dict]): Lista de diccionarios con los registros de la base de datos.
-            month_name (str): Nombre del mes o rango de fechas para el encabezado.
-            year (str/int): Año del reporte para el encabezado.
+            data: Lista de diccionarios con los registros de la base de datos.
+            month_name: Nombre del mes o rango de fechas para el encabezado.
+            year: Año del reporte para el encabezado.
 
         Returns:
-            Workbook: Objeto de openpyxl listo para ser guardado o transmitido.
+            Workbook listo para ser guardado o transmitido.
+
         """
         wb = Workbook()
         ws = wb.active

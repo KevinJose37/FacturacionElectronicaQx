@@ -19,26 +19,36 @@ router = APIRouter(prefix='/api/exports', tags=['Exports'])
 
 _QUERIES = get_queries_excel().get('exportacion', {})
 
-@router.get("/excel")
+@router.get('/excel')
 async def export_excel(
     fecha_inicio: date = Query(None),
-    fecha_fin: date = Query(None)
-):
-    """
-    Endpoint para descargar el reporte de control en formato Excel.
+    fecha_fin: date = Query(None),
+) -> StreamingResponse:
+    """Endpoint para descargar el reporte de control en formato Excel.
+
+    Args:
+        fecha_inicio: Filtro opcional de fecha inicial.
+        fecha_fin: Filtro opcional de fecha final.
+
+    Returns:
+        Respuesta de streaming con el contenido del archivo .xlsx.
+
     """
     wb, filename = await generar_reporte_excel(fecha_inicio, fecha_fin)
-    
+
     # Guardar en un buffer de memoria
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
-    
-    return StreamingResponse(
+
+    resultado = StreamingResponse(
         output,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}.xlsx"}
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f'attachment; filename={filename}.xlsx'},
     )
+
+    return resultado
+
 
 @router.get('/query')
 async def query_facturas(
@@ -46,9 +56,18 @@ async def query_facturas(
     fecha_fin: date = Query(None),
     page: int = Query(1, alias='page', ge=1),
     size: int = Query(10, alias='size', ge=1),
-):
-    """
-    Endpoint para consultar la tabla de facturas con paginación y filtros de fecha.
+) -> dict:
+    """Endpoint para consultar la tabla de facturas con paginación y filtros de fecha.
+
+    Args:
+        fecha_inicio: Filtro opcional de fecha inicial.
+        fecha_fin: Filtro opcional de fecha final.
+        page: Número de página (1-indexed).
+        size: Cantidad de registros por página.
+
+    Returns:
+        Diccionario con listado de ítems y metadata de paginación.
+
     """
     pool = get_pool()
     if not fecha_inicio or not fecha_fin:

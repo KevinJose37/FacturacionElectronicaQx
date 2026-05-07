@@ -13,9 +13,19 @@ logger = logging.getLogger(__name__)
  
 _QUERIES = get_queries_excel().get('exportacion', {})
  
-async def generar_reporte_excel(fecha_inicio: date = None, fecha_fin: date = None):
-    """
-    Obtiene los datos de la base de datos y genera el objeto Workbook de Excel.
+async def generar_reporte_excel(
+    fecha_inicio: date | None = None,
+    fecha_fin: date | None = None,
+) -> tuple[Workbook, str]:
+    """Obtiene los datos de la base de datos y genera el objeto Workbook de Excel.
+
+    Args:
+        fecha_inicio: Fecha inicial del rango de consulta.
+        fecha_fin: Fecha final del rango de consulta.
+
+    Returns:
+        Tupla conteniendo el objeto Workbook y el nombre del archivo.
+
     """
     pool = get_pool()
     exporter = ExcelExporter()

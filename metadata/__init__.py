@@ -9,4 +9,6 @@ Módulos disponibles:
     - db_metadata: Mensajes de error y log del pool de conexiones y cache.
     - dashboard_metadata: KPIs, etapas de flujo y formateo de tiempo relativo.
     - log_service_metadata: Mensajes del servicio de logs.
+    - alertas_metadata: Tipos, prioridades y textos del sistema de alertas.
 """
+

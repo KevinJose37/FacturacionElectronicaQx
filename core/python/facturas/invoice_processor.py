@@ -19,7 +19,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
-from config import get_postgres_config
+from config import get_postgres_config, load_yaml_config
+from utils.alerts import AlertManager
 from core.python.facturas.invoice_repository import InvoiceRepository
 from metadata.db_metadata import (
     IdEstadoProceso,
@@ -62,6 +63,7 @@ class InvoiceProcessor:
         self._repo = InvoiceRepository(config or get_postgres_config())
         self._ruta_ca = os.environ.get('RUTA_CA_CONFIABLE_XML_DSIG')
         self._ruta_xsd = os.environ.get('RUTA_XSD_UBL_INVOICE')
+        self._alert_manager = AlertManager()
 
     # ------------------------------------------------------------------
     # Punto de entrada
@@ -228,6 +230,9 @@ class InvoiceProcessor:
             sha256_existente = factura_existente.get('sha256')
             if sha256_existente == sha256_actual:
                 logger.debug('CUFE %s ya procesado con mismo SHA256, omitiendo.', cufe[:20])
+                self._alert_manager.duplicado_detectado(
+                    cufe=cufe, sha256=sha256_actual, adjunto_id=adjunto_id,
+                )
                 self._repo.marcar_evento_procesado(conn, adjunto_id)
                 if ar_ev:
                     self._repo.marcar_evento_procesado(conn, ar_ev['adjunto_id'])
@@ -675,6 +680,13 @@ class InvoiceProcessor:
                     conn, evento['adjunto_id'], IdTipoProceso.registro_factura,
                     f'Máximo de reintentos ({MAX_REINTENTOS}) excedido: {error}',
                     IdEstadoProceso.fallido,
+                )
+                self._alert_manager.max_reintentos_excedido(
+                    adjunto_id=evento['adjunto_id'],
+                    cufe=evento.get('cufe'),
+                    intentos=intentos,
+                    error=error,
+                    conn=conn,
                 )
             else:
                 self._repo.actualizar_estado_evento(

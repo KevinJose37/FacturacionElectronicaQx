@@ -86,3 +86,15 @@ security:
   clamav_host: "127.0.0.1"
   clamav_port: 3310
   clamav_timeout: 10
+
+# ──────────────────────────────────────────────
+# Alertas del sistema
+# ──────────────────────────────────────────────
+alerts:
+  enabled: true
+  email_destinatarios:           # Direcciones que reciben correos de alertas CRITICA
+    - admin@empresa.com
+  smtp_host: smtp.gmail.com
+  smtp_port: 465
+  vencimiento_dias_alerta: 5     # Alertar N días antes del vencimiento sin aceptación
+

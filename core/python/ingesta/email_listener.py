@@ -1,36 +1,40 @@
 """Listener de correos IMAP para ingesta de facturas electrónicas."""
 
 from __future__ import annotations
-
+ 
+import asyncio
+import email as _email
 import imaplib
 import logging
 import os
-import time
-import email as _email
-from datetime import datetime, timezone
-from pathlib import Path
-from email.utils import parsedate_to_datetime
-from typing import List, Optional
 import tempfile
-
-from utils.s3_utils import subir_archivo_s3
-from core.python.utils.xml_utils import extraer_xmls_embebidos
-
+import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from pathlib import Path
+from typing import List, Optional
+ 
 import yaml
 from dotenv import load_dotenv
-
+ 
 from config import get_postgres_config
 from core.python.ingesta.queue_publisher import get_publisher
-
-from metadata.db_metadata import IdEstadoProceso, IdTipoArchivo, IdTipoProceso, IdTipoError
-
+from core.python.rechazos.rechazo_handler import RechazoHandler
+from core.python.utils.xml_utils import extraer_xmls_embebidos
+from metadata.db_metadata import (
+    IdEstadoProceso,
+    IdTipoArchivo,
+    IdTipoError,
+    IdTipoProceso,
+)
 from utils.alerts import AlertManager
-from utils.attachment_handler import AttachmentHandler, AdjuntoDescargado
+from utils.attachment_handler import AdjuntoDescargado, AttachmentHandler
 from utils.attachment_validator import AttachmentValidator, ParXmlPdf
 from utils.email_parser import EmailParser
 from utils.email_repository import EmailRepository
 from utils.factura_filter import FacturaFilter
 from utils.malware_scanner import MalwareScanner
+from utils.s3_utils import subir_archivo_s3
 
 load_dotenv()
 
@@ -514,9 +518,6 @@ class EmailListener:
 
                         if not resultado_filtro.es_factura:
                             # Intentar notificar el rechazo
-                            from core.python.rechazos.rechazo_handler import RechazoHandler
-                            import asyncio
-                            
                             rechazo_handler = RechazoHandler()
                             
                             motivo = resultado_filtro.motivo_rechazo

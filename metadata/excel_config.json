@@ -1,0 +1,36 @@
+{
+    "company_name": "QUIPUX SAS",
+    "report_title": "RELACIÓN ENTREFA FACTURAS PROCESO DE COMPRAS A CONTABILIDAD {MONTH} {YEAR}",
+    "filename_template": "Relación entrefa facturas_MES {MONTH}",
+    "sheet_name": "RELACION FACTURAS ENVIADAS",
+    "styles": {
+        "header_bg_color": "4287f5",
+        "header_font_color": "FFFFFF",
+        "font_name": "Arial",
+        "font_size": 10,
+        "border_style": "thin"
+    },
+    "columns": [
+        {"db_field": "id_factura", "label": "ID Factura"},
+        {"db_field": "cufe", "label": "CUFE"},
+        {"db_field": "denominacion", "label": "Denominación"},
+        {"db_field": "prefijo_facturacion", "label": "Prefijo"},
+        {"db_field": "numero_factura", "label": "Número Factura"},
+        {"db_field": "id_tercero_emisor", "label": "ID Emisor"},
+        {"db_field": "razon_social_emisor", "label": "Razón Social Emisor"},
+        {"db_field": "id_tercero_adquiriente", "label": "ID Adquiriente"},
+        {"db_field": "razon_social_adquiriente", "label": "Razón Social Adquiriente"},
+        {"db_field": "id_autorizacion", "label": "ID Autorización"},
+        {"db_field": "fecha_generacion", "label": "Fecha Generación"},
+        {"db_field": "fecha_expedicion", "label": "Fecha Expedición"},
+        {"db_field": "fecha_vencimiento", "label": "Fecha Vencimiento"},
+        {"db_field": "codigo_moneda", "label": "Moneda"},
+        {"db_field": "valor_total", "label": "Valor Total"},
+        {"db_field": "hash_firma_digital", "label": "Hash Firma"},
+        {"db_field": "contenido_qr", "label": "Contenido QR"},
+        {"db_field": "adjunto_id", "label": "ID Adjunto"},
+        {"db_field": "id_estado_proceso", "label": "Estado Proceso"},
+        {"db_field": "fecha_creacion", "label": "Fecha Registro"},
+        {"db_field": "fecha_actualizacion", "label": "Fecha Actualización"}
+    ]
+}

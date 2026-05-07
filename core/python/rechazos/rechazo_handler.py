@@ -74,6 +74,9 @@ class RechazoHandler:
             asunto_notif = f"RECHAZO DE FACTURA: {asunto}"
             exito = self.email_sender.enviar_correo(remitente, asunto_notif, cuerpo_final)
 
+            if exito:
+                logger.info(f"Correo de rechazo enviado exitosamente a {remitente} para la factura: {asunto}")
+
             # 4. Actualizar tabla de devoluciones y log de proceso
             async with conn.cursor() as cur:
                 estado = "ENVIADO" if exito else "FALLIDO"

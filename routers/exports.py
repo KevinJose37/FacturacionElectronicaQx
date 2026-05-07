@@ -77,7 +77,7 @@ async def query_facturas(
 
     total_pages = (total_records + size - 1) // size
     
-    return {
+    resultado = {
         "items": [
             {
                 "id": r[0],
@@ -94,3 +94,5 @@ async def query_facturas(
             "total_pages": total_pages
         }
     }
+
+    return resultado

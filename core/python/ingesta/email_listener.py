@@ -864,8 +864,18 @@ class EmailListener:
 
                 procesados = 0
                 for uid in uids:
-                    if self._procesar_correo(conn, uid):
-                        procesados += 1
+                    try:
+                        if self._procesar_correo(conn, uid):
+                            procesados += 1
+                    except Exception as exc:
+                        # Si es un error de conexión (infraestructura), abortamos todo el ciclo
+                        # para no intentar procesar el resto de correos sin sentido.
+                        if "Abortando procesamiento: ClamAV no disponible" in str(exc) or isinstance(exc, ConnectionError):
+                            logger.critical("Abortando ciclo de ingesta: Infraestructura crítica no disponible.")
+                            break
+                        
+                        logger.error("Error no crítico en correo UID=%s: %s", uid, exc)
+                        continue
 
                 logger.info("Ciclo completado: %d/%d procesados", procesados, len(uids))
         except Exception as exc:

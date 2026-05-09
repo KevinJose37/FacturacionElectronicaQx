@@ -117,6 +117,9 @@ class IdTipoProceso:
 
     verificacion_grafica = 25
     """Verificación de representación gráfica PDF vs XML."""
+    
+    filtro_recepcion = 26
+    """Evaluación de correo en filtro de recepción de facturación."""
 
 
 class IdTipoError:

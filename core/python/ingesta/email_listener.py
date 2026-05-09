@@ -1,36 +1,40 @@
 """Listener de correos IMAP para ingesta de facturas electrónicas."""
 
 from __future__ import annotations
-
+ 
+import asyncio
+import email as _email
 import imaplib
 import logging
 import os
-import time
-import email as _email
-from datetime import datetime, timezone
-from pathlib import Path
-from email.utils import parsedate_to_datetime
-from typing import Optional
 import tempfile
-
-from utils.s3_utils import subir_archivo_s3
-from core.python.utils.xml_utils import extraer_xmls_embebidos
-
+import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from pathlib import Path
+from typing import Optional
+ 
 import yaml
 from dotenv import load_dotenv
-
+ 
 from config import get_postgres_config
 from core.python.ingesta.queue_publisher import get_publisher
-
-from metadata.db_metadata import IdEstadoProceso, IdTipoArchivo, IdTipoProceso, IdTipoError
-
+from core.python.rechazos.rechazo_handler import RechazoHandler
+from core.python.utils.xml_utils import extraer_xmls_embebidos
+from metadata.db_metadata import (
+    IdEstadoProceso,
+    IdTipoArchivo,
+    IdTipoError,
+    IdTipoProceso,
+)
 from utils.alerts import AlertManager
-from utils.attachment_handler import AttachmentHandler, AdjuntoDescargado
+from utils.attachment_handler import AdjuntoDescargado, AttachmentHandler
 from utils.attachment_validator import AttachmentValidator, ParXmlPdf
 from utils.email_parser import EmailParser
 from utils.email_repository import EmailRepository
 from utils.factura_filter import FacturaFilter
 from utils.malware_scanner import MalwareScanner
+from utils.s3_utils import subir_archivo_s3
 
 load_dotenv()
 
@@ -513,25 +517,23 @@ class EmailListener:
                         resultado_filtro = filtro.evaluar(parsed, tiene_adjuntos_factura, remitente)
 
                         if not resultado_filtro.es_factura:
-                            if resultado_filtro.motivo_rechazo == "SIN_ADJUNTOS_FACTURA":
-                                logger.info(
-                                    "Correo de facturación sin adjuntos válidos (ID_CORREO=%s): %s",
-                                    id_correo, id_mensaje,
-                                )
-                                self._alert_manager.adjunto_incompleto(
-                                    email_uid=id_mensaje, archivos=[],
-                                    motivo="El correo de facturación no contiene adjuntos válidos (ZIP, XML o PDF)",
-                                )
+                            # Intentar notificar el rechazo
+                            rechazo_handler = RechazoHandler()
+                            
+                            motivo = resultado_filtro.motivo_rechazo
+                            if motivo == "SIN_ADJUNTOS_FACTURA":
+                                motivo_desc = "No se encontró información adjunta correspondiente a factura electrónica (ZIP/XML)."
+                                logger.info(f"Correo de facturación sin adjuntos válidos (ID_CORREO={id_correo}): {id_mensaje}")
                             else:
-                                self._alert_manager.factura_rechazada(
-                                    motivo=resultado_filtro.motivo_rechazo or "No cumple criterios",
-                                    nit=parsed.get("nit"),
-                                    num_factura=parsed.get("num_factura"),
-                                )
-                                logger.warning(
-                                    "Correo rechazado por filtro: %s | %s",
-                                    id_mensaje, resultado_filtro.motivo_rechazo,
-                                )
+                                motivo_desc = f"Rechazado por filtro: {motivo}"
+                                logger.warning(f"Correo rechazado por filtro (ID_CORREO={id_correo}): {id_mensaje} | {motivo}")
+
+                            try:
+                                # Usamos una conexión nueva o nos aseguramos de que el handler maneje su propia conexión
+                                asyncio.run(rechazo_handler.procesar_rechazo(id_correo, motivo_desc))
+                            except Exception as e:
+                                logger.error(f"Error crítico al procesar notificación de rechazo para ID_CORREO={id_correo}: {e}")
+
                             conn.uid("store", uid, "+FLAGS", "\\Seen")
                             return True
 

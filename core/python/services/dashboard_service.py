@@ -312,3 +312,47 @@ async def obtener_eventos_por_minuto(ventana_minutos: int = 10) -> dict:
 
     resultado = {'events_per_min': epm, 'capacity_pct': pct}
     return resultado
+
+async def obtener_alertas_activas(limite: int = 5) -> list:
+    """Obtiene las alertas activas (no resueltas) más recientes, ordenadas por prioridad y fecha.
+
+    Args:
+        limite: Cantidad máxima de alertas a retornar.
+
+    Returns:
+        Lista de diccionarios con los datos de las alertas.
+    """
+    pool = get_pool()
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT id_alerta, codigo_tipo_alerta, codigo_prioridad, titulo, mensaje, fecha_creacion
+                FROM facturacion.alerta
+                WHERE resuelta = FALSE
+                ORDER BY
+                  CASE codigo_prioridad
+                    WHEN 'CRITICA' THEN 1
+                    WHEN 'ALTA' THEN 2
+                    WHEN 'MEDIA' THEN 3
+                    WHEN 'BAJA' THEN 4
+                    ELSE 5
+                  END,
+                  fecha_creacion DESC
+                LIMIT %s
+                """,
+                (limite,)
+            )
+            filas = await cur.fetchall()
+
+    resultado = []
+    for r in filas:
+        resultado.append({
+            'id': r[0],
+            'type': r[1],
+            'priority': r[2],
+            'title': r[3],
+            'message': r[4],
+            'date': r[5].isoformat() if r[5] else '',
+        })
+    return resultado

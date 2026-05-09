@@ -17,7 +17,7 @@ async def obtener_dashboard() -> dict:
     """
     (
         kpis, flow, proveedores, tendencia, facturas,
-        actividad, tipos_doc, heatmap, indicadores, eventos_min,
+        actividad, tipos_doc, heatmap, indicadores, eventos_min, alertas
     ) = await asyncio.gather(
         dashboard_service.obtener_kpis(),
         dashboard_service.obtener_etapas_flujo(),
@@ -29,6 +29,7 @@ async def obtener_dashboard() -> dict:
         dashboard_service.obtener_heatmap_errores(),
         dashboard_service.obtener_indicadores_pipeline(),
         dashboard_service.obtener_eventos_por_minuto(),
+        dashboard_service.obtener_alertas_activas(),
     )
 
     respuesta = {
@@ -42,6 +43,7 @@ async def obtener_dashboard() -> dict:
         'invoices': facturas,
         'activity': actividad,
         'events_per_min': eventos_min,
+        'alerts': alertas,
     }
     return respuesta
 

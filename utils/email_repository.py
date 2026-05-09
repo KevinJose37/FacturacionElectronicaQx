@@ -304,6 +304,7 @@ class EmailRepository:
         id_proceso: int,
         observacion: str,
         id_estado: int = 1,
+        id_error: Optional[int] = None,
     ) -> int:
         """Crea un registro de proceso de ingesta (sin commit).
 
@@ -313,6 +314,7 @@ class EmailRepository:
             id_proceso: Tipo de proceso (FK a TIPO_PROCESO).
             observacion: Descripción del proceso realizado.
             id_estado: Estado del proceso (default: 1 = PENDIENTE).
+            id_error: Tipo de error (FK a TIPO_ERROR), None si no hubo error.
 
         Returns:
             int: ID del proceso creado, o -1 si hubo error.
@@ -322,9 +324,9 @@ class EmailRepository:
                 cur.execute(
                     """
                     INSERT INTO FACTURACION.PROCESO_INGESTA (
-                        ADJUNTO_ID, ID_PROCESO, ID_ESTADO, OBSERVACION
+                        ADJUNTO_ID, ID_PROCESO, ID_ESTADO, OBSERVACION, ID_ERROR
                     )
-                    VALUES (%s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s)
                     RETURNING ID_PROCESO_INGESTA
                     """,
                     (
@@ -332,6 +334,7 @@ class EmailRepository:
                         id_proceso,
                         id_estado,
                         observacion,
+                        id_error,
                     ),
                 )
                 id_proceso_ingesta = cur.fetchone()[0]

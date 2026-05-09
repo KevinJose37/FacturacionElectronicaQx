@@ -517,22 +517,39 @@ class EmailListener:
                         resultado_filtro = filtro.evaluar(parsed, tiene_adjuntos_factura, remitente)
 
                         if not resultado_filtro.es_factura:
-                            # Intentar notificar el rechazo
                             rechazo_handler = RechazoHandler()
-                            
                             motivo = resultado_filtro.motivo_rechazo
+
                             if motivo == "SIN_ADJUNTOS_FACTURA":
-                                motivo_desc = "No se encontró información adjunta correspondiente a factura electrónica (ZIP/XML)."
-                                logger.info(f"Correo de facturación sin adjuntos válidos (ID_CORREO={id_correo}): {id_mensaje}")
+                                logger.info(
+                                    "Correo de facturación sin adjuntos válidos (ID_CORREO=%s): %s",
+                                    id_correo, id_mensaje,
+                                )
+                                self._alert_manager.correo_sin_adjuntos(
+                                    email_uid=id_mensaje,
+                                    motivo="Correo sin adjuntos válidos de facturación (ZIP/XML).",
+                                    correo_id=id_correo,
+                                )
+                                try:
+                                    asyncio.run(rechazo_handler.manejar_sin_adjuntos(id_correo))
+                                except Exception as e:
+                                    logger.error(
+                                        "Error al procesar rechazo sin adjuntos para ID_CORREO=%s: %s",
+                                        id_correo, e,
+                                    )
                             else:
                                 motivo_desc = f"Rechazado por filtro: {motivo}"
-                                logger.warning(f"Correo rechazado por filtro (ID_CORREO={id_correo}): {id_mensaje} | {motivo}")
-
-                            try:
-                                # Usamos una conexión nueva o nos aseguramos de que el handler maneje su propia conexión
-                                asyncio.run(rechazo_handler.procesar_rechazo(id_correo, motivo_desc))
-                            except Exception as e:
-                                logger.error(f"Error crítico al procesar notificación de rechazo para ID_CORREO={id_correo}: {e}")
+                                logger.warning(
+                                    "Correo rechazado por filtro (ID_CORREO=%s): %s | %s",
+                                    id_correo, id_mensaje, motivo,
+                                )
+                                try:
+                                    asyncio.run(rechazo_handler.procesar_rechazo(id_correo, motivo_desc))
+                                except Exception as e:
+                                    logger.error(
+                                        "Error al procesar notificación de rechazo para ID_CORREO=%s: %s",
+                                        id_correo, e,
+                                    )
 
                             conn.uid("store", uid, "+FLAGS", "\\Seen")
                             return True
@@ -540,11 +557,22 @@ class EmailListener:
                         # 5c. Descargar TODOS los adjuntos válidos
                         adjuntos = self._attachment_handler.descargar_todos_adjuntos(msg, parsed)
                         if not adjuntos:
+                            motivo_fallo = "No se pudieron descargar los adjuntos del correo."
                             self._alert_manager.adjunto_incompleto(
                                 email_uid=id_mensaje, archivos=[],
-                                motivo="No se pudieron descargar adjuntos",
+                                motivo=motivo_fallo,
                             )
                             logger.error("Falla al descargar adjuntos para correo %s", id_mensaje)
+                            try:
+                                rechazo_handler = RechazoHandler()
+                                asyncio.run(rechazo_handler.procesar_rechazo(
+                                    id_correo, motivo_fallo,
+                                ))
+                            except Exception as e:
+                                logger.error(
+                                    "Error al registrar rechazo por fallo de descarga para ID_CORREO=%s: %s",
+                                    id_correo, e,
+                                )
                             conn.uid("store", uid, "+FLAGS", "\\Seen")
                             return False
 
@@ -573,10 +601,24 @@ class EmailListener:
                             todos_resultados.extend(resultados_sueltos)
 
                         if not todos_resultados:
+                            motivo_sin_pares = (
+                                "Ningún par XML+PDF pudo procesarse exitosamente. "
+                                "Los adjuntos no contenían archivos válidos de factura electrónica."
+                            )
                             logger.warning(
                                 "Ningún par XML+PDF procesado exitosamente para correo %s",
                                 id_mensaje,
                             )
+                            try:
+                                rechazo_handler = RechazoHandler()
+                                asyncio.run(rechazo_handler.procesar_rechazo(
+                                    id_correo, motivo_sin_pares,
+                                ))
+                            except Exception as e:
+                                logger.error(
+                                    "Error al registrar rechazo por procesamiento fallido para ID_CORREO=%s: %s",
+                                    id_correo, e,
+                                )
                             conn.uid("store", uid, "+FLAGS", "\\Seen")
                             return False
 

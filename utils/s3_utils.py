@@ -115,6 +115,42 @@ def copiar_archivo_s3(
     return es_exitoso
 
 
+def descargar_archivo_s3(
+    s3_key: str,
+    ruta_local: Path | str,
+    bucket_name: str | None = None,
+) -> bool:
+    """Descarga un archivo desde S3 a una ruta local.
+
+    Args:
+        s3_key: Llave (Key) del objeto en S3.
+        ruta_local: Ruta destino en el sistema de archivos local.
+        bucket_name: Nombre del bucket. Si es None, usa el de configuración.
+
+    Returns:
+        True si la descarga fue exitosa, False de lo contrario.
+    """
+    es_exitoso = False
+    aws_cfg = get_aws_config()
+    target_bucket = bucket_name or aws_cfg.get('bucket_name')
+
+    try:
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=aws_cfg.get('access_key'),
+            aws_secret_access_key=aws_cfg.get('secret_key'),
+            region_name=aws_cfg.get('region_name')
+        )
+        s3_client.download_file(target_bucket, s3_key, str(ruta_local))
+        es_exitoso = True
+    except (BotoCoreError, ClientError) as error:
+        logger.error(f'Error de AWS al descargar s3://{target_bucket}/{s3_key}: {error}')
+    except Exception as e:
+        logger.error(f'Error inesperado al descargar de S3: {e}')
+
+    return es_exitoso
+
+
 def obtener_xml_s3(
     s3_key: str,
     bucket_name: str | None = None,

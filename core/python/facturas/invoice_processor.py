@@ -52,8 +52,8 @@ from core.python.validators.req_18_proveedor_software import validar_proveedor_s
 
 logger = logging.getLogger(__name__)
 
-MAX_REINTENTOS = int(os.environ.get('MAX_REINTENTOS_FACTURA', '3'))
-MAX_WORKERS = int(os.environ.get('MAX_WORKERS_FACTURA', '4'))
+_settings = load_yaml_config('settings.yaml')
+_processor_cfg = _settings.get('invoice_processor', {})
 
 
 class InvoiceProcessor:
@@ -63,7 +63,9 @@ class InvoiceProcessor:
         self._repo = InvoiceRepository(config or get_postgres_config())
         self._ruta_ca = os.environ.get('RUTA_CA_CONFIABLE_XML_DSIG')
         self._ruta_xsd = os.environ.get('RUTA_XSD_UBL_INVOICE')
-        self._alert_manager = AlertManager()
+        self._alert_manager = AlertManager(_settings)
+        self._max_reintentos = int(_processor_cfg.get('max_reintentos', 3))
+        self._max_workers = int(_processor_cfg.get('max_workers', 4))
 
     # ------------------------------------------------------------------
     # Punto de entrada
@@ -89,7 +91,7 @@ class InvoiceProcessor:
         familias = self._agrupar_por_familia(eventos)
         logger.info('Procesando %d familias de XMLs.', len(familias))
 
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
             futuros = {
                 executor.submit(self._procesar_familia, familia): familia_id
                 for familia_id, familia in familias.items()
@@ -114,7 +116,7 @@ class InvoiceProcessor:
         )
         return resultados
 
-    def _agrupar_por_familia(self, eventos: list[dict]) -> dict:
+    def _agrupar_por_familia(self, eventos: list) -> dict:
         """Agrupa eventos por su raíz en el árbol de adjuntos.
 
         Usa ADJUNTO_RAIZ_ID (calculado vía CTE recursivo en la query) para que
@@ -138,7 +140,7 @@ class InvoiceProcessor:
     # Procesamiento de una familia
     # ------------------------------------------------------------------
 
-    def _procesar_familia(self, eventos: list[dict]) -> str:
+    def _procesar_familia(self, eventos: list) -> str:
         """Procesa una familia de XMLs (AttachedDocument + Invoice + AR).
 
         Returns:
@@ -672,13 +674,13 @@ class InvoiceProcessor:
         """Maneja errores incrementando intentos o marcando como fallido."""
         try:
             intentos = self._repo.incrementar_intentos_evento(conn, evento['adjunto_id'])
-            if intentos >= MAX_REINTENTOS:
+            if intentos >= self._max_reintentos:
                 self._repo.actualizar_estado_evento(
                     conn, evento['adjunto_id'], IdEstadoProceso.fallido
                 )
                 self._repo.crear_proceso_ingesta(
                     conn, evento['adjunto_id'], IdTipoProceso.registro_factura,
-                    f'Máximo de reintentos ({MAX_REINTENTOS}) excedido: {error}',
+                    f'Máximo de reintentos ({self._max_reintentos}) excedido: {error}',
                     IdEstadoProceso.fallido,
                 )
                 self._alert_manager.max_reintentos_excedido(

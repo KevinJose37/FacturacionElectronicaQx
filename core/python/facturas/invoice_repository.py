@@ -20,11 +20,12 @@ from psycopg import Connection
 
 # Local application imports
 from config import get_postgres_config
-
-from metadata.db_metadata import IdEstadoProceso
-from metadata.db_metadata import IdFormaPago
-from metadata.db_metadata import IdMedioPago
-from metadata.db_metadata import IdResponsabilidadFiscal
+from metadata.db_metadata import (
+    IdEstadoProceso,
+    IdFormaPago,
+    IdMedioPago,
+    IdResponsabilidadFiscal,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ class InvoiceRepository:
         self,
         conn: Connection,
         limite: int = 50,
-    ) -> list[dict]:
+    ) -> list:
         """Obtiene los EVENTO_INGESTA pendientes con sus datos de adjunto.
 
         Filtra por ID_ESTADO = PENDIENTE (1) y archivos XML (ID_TIPO_ARCHIVO = 2).
@@ -124,7 +125,7 @@ class InvoiceRepository:
         self,
         conn: Connection,
         adjunto_padre_id: int,
-    ) -> list[dict]:
+    ) -> list:
         """Obtiene los adjuntos que comparten el mismo padre.
 
         Args:
@@ -157,7 +158,7 @@ class InvoiceRepository:
         self,
         conn: Connection,
         adjunto_id: int,
-    ) -> list[dict]:
+    ) -> list:
         """Obtiene todos los adjuntos de la familia a la que pertenece `adjunto_id`.
 
         Sube por la cadena de padres hasta la raíz y luego baja recursivamente
@@ -610,7 +611,7 @@ class InvoiceRepository:
         id_factura: int,
         id_tercero: int,
         tipo_tercero: str,
-        responsabilidades: list[dict],
+        responsabilidades: list,
     ) -> None:
         """Inserta las condiciones fiscales de un tercero en la factura."""
 

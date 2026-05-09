@@ -63,6 +63,13 @@ dashboard:
   factor_pipeline_warn: 0.9 # Factor para warning en etapa de procesamiento
 
 # ──────────────────────────────────────────────
+# Procesador de facturas
+# ──────────────────────────────────────────────
+invoice_processor:
+  max_reintentos: 3           # Intentos máximos antes de marcar como fallido
+  max_workers: 4              # Hilos concurrentes para procesar familias
+
+# ──────────────────────────────────────────────
 # Proveedores
 # ──────────────────────────────────────────────
 proveedores:

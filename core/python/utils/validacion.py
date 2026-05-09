@@ -3,14 +3,9 @@
 
 # Standard library imports
 from base64 import b64decode
-
-from datetime import datetime
-from datetime import timezone
-
+from datetime import datetime, timezone
 import hashlib
-
-from typing import Optional
-from typing import Tuple
+from typing import Optional, Tuple
 
 # Third-party imports
 from cryptography import x509
@@ -64,7 +59,7 @@ def calcular_dv_nit_v1(nit: str) -> int:
 def construir_cadena_base_cufe(
     xml_factura: etree._Element,
     namespaces: dict,
-) -> tuple[Optional[str], str]:
+) -> tuple:
     """Construye la cadena base del CUFE a partir de los campos del Invoice."""
     cadena_base = None
 
@@ -178,7 +173,7 @@ def extraer_texto_xpath(
 def obtener_impuestos_cufe(
     xml_factura: etree._Element,
     namespaces: dict,
-) -> list[tuple[str, str]]:
+) -> list:
     """Obtiene los pares (CódigoImpuesto, ValorImpuesto) para el cálculo del CUFE."""
     impuestos = []
 
@@ -221,18 +216,18 @@ def parsear_decimal_2dp(valor_texto: str | None) -> Decimal | None:
 
     Args:
         valor_texto: Cadena que representa un número decimal.
-        
+
     Returns:
         Decimal con 2 decimales o None si la cadena no es un número válido.
 
     """
+    resultado = None
     texto_limpio = (valor_texto or '').strip()
 
     if texto_limpio:
         try:
             numero = Decimal(texto_limpio)
             resultado = numero.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-
         except Exception:
             resultado = None
 
@@ -406,14 +401,15 @@ def validar_firma_criptografica_y_confianza(
     xml_factura: etree._Element,
     ruta_ca_confiable: str,
 ) -> Tuple[bool, str]:
-    """
-    Verifica la firma XMLDSig/XAdES.
+    """Verifica la firma XMLDSig/XAdES.
+
     Cubre:
     - Integridad (DigestValue)
     - Firma (SignatureValue)
     - Cadena de confianza (CA)
     """
     resultado = False
+    mensaje = ''
 
     try:
         config = SignatureConfiguration(require_x509=True)
@@ -425,6 +421,7 @@ def validar_firma_criptografica_y_confianza(
                 expect_config=config,
             )
             resultado = True
+            mensaje = 'Firma digital válida y cadena de confianza verificada.'
         else:
             mensaje = (
                 'No se configuró RUTA_CA_CONFIABLE_XML_DSIG para validar '
@@ -467,6 +464,7 @@ def validar_xml_contra_xsd_v1(
 ) -> Tuple[bool, str]:
     """Valida el XML contra el esquema XSD UBL."""
     resultado = False
+    mensaje = ''
 
     try:
         with open(ruta_xsd, 'rb') as f:
@@ -477,6 +475,7 @@ def validar_xml_contra_xsd_v1(
 
         if schema.validate(xml_doc):
             resultado = True
+            mensaje = 'El XML cumple con el esquema XSD UBL.'
         else:
             errores = [str(e) for e in schema.error_log]
             mensaje = f'Error de validación XSD: {" | ".join(errores)}'

@@ -10,7 +10,7 @@ import email as _email
 from datetime import datetime, timezone
 from pathlib import Path
 from email.utils import parsedate_to_datetime
-from typing import List, Optional
+from typing import Optional
 import tempfile
 
 from utils.s3_utils import subir_archivo_s3
@@ -91,7 +91,7 @@ class EmailListener:
                 logger.warning("Intento %d/%d fallido: %s", intento, self.max_attempts, exc)
                 time.sleep(self.backoff_base**intento)
 
-    def _obtener_uids(self, conn: imaplib.IMAP4_SSL) -> list[bytes]:
+    def _obtener_uids(self, conn: imaplib.IMAP4_SSL) -> list:
         """Obtiene UIDs de correos no leídos."""
         status, data = conn.uid("search", None, "UNSEEN")
         uids = data[0].split() if status == "OK" else []
@@ -123,13 +123,13 @@ class EmailListener:
 
     def _procesar_zips(
         self,
-        zips: List[AdjuntoDescargado],
+        zips: list,
         conn_db,
         id_correo: int,
         id_mensaje: str,
         fecha_envio: Optional[datetime],
         parsed: dict,
-    ) -> List[dict]:
+    ) -> list:
         """Procesa una lista de adjuntos ZIP, extrae pares XML+PDF.
 
         Soporta ZIPs con contenido directo y ZIPs con sub-ZIPs anidados.
@@ -245,14 +245,14 @@ class EmailListener:
 
     def _procesar_sueltos(
         self,
-        xmls: List[AdjuntoDescargado],
-        pdfs: List[AdjuntoDescargado],
+        xmls: list,
+        pdfs: list,
         conn_db,
         id_correo: int,
         id_mensaje: str,
         fecha_envio: Optional[datetime],
         parsed: dict,
-    ) -> List[dict]:
+    ) -> list:
         """Procesa archivos XML y PDF adjuntos directamente al correo (sin ZIP).
 
         Returns:
@@ -393,7 +393,7 @@ class EmailListener:
                         subir_archivo_s3(tmp_path, uri_embebido)
                         self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_embebido)
         else:
-            logger.warning(f"No se extrajeron XMLs embebidos de {par.xml_path.name}: {contenidos_xml}")
+            logger.warning('No se extrajeron XMLs embebidos de %s: %s', par.xml_path.name, contenidos_xml)
 
         # 6. Registrar procesos de ingesta realizados
         obs_malware = "Escaneo malware exitoso."

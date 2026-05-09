@@ -5,6 +5,7 @@ Incluye verificación de integridad de ZIP, validación de identidad
 """
 
 import logging
+import os
 import zipfile
 from pathlib import Path
 
@@ -30,15 +31,16 @@ def get_clamav_client() -> pyclamd.ClamdNetworkSocket:
     Raises:
         ClamAVError: Si no se puede conectar al servicio.
     """
-    host = _SECURITY_CFG.get('clamav_host', 'clamav')
-    port = _SECURITY_CFG.get('clamav_port', 3310)
-    timeout = _SECURITY_CFG.get('clamav_timeout', 10)
+    # Prioridad: Variable de entorno > settings.yaml > default
+    host = os.environ.get('CLAMAV_HOST', _SECURITY_CFG.get('clamav_host', '127.0.0.1'))
+    port = int(os.environ.get('CLAMAV_PORT', _SECURITY_CFG.get('clamav_port', 3310)))
+    timeout = int(os.environ.get('CLAMAV_TIMEOUT', _SECURITY_CFG.get('clamav_timeout', 10)))
 
     try:
         cd = pyclamd.ClamdNetworkSocket(host=host, port=port, timeout=timeout)
         if cd.ping():
             return cd
-        raise ClamAVError("Ping fallido a ClamAV")
+        raise ClamAVError(f"Ping fallido a ClamAV en {host}:{port}")
     except Exception as e:
         logger.error('No se pudo conectar a ClamAV en %s:%s: %s', host, port, e)
         raise ClamAVError(f"Servicio ClamAV no alcanzable en {host}:{port}") from e

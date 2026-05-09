@@ -17,25 +17,31 @@ logger = logging.getLogger(__name__)
 _SETTINGS = load_yaml_config('settings.yaml')
 _SECURITY_CFG = _SETTINGS.get('security', {})
 
-def get_clamav_client() -> pyclamd.ClamdNetworkSocket | None:
+class ClamAVError(Exception):
+    """Excepción lanzada cuando el servicio ClamAV no está disponible."""
+    pass
+
+def get_clamav_client() -> pyclamd.ClamdNetworkSocket:
     """Establece conexión con el daemon de ClamAV.
 
     Returns:
-        Cliente pyclamd configurado o None si no se puede conectar.
+        Cliente pyclamd configurado.
+    
+    Raises:
+        ClamAVError: Si no se puede conectar al servicio.
     """
     host = _SECURITY_CFG.get('clamav_host', 'clamav')
     port = _SECURITY_CFG.get('clamav_port', 3310)
     timeout = _SECURITY_CFG.get('clamav_timeout', 10)
-    cliente = None
 
     try:
         cd = pyclamd.ClamdNetworkSocket(host=host, port=port, timeout=timeout)
         if cd.ping():
-            cliente = cd
+            return cd
+        raise ClamAVError("Ping fallido a ClamAV")
     except Exception as e:
         logger.error('No se pudo conectar a ClamAV en %s:%s: %s', host, port, e)
-    
-    return cliente
+        raise ClamAVError(f"Servicio ClamAV no alcanzable en {host}:{port}") from e
 
 def validar_integridad_zip(ruta_zip: Path) -> bool:
     """Verifica si un archivo ZIP es válido y no está corrupto.
@@ -67,12 +73,11 @@ def escanear_con_clamav(ruta: Path) -> tuple:
     Returns:
         Tupla (es_seguro, mensaje). Si es_seguro es False, el mensaje
         contiene el nombre del virus detectado o el error.
+    
+    Raises:
+        ClamAVError: Si el servicio no está disponible.
     """
     cd = get_clamav_client()
-    
-    if not cd:
-        logger.warning('Servicio ClamAV no disponible. Omitiendo escaneo de seguridad para %s', ruta.name)
-        return True, 'Servicio ClamAV no disponible'
     
     try:
         with open(ruta, 'rb') as f:
@@ -84,9 +89,11 @@ def escanear_con_clamav(ruta: Path) -> tuple:
             virus_info = list(resultado_scan.values())[0][1]
             mensaje = f'Virus detectado: {virus_info}'
             return False, mensaje
+    except ClamAVError:
+        raise
     except Exception as e:
         logger.error('Error durante escaneo ClamAV para %s: %s', ruta.name, e)
-        return True, f'Error en escaneo (Omitido): {str(e)}'
+        raise ClamAVError(f"Error inesperado en escaneo: {str(e)}") from e
 
 def validar_identidad_archivo(ruta: Path, extension_esperada: str) -> bool:
     """Valida la identidad del archivo usando Magic Numbers (MIME types).

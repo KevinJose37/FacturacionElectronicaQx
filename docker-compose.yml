@@ -21,6 +21,12 @@ services:
     restart: unless-stopped
     ports:
       - "3310:3310"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "3310"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 
   # ── Backend API ──
@@ -29,8 +35,10 @@ services:
     container_name: facturacion_api
     restart: unless-stopped
     depends_on:
-      - database
-      - clamav
+      database:
+        condition: service_started
+      clamav:
+        condition: service_healthy
     expose:
       - "8888"
     env_file:

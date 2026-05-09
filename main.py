@@ -28,6 +28,7 @@ from routers import (
     rechazos,
     validaciones,
     exports,
+    auth,
 )
 
 # Configuración de logging base
@@ -74,6 +75,7 @@ app.include_router(rechazos.router)
 app.include_router(logs_router.router)
 app.include_router(chat.router)
 app.include_router(exports.router)
+app.include_router(auth.router)
 
 
 @app.get("/")

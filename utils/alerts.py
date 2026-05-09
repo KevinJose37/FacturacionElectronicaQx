@@ -413,6 +413,32 @@ class AlertManager:
             correo_id=correo_id,
         )
 
+    def verificacion_grafica_fallida(
+        self,
+        num_factura: str,
+        metodos: list,
+        campos_fallidos: dict,
+        factura_id: Optional[int] = None,
+        adjunto_id: Optional[int] = None,
+        correo_id: Optional[int] = None,
+    ) -> int:
+        """Notifica que la verificación gráfica del PDF falló."""
+        titulo = TitulosAlerta.verificacion_grafica_fallida.format(numero_factura=num_factura)
+        mensaje = f'La verificación gráfica del PDF falló para la factura {num_factura}.'
+        return self._emitir(
+            codigo_tipo=CodigoTipoAlerta.verificacion_grafica_fallida,
+            titulo=titulo,
+            mensaje=mensaje,
+            contexto={
+                'metodos_intentados': metodos,
+                'campos_fallidos': campos_fallidos,
+            },
+            factura_id=factura_id,
+            adjunto_id=adjunto_id,
+            correo_id=correo_id,
+        )
+
+
     # ------------------------------------------------------------------
     # Métodos públicos — Prioridad BAJA
     # ------------------------------------------------------------------

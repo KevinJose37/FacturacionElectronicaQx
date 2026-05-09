@@ -19,6 +19,9 @@ services:
     image: clamav/clamav:latest
     container_name: facturacion_clamav
     restart: unless-stopped
+    ports:
+      - "3310:3310"
+
 
   # ── Backend API ──
   api:
@@ -40,6 +43,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      - RUTA_CA_CONFIABLE_XML_DSIG=input/credentials/ca_bundle.pem
 
   # ── Frontend (se clona y construye desde GitHub automáticamente) ──
   frontend:

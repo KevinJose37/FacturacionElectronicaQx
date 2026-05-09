@@ -2,23 +2,15 @@
  electrónicas."""
 
 # Standard library imports
-import os
-
 from base64 import b64decode
-
-from datetime import datetime
-from datetime import timezone
-
+from datetime import datetime, timezone
 import hashlib
-
-from typing import Optional
-from typing import Tuple
+from typing import Optional, Tuple
 
 # Third-party imports
 from cryptography import x509
 
 from decimal import Decimal
-from decimal import InvalidOperation
 from decimal import ROUND_HALF_UP
 
 from lxml import etree
@@ -27,6 +19,9 @@ from signxml import XMLVerifier
 from signxml import SignatureConfiguration
 from signxml.exceptions import InvalidSignature
 from signxml.exceptions import InvalidCertificate
+
+from metadata.db_metadata import IdTipoError
+from metadata.db_metadata import IdTipoDocumentoIdentidad
 
 
 def calcular_dv_nit_v1(nit: str) -> int:
@@ -64,7 +59,7 @@ def calcular_dv_nit_v1(nit: str) -> int:
 def construir_cadena_base_cufe(
     xml_factura: etree._Element,
     namespaces: dict,
-) -> tuple[Optional[str], str]:
+) -> tuple:
     """Construye la cadena base del CUFE a partir de los campos del Invoice."""
     cadena_base = None
 
@@ -109,7 +104,7 @@ def construir_cadena_base_cufe(
             numero_factura,
             fecha_emision,
             hora_emision,
-            valor_total,
+            format(valor_total, 'f'),
         ] + partes_impuestos + [
             nit_adquiriente,
             clave_tecnica,
@@ -178,7 +173,7 @@ def extraer_texto_xpath(
 def obtener_impuestos_cufe(
     xml_factura: etree._Element,
     namespaces: dict,
-) -> list[tuple[str, str]]:
+) -> list:
     """Obtiene los pares (CódigoImpuesto, ValorImpuesto) para el cálculo del CUFE."""
     impuestos = []
 
@@ -221,18 +216,18 @@ def parsear_decimal_2dp(valor_texto: str | None) -> Decimal | None:
 
     Args:
         valor_texto: Cadena que representa un número decimal.
-        
+
     Returns:
         Decimal con 2 decimales o None si la cadena no es un número válido.
 
     """
+    resultado = None
     texto_limpio = (valor_texto or '').strip()
 
     if texto_limpio:
         try:
             numero = Decimal(texto_limpio)
             resultado = numero.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-
         except Exception:
             resultado = None
 
@@ -240,45 +235,70 @@ def parsear_decimal_2dp(valor_texto: str | None) -> Decimal | None:
 
 
 def validar_datos_persona(
-    nombre: str, nit: str, scheme_name: str, dv_xml: str
-    ) -> tuple[str, bool]:
+    nombre: str, nit: str, scheme_name: str, dv_xml: str, rol: str = 'emisor'
+    ) -> dict:
     """Valida el nombre y NIT de una persona (emisor o adquiriente) según las reglas de la
      resolución 000165 de 2023.
      
     Args:
         nombre: Nombre o razón social de la persona.
         nit: NIT de la persona.
-        scheme_name: Valor del atributo schemeName del nodo CompanyID.
+        scheme_name: Valor del atributo schemeName del nodo CompanyID (código de
+            tipo de documento según TIPO_DOCUMENTO_IDENTIDAD).
         dv_xml: Valor del atributo schemeID del nodo CompanyID (dígito de verificación).
+        rol: 'emisor' o 'adquiriente'.
         
     Returns:
-        Tupla (mensaje, resultado_validacion) donde:
+        Diccionario con:
         - mensaje: Descripción del resultado de la validación.
-        - resultado_validacion: True si los datos son válidos, False en caso contrario.
+        - resultado: True si los datos son válidos, False en caso contrario.
+        - id_error: Código de error granular si es inválido.
     
     """
     resultado_validacion = False
+    id_error = None
     
+    is_emisor = (rol == 'emisor')
+
     if not nombre:
         mensaje = 'No se encontró nombre de la persona.'
-
-    elif scheme_name != '31':
-        mensaje = f'Nombre válido: "{nombre}". No requiere validación de NIT.'
-        resultado_validacion = True
+        id_error = IdTipoError.emisor_sin_nombre if is_emisor else IdTipoError.adquiriente_sin_nombre
 
     elif not nit:
-        mensaje = f'Se encontró nombre "{nombre}" pero no NIT.'
+        mensaje = f'Se encontró nombre "{nombre}" pero no documento.'
+        id_error = IdTipoError.emisor_sin_documento if is_emisor else IdTipoError.adquiriente_sin_documento
+
+    elif scheme_name and not IdTipoDocumentoIdentidad.es_codigo_valido(scheme_name):
+        mensaje = (
+            f'Se encontró nombre "{nombre}" con documento {nit}, pero el tipo '
+            f'de documento "{scheme_name}" no es un código DIAN válido.'
+        )
+        id_error = IdTipoError.emisor_documento_invalido if is_emisor else IdTipoError.adquiriente_documento_invalido
+
+    elif is_emisor and scheme_name and not IdTipoDocumentoIdentidad.es_valido_para_emisor(scheme_name):
+        mensaje = (
+            f'Se encontró nombre "{nombre}" con documento {nit}, pero el tipo '
+            f'de documento "{scheme_name}" no es válido para un emisor.'
+        )
+        id_error = IdTipoError.emisor_documento_invalido
+
+    elif not IdTipoDocumentoIdentidad.requiere_dv(scheme_name):
+        # Documento que no requiere DV: válido si tiene nombre y número
+        mensaje = f'Datos válidos: "{nombre}" con documento {nit}.'
+        resultado_validacion = True
 
     elif not (6 <= len(nit) <= 15) or not nit.isdigit():
         mensaje = (
             f'Se encontró nombre "{nombre}" pero el NIT "{nit}" no es válido.'
         )
+        id_error = IdTipoError.emisor_documento_invalido if is_emisor else IdTipoError.adquiriente_documento_invalido
 
     elif dv_xml is None or not dv_xml.isdigit():
         mensaje = (
             f'Se encontró nombre "{nombre}" y NIT "{nit}" '
             f'pero sin dígito de verificación válido.'
         )
+        id_error = IdTipoError.emisor_dv_invalido if is_emisor else IdTipoError.adquiriente_dv_invalido
 
     else:
         dv_xml = int(dv_xml)
@@ -289,6 +309,7 @@ def validar_datos_persona(
                 f'Se encontró nombre "{nombre}" y NIT "{nit}" pero DV incorrecto '
                 f'(XML: {dv_xml}, Calculado: {dv_calculado}).'
             )
+            id_error = IdTipoError.emisor_dv_invalido if is_emisor else IdTipoError.adquiriente_dv_invalido
 
         else:
             mensaje = f'Datos válidos: "{nombre}" con NIT {nit}-{dv_xml}.'
@@ -296,7 +317,8 @@ def validar_datos_persona(
     
     resultado = {
         'mensaje': mensaje,
-        'resultado': resultado_validacion
+        'resultado': resultado_validacion,
+        'id_error': id_error
     }
     
     return resultado
@@ -327,6 +349,7 @@ def validar_estructura_minima_ubl_v1(
 
     if not faltantes:
         resultado = True
+        mensaje = 'El XML cumple con la estructura mínima UBL.'
 
     else:
         mensaje = (
@@ -337,10 +360,18 @@ def validar_estructura_minima_ubl_v1(
     return resultado, mensaje
 
 
-def validar_fecha_futura(fecha: str, hora: str) -> bool:
+def validar_fecha_futura(fecha: str, hora: str) -> dict:
+    """Valida que la fecha y hora no sean futuras.
+
+    Args:
+        fecha: Cadena de fecha en formato ISO (YYYY-MM-DD).
+        hora: Cadena de hora en formato ISO (HH:MM:SS±HH:MM).
+
+    Returns:
+        Diccionario con 'mensaje' y 'resultado' (bool).
     """
-    
-    """
+    resultado_validacion = False
+
     dt_str = f'{fecha}T{hora}'
 
     # Normalizar timezone: -05:00 → -0500
@@ -355,12 +386,12 @@ def validar_fecha_futura(fecha: str, hora: str) -> bool:
 
     if fecha_hora_utc > ahora_utc:
         mensaje = (
-            f'Fecha y hora de futuras (Fecha = "{fecha}", Hora = "{hora}").'
+            f'Fecha y hora futuras (Fecha = "{fecha}", Hora = "{hora}").'
         )
     else:
         mensaje = f'Fecha y hora válidas: {fecha} {hora}.'
         resultado_validacion = True
-    
+
     validacion = {'mensaje': mensaje, 'resultado': resultado_validacion}
 
     return validacion
@@ -370,14 +401,15 @@ def validar_firma_criptografica_y_confianza(
     xml_factura: etree._Element,
     ruta_ca_confiable: str,
 ) -> Tuple[bool, str]:
-    """
-    Verifica la firma XMLDSig/XAdES.
+    """Verifica la firma XMLDSig/XAdES.
+
     Cubre:
     - Integridad (DigestValue)
     - Firma (SignatureValue)
     - Cadena de confianza (CA)
     """
     resultado = False
+    mensaje = ''
 
     try:
         config = SignatureConfiguration(require_x509=True)
@@ -389,6 +421,7 @@ def validar_firma_criptografica_y_confianza(
                 expect_config=config,
             )
             resultado = True
+            mensaje = 'Firma digital válida y cadena de confianza verificada.'
         else:
             mensaje = (
                 'No se configuró RUTA_CA_CONFIABLE_XML_DSIG para validar '
@@ -431,6 +464,7 @@ def validar_xml_contra_xsd_v1(
 ) -> Tuple[bool, str]:
     """Valida el XML contra el esquema XSD UBL."""
     resultado = False
+    mensaje = ''
 
     try:
         with open(ruta_xsd, 'rb') as f:
@@ -441,6 +475,7 @@ def validar_xml_contra_xsd_v1(
 
         if schema.validate(xml_doc):
             resultado = True
+            mensaje = 'El XML cumple con el esquema XSD UBL.'
         else:
             errores = [str(e) for e in schema.error_log]
             mensaje = f'Error de validación XSD: {" | ".join(errores)}'

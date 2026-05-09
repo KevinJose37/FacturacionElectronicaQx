@@ -1,63 +1,96 @@
-"""Módulo de validación del Anexo Técnico DIAN para facturas electrónicas."""
+"""Módulo que contiene funciones de validación del anexo técnico UBL de la factura."""
 
 # Standard library imports
-from typing import Tuple
+import logging
+import os
 
 # Third-party imports
 from lxml import etree
+from metadata.db_metadata import IdTipoError
 
 # Local application imports
 from core.python.utils.validacion import validar_estructura_minima_ubl_v1
-from core.python.utils.validacion import validar_xml_contra_xsd_v1
+
+
+logger = logging.getLogger(__name__)
 
 
 def validar_anexo_tecnico_v1(
-    xml_factura: etree._Element, ruta_xsd: str,
-) -> bool:
-    """Valida el cumplimiento del Anexo Técnico DIAN (UBL 2.1 + reglas base).
-
-    Verifica:
-    - cumplimiento contra XSD (estructura UBL)
-    - presencia de nodos mínimos obligatorios
-    - base para validaciones adicionales tipo Schematron
+    xml_invoice: etree._Element | None,
+    ruta_xsd: str | None = None,
+) -> dict:
+    """Valida la factura electrónica contra el anexo técnico UBL 2.1 de la DIAN.
+    
+    Si se proporciona un XSD, valida contra el esquema formal.
+    Si no, realiza una validación de estructura mínima.
 
     Args:
-        xml_factura: Elemento raíz del XML de la factura.
-        ruta_xsd: Ruta al archivo XSD de UBL Invoice.
+        xml_invoice: Árbol XML del Invoice a validar.
+        ruta_xsd: Ruta al archivo XSD de UBL 2.1 Invoice (opcional).
 
     Returns:
-        True si cumple el anexo técnico a nivel estructural, False en caso contrario.
+        Diccionario con:
+        - 'valido': bool indicando si cumple con el anexo técnico.
+        - 'mensaje': str con la descripción del resultado.
+        - 'datos': dict con detalles de la validación.
     """
 
     NAMESPACES = {
         'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
         'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-        'ext': 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2',
     }
 
     resultado_validacion = False
+    errores_xsd = []
+    metodo_validacion = 'estructura_minima'
 
-    es_valido_xsd, msg_xsd = validar_xml_contra_xsd_v1(xml_factura, ruta_xsd)
+    if xml_invoice is None:
+        mensaje = 'No se encontró el XML Invoice para validar anexo técnico.'
 
-    if not es_valido_xsd:
-        mensaje = msg_xsd
+    elif ruta_xsd and os.path.exists(ruta_xsd):
+        # Validación formal contra XSD
+        metodo_validacion = 'xsd'
+        try:
+            with open(ruta_xsd, 'rb') as f:
+                schema_doc = etree.parse(f)
+                schema = etree.XMLSchema(schema_doc)
+
+            xml_doc = etree.ElementTree(xml_invoice)
+
+            if schema.validate(xml_doc):
+                resultado_validacion = True
+                mensaje = 'El XML cumple con el esquema XSD UBL 2.1.'
+            else:
+                errores_xsd = [str(e) for e in schema.error_log]
+                mensaje = (
+                    'El XML no cumple con el esquema XSD UBL 2.1:\n'
+                    + '\n'.join(errores_xsd[:10])
+                )
+
+        except Exception as exc:
+            mensaje = f'Error al validar contra XSD: {exc}'
 
     else:
-        es_valido_estructura, msg_estructura = validar_estructura_minima_ubl_v1(
-            xml_factura, NAMESPACES
+        # Validación de estructura mínima
+        resultado, msg = validar_estructura_minima_ubl_v1(
+            xml_invoice, NAMESPACES
         )
+        resultado_validacion = resultado
+        mensaje = msg
 
-        if not es_valido_estructura:
-            mensaje = msg_estructura
+        if ruta_xsd and not os.path.exists(ruta_xsd):
+            mensaje += f' NOTA: XSD no encontrado en "{ruta_xsd}", se usó validación estructural.'
 
-        else:
-            resultado_validacion = True
-            mensaje = (
-                'El XML cumple con el Anexo Técnico a nivel estructural. '
-                'Se validó contra el XSD de UBL 2.1 y se verificó la presencia '
-                'de los nodos obligatorios.'
-            )
+    logger.debug(mensaje)
 
-    enviar_log_validacion(mensaje)
+    resultado = {
+        'valido': resultado_validacion,
+        'mensaje': mensaje,
+        'id_error': IdTipoError.anexo_tecnico_invalido if not resultado_validacion else None,
+        'datos': {
+            'metodo_validacion': metodo_validacion,
+            'errores_xsd': errores_xsd if errores_xsd else None,
+        }
+    }
 
-    return resultado_validacion
+    return resultado

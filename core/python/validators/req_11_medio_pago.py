@@ -1,74 +1,97 @@
 """Módulo que contiene funciones de validación del medio de pago de la factura."""
 
+# Standard library imports
+import logging
+
 # Third-party imports
 from lxml import etree
+from metadata.db_metadata import IdTipoError, IdMedioPago, IdFormaPago
 
 
-def validar_medio_pago_v1(xml_factura: etree._Element) -> bool:
-    """Valida el medio de pago de la factura y su fecha de vencimiento según la
-     resolución 000165 de 2023.
+logger = logging.getLogger(__name__)
+
+
+def validar_medio_pago_v1(
+    xml_invoice: etree._Element | None,
+    codigo_forma_pago: str | None = None,
+) -> dict:
+    """Valida el medio de pago de la factura electrónica según la resolución
+     000165 de 2023.
 
     Args:
-        xml_factura: Elemento raíz del XML de la factura.
-    
+        xml_invoice: Árbol XML de la factura electrónica a validar.
+        codigo_forma_pago: Código de forma de pago (1=contado, 2=crédito).
+            Si es contado, el medio de pago es obligatorio.
+
     Returns:
-        True si el medio de pago es válido, False en caso contrario.
-    
+        Diccionario con:
+        - 'valido': bool indicando si el medio de pago es válido.
+        - 'mensaje': str con la descripción del resultado.
+        - 'datos': dict con medio de pago extraído.
     """
 
     NAMESPACES = {
-        'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
         'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+        'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2'
     }
 
     resultado_validacion = False
+    codigo_medio_pago = None
+    nombre_medio_pago = None
 
-    nodo_payment_means = xml_factura.xpath(
-        './cac:PaymentMeans', namespaces=NAMESPACES
-    )
-
-    if not nodo_payment_means:
-        mensaje = 'No se encontró el nodo cac:PaymentMeans.'
-        enviar_log_validacion(mensaje)
-        return False
-
-    nodo_code = nodo_payment_means[0].xpath(
-        './cbc:PaymentMeansCode', namespaces=NAMESPACES
-    )
-    nodo_id = nodo_payment_means[0].xpath(
-        './cbc:PaymentID', namespaces=NAMESPACES
-    )
-
-    payment_code = nodo_code[0].text.strip() if nodo_code and nodo_code[0].text else None
-    payment_id = nodo_id[0].text.strip() if nodo_id and nodo_id[0].text else None
-
-    if not payment_code:
-        mensaje = 'No se encontró el código del medio de pago (PaymentMeansCode).'
+    if xml_invoice is None:
+        mensaje = 'No se encontró el XML Invoice para validar medio de pago.'
 
     else:
-        es_contado = payment_code == '1'
+        # PaymentMeansCode contiene el código del medio de pago
+        nodos_payment_means = xml_invoice.xpath(
+            './cac:PaymentMeans/cbc:PaymentMeansCode',
+            namespaces=NAMESPACES
+        )
 
-        if not es_contado:
-            mensaje = (
-                f'La forma de pago no es de contado (código: {payment_code}). '
-                'No aplica validación de medio de pago.'
-            )
-            resultado_validacion = True
+        codigo_medio_pago = (
+            (nodos_payment_means[0].text or '').strip()
+            if nodos_payment_means else None
+        )
 
-        else:
-            if not payment_id:
+        if not codigo_medio_pago:
+            es_contado = codigo_forma_pago == IdFormaPago.contado
+
+            if es_contado:
                 mensaje = (
-                    'La forma de pago es de contado pero no se informó el medio de pago '
-                    '(cbc:PaymentID).'
+                    'No se encontró el medio de pago (PaymentMeansCode). '
+                    'Es obligatorio para pagos de contado.'
                 )
-
             else:
+                # Para crédito, el medio de pago es opcional
                 mensaje = (
-                    'Medio de pago válido para forma de pago de contado. '
-                    f'Código: {payment_code}, nombre: {payment_id}.'
+                    'No se encontró el medio de pago (PaymentMeansCode). '
+                    'No aplica para pago a crédito.'
                 )
                 resultado_validacion = True
 
-    enviar_log_validacion(mensaje)
+        elif not IdMedioPago.es_codigo_valido(codigo_medio_pago):
+            mensaje = (
+                f'Código de medio de pago no reconocido: "{codigo_medio_pago}".'
+            )
 
-    return resultado_validacion
+        else:
+            resultado_validacion = True
+            nombre_medio_pago = codigo_medio_pago  # Se resuelve en la BD
+            mensaje = (
+                f'Medio de pago válido: código {codigo_medio_pago}.'
+            )
+
+    logger.debug(mensaje)
+
+    resultado = {
+        'valido': resultado_validacion,
+        'mensaje': mensaje,
+        'id_error': IdTipoError.medio_pago_invalido if not resultado_validacion else None,
+        'datos': {
+            'codigo_medio_pago': codigo_medio_pago,
+            'nombre_medio_pago': nombre_medio_pago,
+        }
+    }
+
+    return resultado

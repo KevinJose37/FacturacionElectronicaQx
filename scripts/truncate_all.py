@@ -32,13 +32,10 @@ TABLAS_A_LIMPIAR = [
     'FACTURACION.FACTURA',
     'FACTURACION.AUTORIZACION_NUMERACION_DIAN',
     'FACTURACION.TERCERO',
-    'FACTURACION.ESCANEO_SEGURIDAD',
-    'FACTURACION.LOG_PROCESO',
     'FACTURACION.PROCESO_INGESTA',
     'FACTURACION.EVENTO_INGESTA',
-    'FACTURACION.ADJUNTO_CORREO',
+    'FACTURACION.ADJUNTOS_CORREO',
     'FACTURACION.CORREO_ENTRANTE',
-    'FACTURACION.ARCHIVO',
 ]
 
 
@@ -54,12 +51,12 @@ def ejecutar_truncado() -> None:
         cur.execute(f'TRUNCATE TABLE {tablas_str} RESTART IDENTITY CASCADE')
 
         conn.commit()
-        print(f'✅ {len(TABLAS_A_LIMPIAR)} tablas limpiadas exitosamente.')
-        print('   Catálogos (TIPO_*) conservados.')
+        print(f'OK: {len(TABLAS_A_LIMPIAR)} tablas limpiadas exitosamente.')
+        print('   Catalogos (TIPO_*) conservados.')
 
     except Exception as e:
         conn.rollback()
-        print(f'❌ Error durante el truncado: {e}')
+        print(f'ERROR durante el truncado: {e}')
         raise
     finally:
         conn.close()
@@ -67,11 +64,11 @@ def ejecutar_truncado() -> None:
 
 if __name__ == '__main__':
     confirmacion = input(
-        '⚠️  Esto eliminará TODOS los datos transaccionales.\n'
-        '   Los catálogos (TIPO_*) se conservan.\n'
-        '   ¿Continuar? (escribir SI para confirmar): '
+        'ADVERTENCIA: Esto eliminara TODOS los datos transaccionales.\n'
+        'Los catalogos (TIPO_*) se conservan.\n'
+        'Continuar? (escribir SI para confirmar): '
     )
     if confirmacion.strip().upper() == 'SI':
         ejecutar_truncado()
     else:
-        print('Operación cancelada.')
+        print('Operacion cancelada.')

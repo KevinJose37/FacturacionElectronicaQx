@@ -22,3 +22,7 @@ pyclamd==0.4.0
 lxml==5.3.0
 python-magic==0.4.27
 PyMuPDF>=1.24.0
+
+# === Autenticación (OAuth2 / JWT) ===
+PyJWT==2.8.0
+passlib[bcrypt]==1.7.4

@@ -7,6 +7,8 @@ from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
 from config import get_config
 from core import EmailListener
 
+from core.python.facturas.invoice_processor import InvoiceProcessor
+
 router = APIRouter(prefix='/webhook', tags=['webhook'])
 
 logger = logging.getLogger(__name__)
@@ -15,11 +17,19 @@ _WEBHOOK_SECRET = get_config('WEBHOOK_SECRET', '')
 
 
 def _run_ingesta() -> None:
-    """Ejecuta el listener de correos de forma síncrona para background tasks."""
+    """Ejecuta el listener de correos y luego procesa las facturas pendientes."""
     try:
+        # 1. Ingesta: descargar de correo -> extraer ZIPs -> subir a S3 -> EVENTO_INGESTA
         EmailListener().run()
+        
+        # 2. Procesamiento: EVENTO_INGESTA -> Validaciones DIAN -> FACTURA
+        logger.info('Iniciando procesamiento de facturas pendientes...')
+        processor = InvoiceProcessor()
+        resultados = processor.procesar_pendientes()
+        logger.info('Procesamiento completado: %s', resultados)
+        
     except Exception as e:
-        logger.error('Falla en background task: %s', e)
+        logger.exception('Falla en background task de ingesta: %s', e)
 
 
 @router.post('/gmail')

@@ -1,0 +1,25 @@
+# ──────────────────────────────────────────────
+# Queries SQL para el módulo de notificaciones de email
+# ──────────────────────────────────────────────
+
+rechazos:
+  obtener_datos_correo: >
+    SELECT remitente, asunto FROM facturacion.correo_entrante WHERE correo_id = %s
+
+  registrar_devolucion: >
+    INSERT INTO facturacion.devolucion (
+        correo_id, remitente_original, destinatario_notif, 
+        asunto_original, motivo_principal, inconsistencias_json
+    ) VALUES (%s, %s, %s, %s, %s, %s)
+    RETURNING id_devolucion
+
+  actualizar_estado_devolucion: >
+    UPDATE facturacion.devolucion 
+    SET estado_notificacion = %s, error_envio = %s, intentos_envio = intentos_envio + 1
+    WHERE id_devolucion = %s
+
+  registrar_fallo_proceso: >
+    INSERT INTO facturacion.proceso_ingesta (
+        adjunto_id, id_proceso, id_estado, observacion, id_error
+    ) SELECT adjunto_id, 24, 4, 'Fallo al enviar correo de rechazo', 17
+    FROM facturacion.adjuntos_correo WHERE correo_id = %s LIMIT 1

@@ -56,15 +56,21 @@ class AttachmentHandler:
         base_path: Ruta raíz donde se almacenan los adjuntos descargados.
     """
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: dict, temp_dir: str | Path | None = None) -> None:
         """Inicializa el manejador con la configuración de la aplicación.
 
         Args:
             config: Diccionario de configuración cargado desde settings.yaml.
                     Debe contener ``downloads.base_path``.
+            temp_dir: Directorio temporal opcional para almacenar las descargas.
         """
-        raw_base = config.get("downloads", {}).get("base_path", "downloads")
-        self.base_path = Path(raw_base)
+        if temp_dir:
+            self.base_path = Path(temp_dir)
+            self._is_temp = True
+        else:
+            raw_base = config.get("downloads", {}).get("base_path", "downloads")
+            self.base_path = Path(raw_base)
+            self._is_temp = False
         logger.debug("AttachmentHandler inicializado. base_path=%s", self.base_path)
 
     def _tiene_adjunto_zip(self, raw_email: bytes) -> bool:
@@ -248,13 +254,16 @@ class AttachmentHandler:
         Returns:
             Ruta completa (``Path``) donde se guardará el adjunto.
         """
-        ahora = datetime.now(tz=timezone.utc)
-        anio = ahora.strftime("%Y")
-        mes = ahora.strftime("%m")
-        dia = ahora.strftime("%d")
+        if getattr(self, "_is_temp", False):
+            ruta = self.base_path / filename
+        else:
+            ahora = datetime.now(tz=timezone.utc)
+            anio = ahora.strftime("%Y")
+            mes = ahora.strftime("%m")
+            dia = ahora.strftime("%d")
 
-        subcarpeta = parsed.get("nit") or "sin_clasificar"
+            subcarpeta = parsed.get("nit") or "sin_clasificar"
 
-        ruta = self.base_path / anio / mes / dia / subcarpeta / filename
+            ruta = self.base_path / anio / mes / dia / subcarpeta / filename
         logger.debug("Ruta de destino calculada: %s", ruta)
         return ruta

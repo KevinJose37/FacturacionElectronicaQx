@@ -15,7 +15,6 @@ import psycopg
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,7 @@ class QueuePublisher(ABC):
     """Interfaz abstracta para publicadores de eventos de ingesta."""
 
     @abstractmethod
-    def publish(self, event: dict[str, Any], db_conn: Any = None) -> bool:
+    def publish(self, event: dict, db_conn=None) -> bool:
         """Publica un evento en la cola configurada.
 
         Args:
@@ -36,7 +35,7 @@ class QueuePublisher(ABC):
         ...
 
     @staticmethod
-    def _enriquecer_evento(event: dict[str, Any]) -> dict[str, Any]:
+    def _enriquecer_evento(event: dict) -> dict:
         """Agrega metadatos estándar al evento antes de publicarlo.
 
         Args:
@@ -45,12 +44,13 @@ class QueuePublisher(ABC):
         Returns:
             dict: Evento con event_id, timestamp y source.
         """
-        return {
-            "event_id": str(uuid.uuid4()),
-            "timestamp": datetime.now(tz=timezone.utc).isoformat(),
-            "source": "email_listener",
+        resultado = {
+            'event_id': str(uuid.uuid4()),
+            'timestamp': datetime.now(tz=timezone.utc).isoformat(),
+            'source': 'email_listener',
             **event,
         }
+        return resultado
 
 
 class LocalQueuePublisher(QueuePublisher):
@@ -65,22 +65,22 @@ class LocalQueuePublisher(QueuePublisher):
         self.local_path = Path(local_path)
         self.local_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def publish(self, event: dict[str, Any], db_conn: Any = None) -> bool:
+    def publish(self, event: dict, db_conn=None) -> bool:
         """Agrega una línea al archivo JSONL."""
         enriched = self._enriquecer_evento(event)
         try:
-            with self.local_path.open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps(enriched, ensure_ascii=False) + "\n")
+            with self.local_path.open('a', encoding='utf-8') as fh:
+                fh.write(json.dumps(enriched, ensure_ascii=False) + '\n')
             return True
         except OSError as exc:
-            logger.error(f"Error al escribir evento local: {exc}")
+            logger.error('Error al escribir evento local: %s', exc)
             return False
 
 
 class PostgresQueuePublisher(QueuePublisher):
     """Inserta eventos en PostgreSQL."""
 
-    def __init__(self, pg_config: dict[str, Any]):
+    def __init__(self, pg_config: dict):
         """Inicializa Postgres.
 
         Args:
@@ -88,32 +88,33 @@ class PostgresQueuePublisher(QueuePublisher):
         """
         self.config = pg_config
 
-    def _get_connection(self) -> Any:
+    def _get_connection(self):
         """Establece conexión con la DB."""
-        return psycopg.connect(
-            host=self.config["host"],
-            port=self.config["port"],
-            dbname=self.config["dbname"],
-            user=self.config["user"],
-            password=os.environ["POSTGRES_PASSWORD"],
+        conexion = psycopg.connect(
+            host=self.config['host'],
+            port=self.config['port'],
+            dbname=self.config['dbname'],
+            user=self.config['user'],
+            password=os.environ['POSTGRES_PASSWORD'],
         )
+        return conexion
 
-    def publish(self, event: dict[str, Any], db_conn: Any = None) -> bool:
+    def publish(self, event: dict, db_conn=None) -> bool:
         """Publica el evento (la inserción en EVENTO_INGESTA se hace en el repository)."""
         enriched = self._enriquecer_evento(event)
         try:
             logger.info(
-                "Evento publicado: type=%s adjunto_id=%s",
-                enriched.get("event_type"),
-                enriched.get("id_adjunto_zip") or enriched.get("id_adjunto_xml"),
+                'Evento publicado: type=%s adjunto_id=%s',
+                enriched.get('event_type'),
+                enriched.get('id_adjunto_zip') or enriched.get('id_adjunto_xml'),
             )
             return True
         except Exception as exc:
-            logger.error(f"Error Postgres: {exc}")
+            logger.error('Error Postgres: %s', exc)
             return False
 
 
-def get_publisher(config: dict[str, Any]) -> QueuePublisher:
+def get_publisher(config: dict) -> QueuePublisher:
     """Fábrica de publicadores según configuración.
 
     Args:
@@ -122,18 +123,19 @@ def get_publisher(config: dict[str, Any]) -> QueuePublisher:
     Returns:
         QueuePublisher: Instancia configurada.
     """
-    queue_cfg = config["queue"]
-    backend = queue_cfg["backend"].strip().lower()
+    queue_cfg = config['queue']
+    backend = queue_cfg['backend'].strip().lower()
 
-    if backend == "local":
-        return LocalQueuePublisher(queue_cfg["local_path"])
-
-    if backend == "postgres":
-        return PostgresQueuePublisher({
-            "host": os.environ["POSTGRES_HOST"],
-            "port": int(os.environ["POSTGRES_PORT"]),
-            "dbname": os.environ["POSTGRES_DB"],
-            "user": os.environ["POSTGRES_USER"]
+    if backend == 'local':
+        publisher = LocalQueuePublisher(queue_cfg['local_path'])
+    elif backend == 'postgres':
+        publisher = PostgresQueuePublisher({
+            'host': os.environ['POSTGRES_HOST'],
+            'port': int(os.environ['POSTGRES_PORT']),
+            'dbname': os.environ['POSTGRES_DB'],
+            'user': os.environ['POSTGRES_USER'],
         })
+    else:
+        raise ValueError(f"Backend '{backend}' no soportado.")
 
-    raise ValueError(f"Backend '{backend}' no soportado.")
+    return publisher

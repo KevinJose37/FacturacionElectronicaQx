@@ -1,51 +1,113 @@
-"""Módulo que contiene funciones de validación de la calidad tributaria del emisor de la
- factura."""
- 
+"""Módulo que contiene funciones de validación de la calidad tributaria del emisor."""
+
+# Standard library imports
+import logging
+
 # Third-party imports
 from lxml import etree
+from metadata.db_metadata import IdTipoError, IdResponsabilidadFiscal
 
 
-def validar_calidad_tributaria_v1(xml_factura: etree._Element) -> bool:
-    """Valida la calidad tributaria del facturador electrónico según la resolución 000165
-     de 2023.
+logger = logging.getLogger(__name__)
+
+# Responsabilidades fiscales según catálogo DIAN (TIPO_CONDICION_FISCAL)
+RESPONSABILIDADES_FISCALES = {
+    IdResponsabilidadFiscal.gran_contribuyente: 'Gran contribuyente',
+    IdResponsabilidadFiscal.autorretenedor: 'Autorretenedor',
+    IdResponsabilidadFiscal.agente_retencion_iva: 'Agente de retención IVA',
+    IdResponsabilidadFiscal.regimen_simple: 'Régimen simple de tributación',
+    IdResponsabilidadFiscal.no_aplica_otros: 'No aplica – Otros',
+}
+
+
+def validar_calidad_tributaria_v1(xml_invoice: etree._Element | None) -> dict:
+    """Valida la calidad tributaria del emisor según la resolución 000165 de 2023.
 
     Args:
-        xml_factura: Elemento raíz del XML de la factura.
+        xml_invoice: Árbol XML de la factura electrónica a validar.
 
     Returns:
-        True si el XML informa la calidad tributaria del vendedor, False en caso
-        contrario.
-
+        Diccionario con:
+        - 'valido': bool indicando si la calidad tributaria es válida.
+        - 'mensaje': str con la descripción del resultado.
+        - 'datos': dict con lista de responsabilidades fiscales del emisor y
+            adquiriente.
     """
+
     NAMESPACES = {
-        'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
         'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+        'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2'
     }
 
     resultado_validacion = False
+    responsabilidades_emisor = []
+    responsabilidades_adquiriente = []
 
-    nodos_tax_level_code = xml_factura.xpath(
-        './cac:AccountingSupplierParty/cac:Party/cac:PartyTaxScheme/cbc:TaxLevelCode',
-        namespaces=NAMESPACES,
-    )
+    if xml_invoice is None:
+        mensaje = 'No se encontró el XML Invoice para validar calidad tributaria.'
 
-    valores_tax_level_code = [
-        nodo.text.strip() for nodo in nodos_tax_level_code
-        if nodo is not None and nodo.text and nodo.text.strip()
-    ]
-
-    if not valores_tax_level_code:
-        mensaje = (
-            'No se informó la calidad tributaria del facturador electrónico '
-            '(cac:AccountingSupplierParty/cac:Party/cac:PartyTaxScheme/cbc:TaxLevelCode).'
-        )
     else:
-        resultado_validacion = True
-        mensaje = (
-            'Se informó la calidad tributaria del facturador electrónico. '
-            f'Valor(es): {", ".join(valores_tax_level_code)}.'
+        # Extraer responsabilidades fiscales del emisor
+        nodos_emisor = xml_invoice.xpath(
+            './cac:AccountingSupplierParty/cac:Party/cac:PartyTaxScheme/cbc:TaxLevelCode',
+            namespaces=NAMESPACES
         )
 
-    enviar_log_validacion(mensaje)
+        for nodo in nodos_emisor:
+            texto = (nodo.text or '').strip()
+            if texto:
+                # Puede ser una lista separada por ';'
+                for codigo in texto.split(';'):
+                    codigo = codigo.strip()
+                    if codigo:
+                        responsabilidades_emisor.append({
+                            'codigo': codigo,
+                            'descripcion': RESPONSABILIDADES_FISCALES.get(
+                                codigo, 'Código no catalogado'
+                            ),
+                        })
 
-    return resultado_validacion
+        # Extraer responsabilidades fiscales del adquiriente
+        nodos_adquiriente = xml_invoice.xpath(
+            './cac:AccountingCustomerParty/cac:Party/cac:PartyTaxScheme/cbc:TaxLevelCode',
+            namespaces=NAMESPACES
+        )
+
+        for nodo in nodos_adquiriente:
+            texto = (nodo.text or '').strip()
+            if texto:
+                for codigo in texto.split(';'):
+                    codigo = codigo.strip()
+                    if codigo:
+                        responsabilidades_adquiriente.append({
+                            'codigo': codigo,
+                            'descripcion': RESPONSABILIDADES_FISCALES.get(
+                                codigo, 'Código no catalogado'
+                            ),
+                        })
+
+        if not responsabilidades_emisor:
+            mensaje = (
+                'No se encontró la calidad tributaria del emisor '
+                '(TaxLevelCode en AccountingSupplierParty).'
+            )
+        else:
+            resultado_validacion = True
+            codigos = ', '.join(
+                r['codigo'] for r in responsabilidades_emisor
+            )
+            mensaje = f'Calidad tributaria válida del emisor: {codigos}.'
+
+    logger.debug(mensaje)
+
+    resultado = {
+        'valido': resultado_validacion,
+        'mensaje': mensaje,
+        'id_error': IdTipoError.calidad_tributaria_faltante if not resultado_validacion else None,
+        'datos': {
+            'responsabilidades_emisor': responsabilidades_emisor,
+            'responsabilidades_adquiriente': responsabilidades_adquiriente,
+        }
+    }
+
+    return resultado

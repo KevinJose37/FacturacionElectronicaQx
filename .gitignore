@@ -19,6 +19,8 @@ __pycache__/
 # Data
 input/*
 !input/.gitkeep
+!input/email/
+!input/email/**
 !input/queries/
 !input/queries/**
 queue/*

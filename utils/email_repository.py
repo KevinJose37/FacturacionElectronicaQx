@@ -164,7 +164,7 @@ class EmailRepository:
         adjunto_padre_id: Optional[int] = None,
         archivo_seguro: bool = True,
         fecha_envio: Optional[datetime] = None,
-    ) -> int:
+    ) -> tuple[int, str]:
         """Guarda un adjunto en la tabla ADJUNTOS_CORREO.
 
         Gestiona la persistencia de metadatos de archivos adjuntos, incluyendo
@@ -180,9 +180,10 @@ class EmailRepository:
             fecha_envio: Fecha de envío del correo para construir ruta S3.
 
         Returns:
-            int: ID del adjunto registrado o el ID existente en caso de conflicto.
+            tuple[int, str]: ID del adjunto registrado y su URI de almacenamiento S3.
         """
         id_adjunto = -1
+        uri_almacenamiento = ""
         try:
             # Cálculo de metadatos del archivo
             sha256_hash = self.calcular_hash_sha256(ruta_archivo)
@@ -250,7 +251,7 @@ class EmailRepository:
             logger.error("Error crítico al guardar adjunto %s: %s", ruta_archivo, err)
             id_adjunto = -1
 
-        return id_adjunto
+        return id_adjunto, uri_almacenamiento
 
     # ------------------------------------------------------------------
     # Eventos y Procesos de Ingesta
@@ -303,6 +304,7 @@ class EmailRepository:
         id_proceso: int,
         observacion: str,
         id_estado: int = 1,
+        id_error: Optional[int] = None,
     ) -> int:
         """Crea un registro de proceso de ingesta (sin commit).
 
@@ -312,6 +314,7 @@ class EmailRepository:
             id_proceso: Tipo de proceso (FK a TIPO_PROCESO).
             observacion: Descripción del proceso realizado.
             id_estado: Estado del proceso (default: 1 = PENDIENTE).
+            id_error: Tipo de error (FK a TIPO_ERROR), None si no hubo error.
 
         Returns:
             int: ID del proceso creado, o -1 si hubo error.
@@ -321,9 +324,9 @@ class EmailRepository:
                 cur.execute(
                     """
                     INSERT INTO FACTURACION.PROCESO_INGESTA (
-                        ADJUNTO_ID, ID_PROCESO, ID_ESTADO, OBSERVACION
+                        ADJUNTO_ID, ID_PROCESO, ID_ESTADO, OBSERVACION, ID_ERROR
                     )
-                    VALUES (%s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s)
                     RETURNING ID_PROCESO_INGESTA
                     """,
                     (
@@ -331,6 +334,7 @@ class EmailRepository:
                         id_proceso,
                         id_estado,
                         observacion,
+                        id_error,
                     ),
                 )
                 id_proceso_ingesta = cur.fetchone()[0]

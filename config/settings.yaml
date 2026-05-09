@@ -63,6 +63,13 @@ dashboard:
   factor_pipeline_warn: 0.9 # Factor para warning en etapa de procesamiento
 
 # ──────────────────────────────────────────────
+# Procesador de facturas
+# ──────────────────────────────────────────────
+invoice_processor:
+  max_reintentos: 3           # Intentos máximos antes de marcar como fallido
+  max_workers: 4              # Hilos concurrentes para procesar familias
+
+# ──────────────────────────────────────────────
 # Proveedores
 # ──────────────────────────────────────────────
 proveedores:
@@ -80,23 +87,24 @@ llm:
   max_tokens: 1024
 
 # ──────────────────────────────────────────────
-# Procesamiento de facturas (ZIP → S3)
-# ──────────────────────────────────────────────
-processor:
-  extensiones_permitidas:
-    - .xml
-    - .pdf
-  s3_prefijo_zip: facturas
-  s3_prefijo_extraidos: facturas_descomprimidas
-  cabecera_bytes: 100
-
-# ──────────────────────────────────────────────
 # Seguridad y Antivirus
 # ──────────────────────────────────────────────
 security:
-  clamav_host: "clamav"
+  clamav_host: "127.0.0.1"
   clamav_port: 3310
   clamav_timeout: 10
+
+# ──────────────────────────────────────────────
+# Alertas del sistema
+# ──────────────────────────────────────────────
+alerts:
+  enabled: true
+  email_destinatarios:           # Direcciones que reciben correos de alertas CRITICA
+    - admin@empresa.com
+  smtp_host: smtp.gmail.com
+  smtp_port: 465
+  vencimiento_dias_alerta: 5     # Alertar N días antes del vencimiento sin aceptación
+
 
 # ──────────────────────────────────────────────
 # Verificación Gráfica (PyMuPDF + IA)

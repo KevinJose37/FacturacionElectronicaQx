@@ -1,17 +1,19 @@
 """Script para poblar la BD con datos de prueba realistas."""
 
-import psycopg
-import uuid
 import hashlib
+import os
 import random
+import uuid
 from datetime import datetime, timedelta, timezone
 
+import psycopg
+
 DB_CONFIG = {
-    'host': '217.216.85.110',
-    'port': 5433,
-    'dbname': 'facturacion',
-    'user': 'admin',
-    'password': 'mysecretpassword',
+    'host': os.environ.get('POSTGRES_HOST', 'localhost'),
+    'port': int(os.environ.get('POSTGRES_PORT', '5433')),
+    'dbname': os.environ.get('POSTGRES_DB', 'facturacion'),
+    'user': os.environ.get('POSTGRES_USER', 'admin'),
+    'password': os.environ.get('POSTGRES_PASSWORD', ''),
 }
 
 PROVEEDORES = [

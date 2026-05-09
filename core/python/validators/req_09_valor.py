@@ -1,81 +1,140 @@
-"""Módulo que contiene funciones de validación del valor total de la factura
- electrónica."""
+"""Módulo que contiene funciones de validación del valor total de la factura."""
+
+# Standard library imports
+import logging
 
 # Third-party imports
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from lxml import etree
-
-# Local application imports
-from core.python.utils.validacion import parsear_decimal_2dp
+from metadata.db_metadata import IdTipoError
 
 
-def validar_valor_total_v1(xml_factura: etree._Element) -> bool:
-    """Valida el valor total de la factura electrónica.
+logger = logging.getLogger(__name__)
+
+
+def validar_valor_total_v1(xml_invoice: etree._Element | None) -> dict:
+    """Valida el valor total de la factura electrónica según la resolución
+     000165 de 2023.
 
     Args:
-        xml_factura: Elemento raíz del XML de la factura.
-    
-    Returns:
-        True si el valor total es consistente con la suma de líneas e impuestos,
-         False en caso contrario.
+        xml_invoice: Árbol XML de la factura electrónica a validar.
 
+    Returns:
+        Diccionario con:
+        - 'valido': bool indicando si el valor total es correcto.
+        - 'mensaje': str con la descripción del resultado.
+        - 'datos': dict con los valores monetarios extraídos.
     """
+
     NAMESPACES = {
-        'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
         'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+        'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2'
     }
 
+    datos = {
+        'valor_bruto': None,
+        'valor_base_impuestos': None,
+        'total_impuestos': None,
+        'total_cargos': None,
+        'total_descuentos': None,
+        'valor_a_pagar': None,
+        'moneda': None,
+    }
     resultado_validacion = False
 
-    nodo_payable = xml_factura.xpath(
-        './cac:LegalMonetaryTotal/cbc:PayableAmount', namespaces=NAMESPACES
-    )
-    nodo_lineas = xml_factura.xpath(
-        './cac:InvoiceLine/cbc:LineExtensionAmount', namespaces=NAMESPACES
-    )
-    nodo_impuestos = xml_factura.xpath(
-        './cac:TaxTotal/cbc:TaxAmount', namespaces=NAMESPACES
-    )
-
-    payable_amount = parsear_decimal_2dp(nodo_payable[0].text if nodo_payable else None)
-    line_amounts = [parsear_decimal_2dp(nodo.text) for nodo in nodo_lineas]
-    tax_amounts = [parsear_decimal_2dp(nodo.text) for nodo in nodo_impuestos]
-
-    line_amounts = [valor for valor in line_amounts if valor is not None]
-    tax_amounts = [valor for valor in tax_amounts if valor is not None]
-
-    if payable_amount is None:
-        mensaje = (
-            'No se encontró el valor total a pagar en '
-            'cac:LegalMonetaryTotal/cbc:PayableAmount.'
-        )
-
-    elif not line_amounts:
-        mensaje = (
-            'No se encontraron líneas de factura con valor en '
-            'cac:InvoiceLine/cbc:LineExtensionAmount.'
-        )
+    if xml_invoice is None:
+        mensaje = 'No se encontró el XML Invoice para validar valor total.'
 
     else:
-        total_lineas = sum(line_amounts, Decimal('0.00'))
-        total_impuestos = sum(tax_amounts, Decimal('0.00'))
-        total_esperado = total_lineas + total_impuestos
-        total_esperado = total_esperado.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        xpaths = {
+            'valor_bruto': './cac:LegalMonetaryTotal/cbc:LineExtensionAmount',
+            'valor_base_impuestos': './cac:LegalMonetaryTotal/cbc:TaxExclusiveAmount',
+            'total_impuestos': './cac:LegalMonetaryTotal/cbc:TaxInclusiveAmount',
+            'total_cargos': './cac:LegalMonetaryTotal/cbc:ChargeTotalAmount',
+            'total_descuentos': './cac:LegalMonetaryTotal/cbc:AllowanceTotalAmount',
+            'valor_a_pagar': './cac:LegalMonetaryTotal/cbc:PayableAmount',
+        }
 
-        if payable_amount != total_esperado:
-            mensaje = (
-                'El valor total de la factura no es consistente. '
-                f'Total líneas: {total_lineas}, total impuestos: {total_impuestos}, '
-                f'total esperado: {total_esperado}, total encontrado: {payable_amount}.'
-            )
+        for campo, xpath in xpaths.items():
+            nodos = xml_invoice.xpath(xpath, namespaces=NAMESPACES)
+            if nodos and nodos[0].text:
+                try:
+                    valor = Decimal(nodos[0].text.strip())
+                    datos[campo] = str(
+                        valor.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    )
+                except InvalidOperation:
+                    datos[campo] = nodos[0].text.strip()
+
+                if campo == 'valor_a_pagar':
+                    moneda = nodos[0].get('currencyID')
+                    if moneda:
+                        datos['moneda'] = moneda
+
+        # Verificar valor a pagar
+        if datos['valor_a_pagar'] is None:
+            mensaje = 'No se encontró el valor total a pagar (PayableAmount).'
 
         else:
-            mensaje = (
-                'Valor total de factura válido. '
-                f'Total líneas: {total_lineas}, total impuestos: {total_impuestos}, '
-                f'total a pagar: {payable_amount}.'
-            )
-            resultado_validacion = True
+            try:
+                valor_a_pagar = Decimal(datos['valor_a_pagar'])
 
-    enviar_log_validacion(mensaje)
+                if valor_a_pagar < Decimal('0'):
+                    mensaje = f'El valor a pagar es negativo: {valor_a_pagar}.'
 
-    return resultado_validacion
+                else:
+                    # Validar que el valor_a_pagar cuadre con la suma
+                    if datos['valor_bruto'] is not None:
+                        bruto = Decimal(datos['valor_bruto'])
+                        cargos = Decimal(datos['total_cargos'] or '0')
+                        descuentos = Decimal(datos['total_descuentos'] or '0')
+
+                        # Sumar impuestos desde TaxTotal
+                        total_tax = Decimal('0')
+                        tax_totals = xml_invoice.xpath(
+                            './cac:TaxTotal/cbc:TaxAmount', namespaces=NAMESPACES
+                        )
+                        for tt in tax_totals:
+                            if tt.text and tt.text.strip():
+                                try:
+                                    total_tax += Decimal(tt.text.strip())
+                                except InvalidOperation:
+                                    pass
+
+                        calculado = bruto + total_tax + cargos - descuentos
+                        calculado_2d = calculado.quantize(
+                            Decimal('0.01'), rounding=ROUND_HALF_UP
+                        )
+                        diferencia = abs(calculado_2d - valor_a_pagar)
+
+                        if diferencia > Decimal('1.00'):
+                            mensaje = (
+                                f'Valor a pagar ({valor_a_pagar}) difiere de la suma '
+                                f'calculada ({calculado_2d}) en {diferencia}.'
+                            )
+                        else:
+                            resultado_validacion = True
+                            mensaje = (
+                                f'Valor total válido: {valor_a_pagar} '
+                                f'{datos["moneda"] or "COP"}.'
+                            )
+                    else:
+                        resultado_validacion = True
+                        mensaje = (
+                            f'Valor a pagar presente: {valor_a_pagar}. '
+                            f'Sin LineExtensionAmount para validación cruzada.'
+                        )
+
+            except InvalidOperation:
+                mensaje = f'Valor a pagar no numérico: {datos["valor_a_pagar"]}.'
+
+    logger.debug(mensaje)
+
+    resultado = {
+        'valido': resultado_validacion,
+        'mensaje': mensaje,
+        'id_error': IdTipoError.valor_total_inconsistente if not resultado_validacion else None,
+        'datos': datos,
+    }
+
+    return resultado

@@ -1,26 +1,30 @@
 """Módulo que contiene funciones de validación de la fecha de generación de la factura
  electrónica."""
 
+# Standard library imports
+import logging
+
 # Third-party imports
 from lxml import etree
 
 # Local application imports
 from core.python.utils.validacion import validar_fecha_futura
+from metadata.db_metadata import IdTipoError
+
+logger = logging.getLogger(__name__)
 
 
-def validar_fecha_generacion_v1(xml_factura: etree._Element) -> bool:
+def validar_fecha_generacion_v1(xml_factura: etree._Element) -> dict:
     """Valida la fecha y hora de generación de la factura electrónica.
     
     Args:
         xml_factura: Árbol XML de la factura electrónica a validar.
 
-    Reglas:
-    - Debe existir IssueDate
-    - Debe existir IssueTime
-    - Ambos deben tener formato válido (ISO 8601)
-
-    Retorna:
-        True si la fecha y hora son válidas, False en caso contrario.
+    Returns:
+        Diccionario con:
+        - 'valido': bool indicando si la fecha y hora son válidas.
+        - 'mensaje': str con la descripción del resultado.
+        - 'datos': dict con fecha y hora extraídas.
     """
 
     NAMESPACES = {
@@ -34,25 +38,44 @@ def validar_fecha_generacion_v1(xml_factura: etree._Element) -> bool:
     hora = (nodo_hora[0].text or '').strip() if nodo_hora else None
 
     resultado_validacion = False
+    id_error = None
 
     if not fecha:
         mensaje = 'No se encontró la fecha de generación (IssueDate).'
+        id_error = IdTipoError.fecha_generacion_formato_invalido
 
     elif not hora:
         mensaje = 'No se encontró la hora de generación (IssueTime).'
+        id_error = IdTipoError.fecha_generacion_formato_invalido
 
     else:
         try:
             validacion = validar_fecha_futura(fecha, hora)
             mensaje = validacion['mensaje']
             resultado_validacion = validacion['resultado']
+            if not resultado_validacion:
+                if 'futura' in mensaje.lower():
+                    id_error = IdTipoError.fecha_generacion_futura
+                else:
+                    id_error = IdTipoError.fecha_generacion_formato_invalido
 
         except Exception:
             mensaje = (
                 f'Fecha u hora de generación inválida '
                 f'(IssueDate="{fecha}", IssueTime="{hora}").'
             )
+            id_error = IdTipoError.fecha_generacion_formato_invalido
 
-    enviar_log_validacion(mensaje)
+    logger.debug(mensaje)
 
-    return resultado_validacion
+    resultado = {
+        'valido': resultado_validacion,
+        'mensaje': mensaje,
+        'id_error': id_error,
+        'datos': {
+            'fecha_generacion': fecha,
+            'hora_generacion': hora,
+        }
+    }
+
+    return resultado

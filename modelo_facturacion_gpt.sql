@@ -62,7 +62,8 @@ INSERT INTO FACTURACION.TIPO_PROCESO (ID_TIPO_PROCESO, CODIGO_REFERENCIA, DESCRI
 (22, 'VALIDACION_ANEXO_TECNICO',     'Validación del anexo técnico UBL'),
 (23, 'EXTRACCION_SOFTWARE',          'Extracción datos del software y proveedor tecnológico'),
 (24, 'REGISTRO_FACTURA',             'Registro final de la factura en BD'),
-(25, 'FILTRO_RECEPCION',             'Evaluación de correo en filtro de recepción de facturación')
+(25, 'VERIFICACION_GRAFICA',         'Verificación de representación gráfica PDF vs XML'),
+(26, 'FILTRO_RECEPCION',             'Evaluación de correo en filtro de recepción de facturación')
 ON CONFLICT DO NOTHING;
 
 

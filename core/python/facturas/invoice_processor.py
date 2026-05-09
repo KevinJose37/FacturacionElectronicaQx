@@ -14,12 +14,14 @@ from __future__ import annotations
 
 import logging
 import os
+import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
 from config import get_postgres_config, load_yaml_config
+from core.python.verificacion_grafica.service import extraer_cufe_pdf, verificar_requisitos_pdf
 from utils.alerts import AlertManager
 from core.python.facturas.invoice_repository import InvoiceRepository
 from metadata.db_metadata import (
@@ -28,7 +30,7 @@ from metadata.db_metadata import (
     IdTipoProceso,
 )
 from metadata.path_s3 import RutasS3
-from utils.s3_utils import copiar_archivo_s3, obtener_xml_s3
+from utils.s3_utils import copiar_archivo_s3, obtener_xml_s3, descargar_archivo_s3
 
 # Validators
 from core.python.validators.req_01_denominacion import validar_denominacion_v1
@@ -152,15 +154,23 @@ class InvoiceProcessor:
         invoice_ev = None
         ar_ev = None
         ad_ev = None
+        pdf_ev = None
 
         for ev in eventos:
             nombre = (ev.get('nombre_archivo') or '').lower()
-            if '_invoice' in nombre:
+            tipo = ev.get('id_tipo_archivo')
+            if tipo == IdTipoArchivo.pdf:
+                pdf_ev = ev
+            elif '_invoice' in nombre:
                 invoice_ev = ev
             elif '_applicationresponse' in nombre:
                 ar_ev = ev
             else:
                 ad_ev = ev
+
+        if not invoice_ev and pdf_ev and len(eventos) == 1:
+            # Es un PDF huérfano
+            return self._procesar_pdf_huerfano(pdf_ev)
 
         if not invoice_ev:
             nombres = [ev.get('nombre_archivo') for ev in eventos]
@@ -180,7 +190,7 @@ class InvoiceProcessor:
 
         with self._repo.get_connection() as conn:
             try:
-                exito = self._ejecutar_pipeline(conn, invoice_ev, ar_ev, ad_ev)
+                exito = self._ejecutar_pipeline(conn, invoice_ev, ar_ev, ad_ev, pdf_ev)
                 if exito:
                     conn.commit()
                     return 'ok'
@@ -199,6 +209,7 @@ class InvoiceProcessor:
         invoice_ev: dict,
         ar_ev: Optional[dict],
         ad_ev: Optional[dict],
+        pdf_ev: Optional[dict] = None,
     ) -> bool:
         """Ejecuta el pipeline de validaciones para una factura."""
         adjunto_id = invoice_ev['adjunto_id']
@@ -322,9 +333,161 @@ class InvoiceProcessor:
             self._repo.marcar_evento_procesado(conn, ar_ev['adjunto_id'])
         if ad_ev:
             self._repo.marcar_evento_procesado(conn, ad_ev['adjunto_id'])
+        if pdf_ev:
+            self._repo.marcar_evento_procesado(conn, pdf_ev['adjunto_id'])
+
+        # 9. Verificación Gráfica del PDF (si existe)
+        if pdf_ev:
+            self._ejecutar_verificacion_grafica(conn, cufe, pdf_ev)
 
         logger.debug('Factura procesada exitosamente: CUFE=%s', cufe[:20])
         return True
+
+    # ------------------------------------------------------------------
+    # Verificación Gráfica y Huérfanos
+    # ------------------------------------------------------------------
+
+    def _procesar_pdf_huerfano(self, pdf_ev: dict) -> str:
+        """Procesa un evento de tipo PDF huérfano.
+        
+        Extrae el CUFE usando el LLM, busca la factura, y si la encuentra,
+        la vincula y ejecuta la verificación gráfica.
+        """
+        adjunto_id = pdf_ev['adjunto_id']
+        s3_key = pdf_ev['uri_almacenamiento']
+        
+        with self._repo.get_connection() as conn:
+            try:
+                # 1. Descargar PDF desde S3 a temporal
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+                    tmp_path = tmp.name
+                    
+                exito_descarga = descargar_archivo_s3(s3_key, tmp_path)
+                if not exito_descarga:
+                    logger.error("No se pudo descargar el PDF huérfano desde S3: %s", s3_key)
+                    self._repo.crear_proceso_ingesta(
+                        conn, adjunto_id, IdTipoProceso.verificacion_grafica,
+                        "No se pudo descargar el PDF desde S3.",
+                        IdEstadoProceso.error
+                    )
+                    conn.commit()
+                    return 'fail'
+
+                # 2. Extraer CUFE
+                cufe = asyncio.run(extraer_cufe_pdf(tmp_path))
+                
+                if not cufe:
+                    self._repo.crear_proceso_ingesta(
+                        conn, adjunto_id, IdTipoProceso.verificacion_grafica,
+                        "No se pudo extraer el CUFE del PDF usando el LLM. Queda huérfano permanentemente.",
+                        IdEstadoProceso.procesado
+                    )
+                    self._repo.marcar_evento_procesado(conn, adjunto_id)
+                    conn.commit()
+                    os.unlink(tmp_path)
+                    return 'skip'
+
+                # 3. Vincular a Factura
+                vinculado = self._repo.vincular_pdf_a_factura(conn, cufe, adjunto_id)
+                if not vinculado:
+                    logger.info("PDF huérfano con CUFE %s no tiene factura registrada aún. Reintentando luego.", cufe[:20])
+                    # Dejamos que falle para que intente luego
+                    os.unlink(tmp_path)
+                    return 'fail'
+
+                # 4. Ejecutar Verificación Gráfica
+                self._ejecutar_verificacion_grafica(conn, cufe, pdf_ev, tmp_path)
+                
+                # 5. Marcar evento como procesado
+                self._repo.marcar_evento_procesado(conn, adjunto_id)
+                conn.commit()
+                os.unlink(tmp_path)
+                return 'ok'
+
+            except Exception as exc:
+                conn.rollback()
+                logger.exception('Error procesando PDF huérfano: %s', exc)
+                self._repo.crear_proceso_ingesta(
+                    conn, adjunto_id, IdTipoProceso.verificacion_grafica,
+                    f"Error inesperado: {exc}",
+                    IdEstadoProceso.error
+                )
+                conn.commit()
+                if 'tmp_path' in locals() and os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                return 'fail'
+
+    def _ejecutar_verificacion_grafica(
+        self, 
+        conn, 
+        cufe: str, 
+        pdf_ev: dict, 
+        local_pdf_path: Optional[str] = None
+    ):
+        """Ejecuta la verificación gráfica de un PDF con la IA."""
+        adjunto_id = pdf_ev['adjunto_id']
+        s3_key = pdf_ev['uri_almacenamiento']
+        tmp_path = local_pdf_path
+        borrar_tmp = False
+
+        try:
+            if not tmp_path:
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+                    tmp_path = tmp.name
+                borrar_tmp = True
+                
+                exito = descargar_archivo_s3(s3_key, tmp_path)
+                if not exito:
+                    self._repo.crear_proceso_ingesta(
+                        conn, adjunto_id, IdTipoProceso.verificacion_grafica,
+                        "Fallo al descargar PDF de S3 para verificación gráfica.",
+                        IdEstadoProceso.error
+                    )
+                    return
+
+            datos_factura = self._repo.obtener_datos_completos_factura(conn, cufe)
+            if not datos_factura:
+                return
+
+            resultado = asyncio.run(verificar_requisitos_pdf(tmp_path, datos_factura))
+            
+            valido = resultado.get('valido', False)
+            faltantes = resultado.get('faltantes', [])
+            
+            if valido:
+                mensaje = "Representación gráfica verificada correctamente por IA."
+                estado = IdEstadoProceso.procesado
+            else:
+                faltantes_str = ", ".join(faltantes)
+                mensaje = f"IA detectó faltantes en el PDF: {faltantes_str}"
+                estado = IdEstadoProceso.procesado # NO rechazamos factura
+                
+                self._alert_manager.verificacion_grafica_fallida(
+                    num_factura=datos_factura.get('numero_factura', 'DESCONOCIDO'),
+                    metodos=['LLM (PyMuPDF)'],
+                    campos_fallidos={'faltantes': faltantes},
+                    adjunto_id=adjunto_id,
+                    correo_id=pdf_ev.get('correo_id')
+                )
+
+            self._repo.crear_proceso_ingesta(
+                conn, adjunto_id, IdTipoProceso.verificacion_grafica,
+                mensaje, estado
+            )
+        except Exception as e:
+            logger.exception("Error en verificación gráfica: %s", e)
+            self._repo.crear_proceso_ingesta(
+                conn, adjunto_id, IdTipoProceso.verificacion_grafica,
+                f"Error en IA: {e}", IdEstadoProceso.error
+            )
+        finally:
+            if borrar_tmp and tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except Exception as e:
+                    logger.warning("No se pudo eliminar temporal %s: %s", tmp_path, e)
 
     # ------------------------------------------------------------------
     # Helpers

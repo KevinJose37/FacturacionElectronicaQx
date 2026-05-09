@@ -61,8 +61,8 @@ async def main():
         "razon_social_emisor": "Empresa Ficticia S.A.S",
         "nit_adquiriente": "Cliente Corporativo LTDA",  # Para la heurística
         "numero_factura": "SETP990067604",
-        "valor_total": "1500250.00",
-        "cufe": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6"
+        "valor_total": "1500251.00",
+        "cufe": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y56"
     }
     
     logger.info("Llamando al controlador de verificación gráfica...")

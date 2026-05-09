@@ -18,12 +18,16 @@ CAMPOS_CRITICOS = _config.get("campos_criticos", [
     "numero_factura",
     "valor_total",
     "cufe",
+    "fecha_hora_generacion",
 ])
 
 CAMPOS_DESEABLES = _config.get("campos_deseables", [
     "razon_social_adquiriente",
-    "valor_iva",
-    "numero_resolucion",
+    "iva",
+    "resolucion_dian",
+    "forma_pago",
+    "calidad_tributaria",
+    "informacion_software",
 ])
 
 
@@ -73,7 +77,7 @@ def validar_datos_en_texto(
             continue
 
         # Monedas necesitan normalización especial
-        if campo in ("valor_total", "valor_iva"):
+        if campo in ("valor_total", "iva"):
             encontrado = normalizar_moneda(str(valor)) in texto_norm.replace(" ", "")
         else:
             encontrado = buscar_campo_en_texto(str(valor), texto_norm)

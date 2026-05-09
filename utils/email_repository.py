@@ -300,37 +300,47 @@ class EmailRepository:
     def crear_proceso_ingesta(
         self,
         conn: Connection,
-        adjunto_id: int,
         id_proceso: int,
         observacion: str,
         id_estado: int = 1,
+        adjunto_id: Optional[int] = None,
+        correo_id: Optional[int] = None,
         id_error: Optional[int] = None,
     ) -> int:
         """Crea un registro de proceso de ingesta (sin commit).
 
+        Al menos uno de ``adjunto_id`` o ``correo_id`` debe proporcionarse.
+        Usar ``correo_id`` para registros a nivel correo (ej. rechazo sin adjuntos).
+
         Args:
             conn: Conexión activa a la base de datos.
-            adjunto_id: ID del adjunto asociado.
             id_proceso: Tipo de proceso (FK a TIPO_PROCESO).
             observacion: Descripción del proceso realizado.
             id_estado: Estado del proceso (default: 1 = PENDIENTE).
+            adjunto_id: ID del adjunto asociado (None si es a nivel correo).
+            correo_id: ID del correo asociado (None si es a nivel adjunto).
             id_error: Tipo de error (FK a TIPO_ERROR), None si no hubo error.
 
         Returns:
             int: ID del proceso creado, o -1 si hubo error.
         """
+        if adjunto_id is None and correo_id is None:
+            logger.error("crear_proceso_ingesta requiere adjunto_id o correo_id")
+            return -1
+
         try:
             with conn.cursor() as cur:
                 cur.execute(
                     """
                     INSERT INTO FACTURACION.PROCESO_INGESTA (
-                        ADJUNTO_ID, ID_PROCESO, ID_ESTADO, OBSERVACION, ID_ERROR
+                        ADJUNTO_ID, CORREO_ID, ID_PROCESO, ID_ESTADO, OBSERVACION, ID_ERROR
                     )
-                    VALUES (%s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     RETURNING ID_PROCESO_INGESTA
                     """,
                     (
                         adjunto_id,
+                        correo_id,
                         id_proceso,
                         id_estado,
                         observacion,
@@ -338,15 +348,16 @@ class EmailRepository:
                     ),
                 )
                 id_proceso_ingesta = cur.fetchone()[0]
+                ref = f"ADJUNTO_ID={adjunto_id}" if adjunto_id else f"CORREO_ID={correo_id}"
                 logger.debug(
-                    "Proceso de ingesta creado: ID=%s tipo=%s para ADJUNTO_ID=%s",
-                    id_proceso_ingesta, id_proceso, adjunto_id,
+                    "Proceso de ingesta creado: ID=%s tipo=%s para %s",
+                    id_proceso_ingesta, id_proceso, ref,
                 )
                 return id_proceso_ingesta
         except Exception as err:
             logger.error(
-                "Error al crear proceso de ingesta (adjunto=%s, proceso=%s): %s",
-                adjunto_id, id_proceso, err,
+                "Error al crear proceso de ingesta (adjunto=%s, correo=%s, proceso=%s): %s",
+                adjunto_id, correo_id, id_proceso, err,
             )
             return -1
 

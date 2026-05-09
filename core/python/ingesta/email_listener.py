@@ -517,8 +517,30 @@ class EmailListener:
                         resultado_filtro = filtro.evaluar(parsed, tiene_adjuntos_factura, remitente)
 
                         if not resultado_filtro.es_factura:
-                            rechazo_handler = RechazoHandler()
                             motivo = resultado_filtro.motivo_rechazo
+
+                            if motivo == "SIN_ADJUNTOS_FACTURA":
+                                obs_rechazo = (
+                                    "Correo sin adjuntos válidos de facturación (ZIP/XML)."
+                                )
+                                id_error_rechazo = IdTipoError.correo_sin_adjuntos_validos
+                            else:
+                                obs_rechazo = f"Rechazado por filtro: {motivo}"
+                                id_error_rechazo = IdTipoError.correo_rechazado_filtro
+
+                            # Registrar en PROCESO_INGESTA (usa correo_id, no adjunto_id)
+                            self._repository.crear_proceso_ingesta(
+                                conn=conn_db,
+                                id_proceso=IdTipoProceso.filtro_recepcion,
+                                observacion=obs_rechazo,
+                                id_estado=IdEstadoProceso.error,
+                                correo_id=id_correo,
+                                id_error=id_error_rechazo,
+                            )
+
+                            # Commit ANTES de llamar handlers externos
+                            # (usan conexiones/pools separados que no ven datos sin commit)
+                            conn_db.commit()
 
                             if motivo == "SIN_ADJUNTOS_FACTURA":
                                 logger.info(
@@ -527,10 +549,11 @@ class EmailListener:
                                 )
                                 self._alert_manager.correo_sin_adjuntos(
                                     email_uid=id_mensaje,
-                                    motivo="Correo sin adjuntos válidos de facturación (ZIP/XML).",
+                                    motivo=obs_rechazo,
                                     correo_id=id_correo,
                                 )
                                 try:
+                                    rechazo_handler = RechazoHandler()
                                     asyncio.run(rechazo_handler.manejar_sin_adjuntos(id_correo))
                                 except Exception as e:
                                     logger.error(
@@ -538,13 +561,15 @@ class EmailListener:
                                         id_correo, e,
                                     )
                             else:
-                                motivo_desc = f"Rechazado por filtro: {motivo}"
                                 logger.warning(
                                     "Correo rechazado por filtro (ID_CORREO=%s): %s | %s",
                                     id_correo, id_mensaje, motivo,
                                 )
                                 try:
-                                    asyncio.run(rechazo_handler.procesar_rechazo(id_correo, motivo_desc))
+                                    rechazo_handler = RechazoHandler()
+                                    asyncio.run(rechazo_handler.procesar_rechazo(
+                                        id_correo, obs_rechazo,
+                                    ))
                                 except Exception as e:
                                     logger.error(
                                         "Error al procesar notificación de rechazo para ID_CORREO=%s: %s",
@@ -558,6 +583,16 @@ class EmailListener:
                         adjuntos = self._attachment_handler.descargar_todos_adjuntos(msg, parsed)
                         if not adjuntos:
                             motivo_fallo = "No se pudieron descargar los adjuntos del correo."
+                            self._repository.crear_proceso_ingesta(
+                                conn=conn_db,
+                                id_proceso=IdTipoProceso.descarga_almacenamiento,
+                                observacion=motivo_fallo,
+                                id_estado=IdEstadoProceso.error,
+                                correo_id=id_correo,
+                                id_error=IdTipoError.fallo_descarga_adjuntos,
+                            )
+                            conn_db.commit()
+
                             self._alert_manager.adjunto_incompleto(
                                 email_uid=id_mensaje, archivos=[],
                                 motivo=motivo_fallo,
@@ -605,6 +640,16 @@ class EmailListener:
                                 "Ningún par XML+PDF pudo procesarse exitosamente. "
                                 "Los adjuntos no contenían archivos válidos de factura electrónica."
                             )
+                            self._repository.crear_proceso_ingesta(
+                                conn=conn_db,
+                                id_proceso=IdTipoProceso.filtro_recepcion,
+                                observacion=motivo_sin_pares[:255],
+                                id_estado=IdEstadoProceso.error,
+                                correo_id=id_correo,
+                                id_error=IdTipoError.correo_sin_adjuntos_validos,
+                            )
+                            conn_db.commit()
+
                             logger.warning(
                                 "Ningún par XML+PDF procesado exitosamente para correo %s",
                                 id_mensaje,

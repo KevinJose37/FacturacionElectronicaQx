@@ -46,10 +46,25 @@ def _load_config() -> dict:
     if not _CONFIG_PATH.exists():
         raise FileNotFoundError(f"Configuración no encontrada en {_CONFIG_PATH}")
     with _CONFIG_PATH.open("r", encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
+        config = yaml.safe_load(fh)
+        
+    # Permitir sobreescribir el nivel de log por variable de entorno
+    env_log_level = os.environ.get('LOG_LEVEL')
+    if env_log_level and 'logging' in config:
+        config['logging']['level'] = env_log_level.upper()
+        
+    return config
 
 
 _CONFIG = _load_config()
+
+# Configurar logging global basado en la configuración cargada
+log_level_str = _CONFIG.get('logging', {}).get('level', 'INFO').upper()
+logging.basicConfig(
+    level=getattr(logging, log_level_str, logging.INFO),
+    format=_CONFIG.get('logging', {}).get('format', "%(asctime)s [%(levelname)s] %(name)s - %(message)s")
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -121,8 +136,12 @@ class EmailListener:
         """
         scan = self._scanner.escanear_archivo(ruta)
         if not scan.seguro:
-            self._alert_manager.malware_detectado(ruta.name, scan.nivel_riesgo)
-            logger.critical("Malware detectado en %s: %s", ruta, scan.detalle)
+            if not scan.servicio_disponible:
+                logger.error("Error de disponibilidad en escáner para %s: %s", ruta.name, scan.detalle)
+                # No lanzamos alerta de malware porque es un error de infraestructura
+            else:
+                self._alert_manager.malware_detectado(ruta.name, scan.nivel_riesgo)
+                logger.critical("Malware detectado en %s: %s", ruta, scan.detalle)
         return scan
 
     def _procesar_zips(
@@ -155,24 +174,40 @@ class EmailListener:
                 continue
 
             # Escanear el ZIP
-            scan_zip = self._escanear_archivo(adj_zip.ruta)
-            if not scan_zip.seguro:
-                logger.critical("ZIP infectado: %s", adj_zip.nombre_original)
-                # Registrar ZIP infectado en BD para trazabilidad
-                id_zip_infectado, _ = self._repository.guardar_adjunto_correo(
-                    conn=conn_db, id_correo=id_correo, ruta_archivo=adj_zip.ruta,
-                    id_tipo_archivo=IdTipoArchivo.zip, archivo_seguro=False,
-                    fecha_envio=fecha_envio,
-                )
-                if id_zip_infectado != -1:
-                    self._repository.crear_proceso_ingesta(
-                        conn=conn_db, adjunto_id=id_zip_infectado,
-                        id_proceso=IdTipoProceso.escaneo_malware,
-                        observacion=f"ZIP rechazado: {scan_zip.detalle}",
-                        id_estado=IdEstadoProceso.procesado,
-                        id_error=IdTipoError.malware_detectado,
+            try:
+                scan_zip = self._escanear_archivo(adj_zip.ruta)
+                if not scan_zip.seguro:
+                    if not scan_zip.servicio_disponible:
+                        raise ConnectionError(f"Servicio de seguridad no disponible durante escaneo de ZIP: {scan_zip.detalle}")
+                    
+                    logger.critical("ZIP infectado: %s", adj_zip.nombre_original)
+                    # Registrar ZIP infectado en BD para trazabilidad
+                    id_zip_infectado, _ = self._repository.guardar_adjunto_correo(
+                        conn=conn_db, id_correo=id_correo, ruta_archivo=adj_zip.ruta,
+                        id_tipo_archivo=IdTipoArchivo.zip, archivo_seguro=False,
+                        fecha_envio=fecha_envio,
                     )
-                continue
+                    if id_zip_infectado != -1:
+                        self._repository.crear_proceso_ingesta(
+                            conn=conn_db, adjunto_id=id_zip_infectado,
+                            id_proceso=IdTipoProceso.escaneo_malware,
+                            observacion=f"ZIP rechazado: {scan_zip.detalle}",
+                            id_estado=IdEstadoProceso.procesado,
+                            id_error=IdTipoError.malware_detectado,
+                        )
+                    continue
+            except ConnectionError:
+                # Registrar el fallo de infraestructura a nivel de correo antes de re-lanzar
+                self._repository.crear_proceso_ingesta(
+                    conn=conn_db, 
+                    id_proceso=IdTipoProceso.escaneo_malware,
+                    observacion="Falla de infraestructura: ClamAV no disponible",
+                    id_estado=IdEstadoProceso.error,
+                    correo_id=id_correo,
+                    id_error=IdTipoError.conexion_fallida if hasattr(IdTipoError, 'conexion_fallida') else None
+                )
+                conn_db.commit()
+                raise
 
             # Validar contenido (con soporte para ZIPs anidados)
             validacion = self._validator.validar_zip_completo(adj_zip.ruta)
@@ -318,6 +353,9 @@ class EmailListener:
         # 1. Escanear malware — XML es obligatorio
         scan_xml = self._escanear_archivo(par.xml_path)
         if not scan_xml.seguro:
+            if not scan_xml.servicio_disponible:
+                raise ConnectionError(f"Servicio de seguridad no disponible durante escaneo de XML: {scan_xml.detalle}")
+            
             id_xml_infectado, _ = self._repository.guardar_adjunto_correo(
                 conn=conn_db, id_correo=id_correo, ruta_archivo=par.xml_path,
                 id_tipo_archivo=IdTipoArchivo.xml, adjunto_padre_id=id_adjunto_padre,
@@ -336,6 +374,9 @@ class EmailListener:
         if par.pdf_path:
             scan_pdf = self._escanear_archivo(par.pdf_path)
             if not scan_pdf.seguro:
+                if not scan_pdf.servicio_disponible:
+                    raise ConnectionError(f"Servicio de seguridad no disponible durante escaneo de PDF: {scan_pdf.detalle}")
+                
                 id_pdf_infectado, _ = self._repository.guardar_adjunto_correo(
                     conn=conn_db, id_correo=id_correo, ruta_archivo=par.pdf_path,
                     id_tipo_archivo=IdTipoArchivo.pdf, adjunto_padre_id=id_adjunto_padre,
@@ -454,8 +495,8 @@ class EmailListener:
                 self._validator.temp_root = Path(temp_dir_str)
                 
                 try:
-                    # 1. FETCH del correo
-                    status, data = conn.uid("fetch", uid, "(RFC822)")
+                    # 1. FETCH del correo sin marcarlo como leído (PEEK)
+                    status, data = conn.uid("fetch", uid, "(BODY.PEEK[])")
                     if status != "OK" or not data:
                         logger.error("No se pudo obtener correo UID=%s", uid)
                         return False
@@ -694,8 +735,18 @@ class EmailListener:
                     self._attachment_handler = old_handler
                     self._validator.temp_root = old_temp_root
 
+        except ConnectionError as ce:
+            logger.error("Falla de infraestructura (reintentable) para correo UID=%s: %s", uid, ce)
+            # Intentamos asegurar que el correo permanezca como no leído
+            try:
+                conn.uid("store", uid, "-FLAGS", "\\Seen")
+            except Exception:
+                pass
+            return False
         except Exception as exc:
-            logger.exception("Error procesando correo UID=%s: %s", uid, exc)
+            logger.exception("Error fatal procesando correo UID=%s: %s", uid, exc)
+            # En errores fatales desconocidos, marcamos como visto para evitar bucles infinitos de error
+            # pero notificamos el fallo
             try:
                 conn.uid("store", uid, "+FLAGS", "\\Seen")
             except Exception:

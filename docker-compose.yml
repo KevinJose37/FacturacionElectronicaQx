@@ -21,7 +21,17 @@ services:
     restart: unless-stopped
     ports:
       - "3310:3310"
-
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "3310"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ── Backend API ──
   api:
@@ -29,8 +39,10 @@ services:
     container_name: facturacion_api
     restart: unless-stopped
     depends_on:
-      - database
-      - clamav
+      database:
+        condition: service_started
+      clamav:
+        condition: service_healthy
     expose:
       - "8888"
     env_file:
@@ -44,6 +56,13 @@ services:
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
       - RUTA_CA_CONFIABLE_XML_DSIG=input/credentials/ca_bundle.pem
+      - LOG_LEVEL=WARNING
+      - PYTHONUNBUFFERED=1
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ── Frontend (se clona y construye desde GitHub automáticamente) ──
   frontend:

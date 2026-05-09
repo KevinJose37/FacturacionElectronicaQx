@@ -90,7 +90,7 @@ llm:
 # Seguridad y Antivirus
 # ──────────────────────────────────────────────
 security:
-  clamav_host: "127.0.0.1"
+  clamav_host: "clamav"    # Cambiado de 127.0.0.1 a 'clamav' para Docker
   clamav_port: 3310
   clamav_timeout: 10
 

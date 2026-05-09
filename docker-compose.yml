@@ -27,7 +27,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ── Backend API ──
   api:
@@ -52,6 +56,13 @@ services:
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
       - RUTA_CA_CONFIABLE_XML_DSIG=input/credentials/ca_bundle.pem
+      - LOG_LEVEL=WARNING
+      - PYTHONUNBUFFERED=1
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ── Frontend (se clona y construye desde GitHub automáticamente) ──
   frontend:

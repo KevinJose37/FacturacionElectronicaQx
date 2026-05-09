@@ -46,10 +46,25 @@ def _load_config() -> dict:
     if not _CONFIG_PATH.exists():
         raise FileNotFoundError(f"Configuración no encontrada en {_CONFIG_PATH}")
     with _CONFIG_PATH.open("r", encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
+        config = yaml.safe_load(fh)
+        
+    # Permitir sobreescribir el nivel de log por variable de entorno
+    env_log_level = os.environ.get('LOG_LEVEL')
+    if env_log_level and 'logging' in config:
+        config['logging']['level'] = env_log_level.upper()
+        
+    return config
 
 
 _CONFIG = _load_config()
+
+# Configurar logging global basado en la configuración cargada
+log_level_str = _CONFIG.get('logging', {}).get('level', 'INFO').upper()
+logging.basicConfig(
+    level=getattr(logging, log_level_str, logging.INFO),
+    format=_CONFIG.get('logging', {}).get('format', "%(asctime)s [%(levelname)s] %(name)s - %(message)s")
+)
+
 logger = logging.getLogger(__name__)
 
 

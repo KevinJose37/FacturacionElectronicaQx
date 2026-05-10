@@ -95,3 +95,4 @@ if __name__ == "__main__":
         import selectors
         loop = asyncio.SelectorEventLoop(selectors.SelectSelector())
         asyncio.set_event_loop(loop)
+    uvicorn.run("main:app", host="0.0.0.0", port=8888, reload=False)

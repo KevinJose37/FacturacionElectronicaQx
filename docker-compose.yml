@@ -23,7 +23,7 @@ services:
       - "3310:3310"
     healthcheck:
       # Verificamos que el puerto 3310 responda vía TCP usando netcat (nc)
-      test: ["CMD", "nc", "-z", "localhost", "3310"]
+      test: [ "CMD", "nc", "-z", "localhost", "3310" ]
       interval: 15s
       timeout: 10s
       retries: 5
@@ -63,6 +63,9 @@ services:
       - PYTHONUNBUFFERED=1
       - CLAMAV_HOST=clamav
       - CLAMAV_PORT=3310
+    volumes:
+      - ./input/credentials:/app/input/credentials:ro
+      - ./input/credentials/s3_connection.yml:/app/input/credentials/s3_connection.yml:ro
     logging:
       driver: "json-file"
       options:

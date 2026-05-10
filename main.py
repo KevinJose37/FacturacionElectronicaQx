@@ -12,7 +12,7 @@ if sys.platform == 'win32':
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
@@ -66,17 +66,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Routers
-app.include_router(ingesta.router)
-app.include_router(dashboard.router)
-app.include_router(facturas.router)
-app.include_router(proveedores.router)
-app.include_router(validaciones.router)
-app.include_router(rechazos.router)
-app.include_router(logs_router.router)
-app.include_router(chat.router)
-app.include_router(exports.router)
-app.include_router(auth.router)
+# --- Orquestación de Rutas ---
+# Centralizamos todas las rutas bajo el prefijo /api
+api_router = APIRouter(prefix="/api")
+
+api_router.include_router(ingesta.router)
+api_router.include_router(dashboard.router)
+api_router.include_router(facturas.router)
+api_router.include_router(proveedores.router)
+api_router.include_router(validaciones.router)
+api_router.include_router(rechazos.router)
+api_router.include_router(logs_router.router)
+api_router.include_router(chat.router)
+api_router.include_router(exports.router)
+api_router.include_router(auth.router)
+
+app.include_router(api_router)
 
 
 @app.get("/")
@@ -90,4 +95,3 @@ if __name__ == "__main__":
         import selectors
         loop = asyncio.SelectorEventLoop(selectors.SelectSelector())
         asyncio.set_event_loop(loop)
-    uvicorn.run(app, host="0.0.0.0", port=8888, loop="asyncio")

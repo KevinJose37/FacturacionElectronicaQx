@@ -280,6 +280,19 @@ class EmailListener:
                 if resultado:
                     resultados.append(resultado)
 
+            # Procesar PDFs huérfanos
+            for pdf_huerfano in validacion.pdfs_huerfanos:
+                resultado_huerfano = self._registrar_pdf_huerfano(
+                    pdf_path=pdf_huerfano,
+                    conn_db=conn_db,
+                    id_correo=id_correo,
+                    id_adjunto_padre=zips_anidados_ids.get(str(validacion.pares[0].zip_origen if validacion.pares else adj_zip.ruta), id_adjunto_zip),
+                    fecha_envio=fecha_envio,
+                    id_mensaje=id_mensaje,
+                )
+                if resultado_huerfano:
+                    resultados.append(resultado_huerfano)
+
         return resultados
 
     def _procesar_sueltos(
@@ -297,12 +310,12 @@ class EmailListener:
         Returns:
             Lista de diccionarios con info de cada par procesado exitosamente.
         """
-        pares = self._validator.agrupar_pares_sueltos(
+        pares, pdfs_huerfanos = self._validator.agrupar_pares_sueltos(
             xmls=[a.ruta for a in xmls],
             pdfs=[a.ruta for a in pdfs],
         )
 
-        if not pares:
+        if not pares and not pdfs_huerfanos:
             self._alert_manager.adjunto_incompleto(
                 email_uid=id_mensaje,
                 archivos=[a.nombre_original for a in xmls + pdfs],
@@ -324,7 +337,83 @@ class EmailListener:
             if resultado:
                 resultados.append(resultado)
 
+        for pdf_huerfano in pdfs_huerfanos:
+            resultado_huerfano = self._registrar_pdf_huerfano(
+                pdf_path=pdf_huerfano,
+                conn_db=conn_db,
+                id_correo=id_correo,
+                id_adjunto_padre=None,
+                fecha_envio=fecha_envio,
+                id_mensaje=id_mensaje,
+            )
+            if resultado_huerfano:
+                resultados.append(resultado_huerfano)
+
         return resultados
+
+    def _registrar_pdf_huerfano(
+        self,
+        pdf_path: Path,
+        conn_db,
+        id_correo: int,
+        id_adjunto_padre: Optional[int],
+        fecha_envio: Optional[datetime],
+        id_mensaje: str,
+    ) -> Optional[dict]:
+        """Registra un PDF huérfano en BD y S3, y retorna datos para encolar."""
+        # 1. Escanear
+        scan_pdf = self._escanear_archivo(pdf_path)
+        if not scan_pdf.seguro:
+            id_pdf_infectado, _ = self._repository.guardar_adjunto_correo(
+                conn=conn_db, id_correo=id_correo, ruta_archivo=pdf_path,
+                id_tipo_archivo=IdTipoArchivo.pdf, adjunto_padre_id=id_adjunto_padre,
+                archivo_seguro=False, fecha_envio=fecha_envio,
+            )
+            if id_pdf_infectado != -1:
+                self._repository.crear_proceso_ingesta(
+                    conn=conn_db, adjunto_id=id_pdf_infectado,
+                    id_proceso=IdTipoProceso.escaneo_malware,
+                    observacion=f"PDF huérfano rechazado: {scan_pdf.detalle}",
+                    id_estado=IdEstadoProceso.procesado,
+                    id_error=IdTipoError.malware_detectado,
+                )
+            return None
+
+        # 2. Registrar en BD
+        id_adjunto_pdf, uri_pdf = self._repository.guardar_adjunto_correo(
+            conn=conn_db, id_correo=id_correo, ruta_archivo=pdf_path,
+            id_tipo_archivo=IdTipoArchivo.pdf, adjunto_padre_id=id_adjunto_padre,
+            archivo_seguro=True, fecha_envio=fecha_envio,
+        )
+        if id_adjunto_pdf == -1:
+            logger.error("Error registrando PDF huérfano en BD para correo %s", id_mensaje)
+            return None
+
+        # Subir a S3
+        subir_archivo_s3(pdf_path, uri_pdf)
+
+        # 3. Crear EVENTO_INGESTA
+        self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_adjunto_pdf)
+
+        self._repository.crear_proceso_ingesta(
+            conn=conn_db, adjunto_id=id_adjunto_pdf,
+            id_proceso=IdTipoProceso.escaneo_malware,
+            observacion="Escaneo malware exitoso.",
+            id_estado=IdEstadoProceso.procesado,
+        )
+
+        self._repository.crear_proceso_ingesta(
+            conn=conn_db, adjunto_id=id_adjunto_pdf,
+            id_proceso=IdTipoProceso.descarga_almacenamiento,
+            observacion="PDF huérfano subido correctamente a S3.",
+            id_estado=IdEstadoProceso.procesado,
+        )
+
+        return {
+            "id_adjunto_pdf": id_adjunto_pdf,
+            "ruta_pdf": uri_pdf,
+            "pdf_huerfano": True,
+        }
 
     def _registrar_par_factura(
         self,
@@ -417,6 +506,9 @@ class EmailListener:
             )
             if id_adjunto_pdf != -1:
                 subir_archivo_s3(par.pdf_path, uri_pdf)
+                # Crear EVENTO_INGESTA para el PDF: permite que invoice_processor
+                # lo incluya en la familia y ejecute la verificación gráfica LLM.
+                self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_adjunto_pdf)
 
         # 4. Crear evento de ingesta para XML padre
         self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_adjunto_xml)
@@ -537,7 +629,7 @@ class EmailListener:
                     # 5. Procesamiento principal con transacción
                     with self._repository._get_connection() as conn_db:
                         # 5a. Guardar correo en BD
-                        id_correo = self._repository.guardar_correo_entrante(
+                        id_correo, es_correo_nuevo = self._repository.guardar_correo_entrante(
                             conn=conn_db,
                             id_mensaje=id_mensaje,
                             remitente=remitente,
@@ -549,10 +641,40 @@ class EmailListener:
                             contiene_adjuntos=tiene_adjuntos,
                             id_origen=self.id_origen,
                         )
-                        if not id_correo:
-                            logger.warning("Correo ya existente en BD: %s. Marcando como leído.", id_mensaje)
-                            conn.uid("store", uid, "+FLAGS", "\\Seen")
-                            return True
+                        if not es_correo_nuevo:
+                            # El correo ya está en BD. Verificar si fue procesado
+                            # completamente (tiene adjuntos exitosos) o si falló a
+                            # mitad de camino (ej: ClamAV caído → sin adjuntos).
+                            tiene_adjuntos = (
+                                id_correo
+                                and self._repository.correo_tiene_adjuntos_exitosos(
+                                    conn_db, id_correo
+                                )
+                            )
+                            if tiene_adjuntos:
+                                # Duplicado real: correo ya procesado exitosamente.
+                                self._repository.crear_proceso_ingesta(
+                                    conn=conn_db,
+                                    id_proceso=IdTipoProceso.filtro_recepcion,
+                                    observacion="Correo duplicado: ya fue registrado y procesado anteriormente.",
+                                    id_estado=IdEstadoProceso.procesado,
+                                    correo_id=id_correo,
+                                )
+                                conn_db.commit()
+                                logger.info(
+                                    "Correo ya procesado (ID=%s): %s. Marcando como leído.",
+                                    id_correo, id_mensaje,
+                                )
+                                conn.uid("store", uid, "+FLAGS", "\\Seen")
+                                return True
+                            else:
+                                # Correo en BD pero sin adjuntos exitosos → falló antes.
+                                # Continuar con el procesamiento normal (reintento).
+                                logger.info(
+                                    "Correo ya en BD (ID=%s) pero sin adjuntos exitosos "
+                                    "(posible fallo previo). Reintentando procesamiento.",
+                                    id_correo,
+                                )
 
                         # 5b. Aplicar filtro de facturación
                         resultado_filtro = filtro.evaluar(parsed, tiene_adjuntos_factura, remitente)
@@ -710,18 +832,28 @@ class EmailListener:
 
                             # 5g. Publicar eventos en cola
                         for res in todos_resultados:
-                            # Notificar disponibilidad de factura
-                            evento = {
-                                "event_type": "factura_disponible",
-                                "id_mensaje_email": id_mensaje,
-                                "id_correo": id_correo,
-                                "id_adjunto_xml": res["id_adjunto_xml"],
-                                "id_adjunto_pdf": res["id_adjunto_pdf"],
-                                "parsed_subject": parsed,
-                                "ruta_xml": res["ruta_xml"],
-                                "ruta_pdf": res["ruta_pdf"],
-                                "remitente": remitente,
-                            }
+                            if res.get("pdf_huerfano"):
+                                evento = {
+                                    "event_type": "pdf_huerfano_disponible",
+                                    "id_mensaje_email": id_mensaje,
+                                    "id_correo": id_correo,
+                                    "id_adjunto_pdf": res["id_adjunto_pdf"],
+                                    "parsed_subject": parsed,
+                                    "ruta_pdf": res["ruta_pdf"],
+                                    "remitente": remitente,
+                                }
+                            else:
+                                evento = {
+                                    "event_type": "factura_disponible",
+                                    "id_mensaje_email": id_mensaje,
+                                    "id_correo": id_correo,
+                                    "id_adjunto_xml": res["id_adjunto_xml"],
+                                    "id_adjunto_pdf": res["id_adjunto_pdf"],
+                                    "parsed_subject": parsed,
+                                    "ruta_xml": res["ruta_xml"],
+                                    "ruta_pdf": res["ruta_pdf"],
+                                    "remitente": remitente,
+                                }
                             self._publisher.publish(evento, db_conn=conn_db)
 
                         conn.uid("store", uid, "+FLAGS", "\\Seen")
@@ -765,8 +897,18 @@ class EmailListener:
 
                 procesados = 0
                 for uid in uids:
-                    if self._procesar_correo(conn, uid):
-                        procesados += 1
+                    try:
+                        if self._procesar_correo(conn, uid):
+                            procesados += 1
+                    except Exception as exc:
+                        # Si es un error de conexión (infraestructura), abortamos todo el ciclo
+                        # para no intentar procesar el resto de correos sin sentido.
+                        if "Abortando procesamiento: ClamAV no disponible" in str(exc) or isinstance(exc, ConnectionError):
+                            logger.critical("Abortando ciclo de ingesta: Infraestructura crítica no disponible.")
+                            break
+                        
+                        logger.error("Error no crítico en correo UID=%s: %s", uid, exc)
+                        continue
 
                 logger.info("Ciclo completado: %d/%d procesados", procesados, len(uids))
         except Exception as exc:

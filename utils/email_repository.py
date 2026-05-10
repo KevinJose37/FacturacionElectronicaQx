@@ -57,6 +57,32 @@ class EmailRepository:
                 sha256.update(bloque)
         return sha256.hexdigest()
 
+    def correo_tiene_adjuntos_exitosos(self, conn: Connection, correo_id: int) -> bool:
+        """Verifica si el correo tiene al menos un adjunto seguro registrado.
+
+        Permite distinguir entre:
+        - Correo *completamente* procesado (tiene adjuntos) → duplicado real.
+        - Correo guardado pero que falló a mitad (ej: ClamAV caído, sin adjuntos)
+          → debe reintentarse.
+
+        Args:
+            conn: Conexión activa.
+            correo_id: ID del correo a verificar.
+
+        Returns:
+            True si existe al menos un ADJUNTO con ARCHIVO_SEGURO = TRUE.
+        """
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1 FROM FACTURACION.ADJUNTOS_CORREO
+                WHERE CORREO_ID = %s AND ARCHIVO_SEGURO = TRUE
+                LIMIT 1
+                """,
+                (correo_id,),
+            )
+            return cur.fetchone() is not None
+
     def existe_adjunto_por_hash(self, conn: Connection, sha256_hash: str) -> bool:
         """Verifica si un adjunto ya existe en BD mediante su hash SHA256."""
         with conn.cursor() as cur:
@@ -116,8 +142,14 @@ class EmailRepository:
         cuerpo_html: Optional[str] = None,
         contiene_adjuntos: bool = False,
         id_origen: int = 1,
-    ) -> Optional[int]:
-        """Guarda un correo en CORREO_ENTRANTE (sin commit)."""
+    ) -> tuple[Optional[int], bool]:
+        """Guarda un correo en CORREO_ENTRANTE (sin commit).
+
+        Returns:
+            Tupla ``(correo_id, es_nuevo)``:
+            - ``es_nuevo=True``  → correo recién insertado.
+            - ``es_nuevo=False`` → correo ya existía (ON CONFLICT).
+        """
         if fecha_deteccion is None:
             fecha_deteccion = datetime.now(tz=timezone.utc)
 
@@ -149,11 +181,20 @@ class EmailRepository:
             if resultado:
                 id_correo = resultado[0]
                 logger.debug("Correo guardado: ID=%s mensaje=%s", id_correo, id_mensaje)
-                return id_correo
+                return id_correo, True
             else:
-                cur.execute("SELECT CORREO_ID FROM FACTURACION.CORREO_ENTRANTE WHERE MESSAGE_ID = %s", (id_mensaje,))
+                # ON CONFLICT: el correo ya existía. Recuperamos el ID para
+                # permitir trazabilidad del duplicado, pero indicamos es_nuevo=False.
+                cur.execute(
+                    "SELECT CORREO_ID FROM FACTURACION.CORREO_ENTRANTE WHERE MESSAGE_ID = %s",
+                    (id_mensaje,),
+                )
                 existente = cur.fetchone()
-                return existente[0] if existente else None
+                logger.debug(
+                    "Correo duplicado detectado (ON CONFLICT): mensaje=%s id_existente=%s",
+                    id_mensaje, existente[0] if existente else None,
+                )
+                return (existente[0] if existente else None), False
 
     def guardar_adjunto_correo(
         self,

@@ -85,7 +85,7 @@ class InvoiceRepository:
                         ADJUNTO_PADRE_ID,
                         ADJUNTO_ID AS ADJUNTO_RAIZ_ID
                     FROM FACTURACION.ADJUNTOS_CORREO
-                    WHERE ADJUNTO_PADRE_ID IS NULL
+                    WHERE ADJUNTO_PADRE_ID IS NULL OR ADJUNTO_PADRE_ID = ADJUNTO_ID
 
                     UNION ALL
 
@@ -96,6 +96,7 @@ class InvoiceRepository:
                         padre.ADJUNTO_RAIZ_ID
                     FROM FACTURACION.ADJUNTOS_CORREO hijo
                     JOIN arbol padre ON hijo.ADJUNTO_PADRE_ID = padre.ADJUNTO_ID
+                    WHERE hijo.ADJUNTO_ID != padre.ADJUNTO_ID
                 )
                 SELECT
                     ei.ADJUNTO_ID,
@@ -112,7 +113,7 @@ class InvoiceRepository:
                 JOIN FACTURACION.ADJUNTOS_CORREO ac ON ei.ADJUNTO_ID = ac.ADJUNTO_ID
                 LEFT JOIN arbol ON ei.ADJUNTO_ID = arbol.ADJUNTO_ID
                 WHERE ei.ID_ESTADO = %s
-                  AND ac.ID_TIPO_ARCHIVO = 2
+                  AND ac.ID_TIPO_ARCHIVO IN (2, 3)
                 ORDER BY ei.FECHA_CREACION ASC
                 LIMIT %s
                 """,
@@ -182,6 +183,7 @@ class InvoiceRepository:
                 SELECT
                     ADJUNTO_ID,
                     ADJUNTO_PADRE_ID,
+                    CORREO_ID,
                     NOMBRE_ARCHIVO,
                     URI_ALMACENAMIENTO,
                     ID_TIPO_ARCHIVO,
@@ -374,6 +376,114 @@ class InvoiceRepository:
             )
             resultado = cur.fetchone()
             return resultado[0] if resultado else -1
+
+    def vincular_pdf_a_factura(
+        self,
+        conn: Connection,
+        cufe: str,
+        id_adjunto_pdf: int,
+    ) -> bool:
+        """Vincula un PDF huérfano a una factura existente.
+
+        Busca la factura por su CUFE, obtiene el ID del adjunto principal (XML) y el ID del correo,
+        y actualiza el registro del PDF en ADJUNTOS_CORREO para que su padre sea el XML
+        y pertenezca al mismo correo. Esto efectivamente unifica la familia.
+
+        Args:
+            conn: Conexión activa.
+            cufe: CUFE de la factura a buscar.
+            id_adjunto_pdf: ID del PDF huérfano.
+
+        Returns:
+            True si se vinculó exitosamente, False si no existe la factura.
+        """
+        with conn.cursor() as cur:
+            # Encontrar el ADJUNTO_ID y CORREO_ID original de la factura
+            cur.execute(
+                """
+                SELECT f.ADJUNTO_ID, ac.CORREO_ID 
+                FROM FACTURACION.FACTURA f
+                JOIN FACTURACION.ADJUNTOS_CORREO ac ON f.ADJUNTO_ID = ac.ADJUNTO_ID
+                WHERE f.CUFE = %s
+                """,
+                (cufe,)
+            )
+            row = cur.fetchone()
+            if not row:
+                return False
+                
+            id_adjunto_xml, id_correo = row
+            
+            # Actualizar el PDF para que sea hijo del XML y tenga el mismo CORREO_ID
+            cur.execute(
+                """
+                UPDATE FACTURACION.ADJUNTOS_CORREO
+                SET ADJUNTO_PADRE_ID = %s,
+                    CORREO_ID = %s
+                WHERE ADJUNTO_ID = %s
+                """,
+                (id_adjunto_xml, id_correo, id_adjunto_pdf)
+            )
+            return cur.rowcount > 0
+
+    def obtener_datos_completos_factura(self, conn: Connection, cufe: str) -> Optional[dict]:
+        """Obtiene un diccionario con los datos más importantes de la factura.
+        
+        Se utiliza principalmente para proveerle contexto al LLM durante la verificación gráfica.
+        """
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    f.CUFE,
+                    f.DENOMINACION,
+                    f.PREFIJO_FACTURACION,
+                    f.NUMERO_FACTURA,
+                    f.FECHA_GENERACION,
+                    f.VALOR_TOTAL,
+                    f.HASH_FIRMA_DIGITAL,
+                    emisor.NUMERO_DOCUMENTO as NIT_EMISOR,
+                    f.RAZON_SOCIAL_EMISOR as NOMBRE_EMISOR,
+                    adq.NUMERO_DOCUMENTO as NIT_ADQUIRIENTE,
+                    f.RAZON_SOCIAL_ADQUIRIENTE as NOMBRE_ADQUIRIENTE,
+                    (SELECT STRING_AGG(CODIGO_FORMA_PAGO || ' / ' || COALESCE(CODIGO_MEDIO_PAGO, ''), ', ') 
+                     FROM FACTURACION.PAGO_FACTURA WHERE ID_FACTURA = f.ID_FACTURA) as PAGOS
+                FROM FACTURACION.FACTURA f
+                LEFT JOIN FACTURACION.TERCERO emisor ON f.ID_TERCERO_EMISOR = emisor.ID_TERCERO
+                LEFT JOIN FACTURACION.TERCERO adq ON f.ID_TERCERO_ADQUIRIENTE = adq.ID_TERCERO
+                WHERE f.CUFE = %s
+                """,
+                (cufe,)
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            columnas = [desc[0].lower() for desc in cur.description]
+            datos = dict(zip(columnas, row))
+
+            # Obtener detalles de factura
+            cur.execute(
+                """
+                SELECT DESCRIPCION_ITEM, CANTIDAD, VALOR_UNITARIO, VALOR_TOTAL_LINEA
+                FROM FACTURACION.DETALLE_FACTURA
+                WHERE ID_FACTURA = (SELECT ID_FACTURA FROM FACTURACION.FACTURA WHERE CUFE = %s)
+                """,
+                (cufe,)
+            )
+            datos['lineas'] = [dict(zip(['descripcion', 'cantidad', 'valor_unitario', 'valor_total'], r)) for r in cur.fetchall()]
+            
+            # Formatear fechas e importes para json
+            if datos.get('fecha_generacion'):
+                datos['fecha_generacion'] = datos['fecha_generacion'].isoformat()
+            if datos.get('valor_total') is not None:
+                datos['valor_total'] = float(datos['valor_total'])
+            
+            for linea in datos.get('lineas', []):
+                linea['cantidad'] = float(linea['cantidad'])
+                linea['valor_unitario'] = float(linea['valor_unitario'])
+                linea['valor_total'] = float(linea['valor_total'])
+
+            return datos
 
     # ------------------------------------------------------------------
     # Operaciones de FACTURA_CONTROL

@@ -78,6 +78,9 @@ class CodigoTipoAlerta:
     correo_sin_adjuntos = 'CORREO_SIN_ADJUNTOS'
     """Correo de facturación sin adjuntos válidos."""
 
+    verificacion_grafica_fallida = 'VERIFICACION_GRAFICA_FALLIDA'
+    """Verificación gráfica del PDF falló."""
+
     # -- Prioridad BAJA --
     validacion_parcial = 'VALIDACION_PARCIAL'
     """Factura registrada con algunas validaciones fallidas."""
@@ -97,6 +100,7 @@ class CodigoTipoAlerta:
         'ZIP_INCOMPLETO': 'MEDIA',
         'PDF_FALTANTE': 'MEDIA',
         'CORREO_SIN_ADJUNTOS': 'MEDIA',
+        'VERIFICACION_GRAFICA_FALLIDA': 'MEDIA',
         'VALIDACION_PARCIAL': 'BAJA',
         'DUPLICADO_DETECTADO': 'BAJA',
     }
@@ -117,6 +121,7 @@ class TitulosAlerta:
     zip_incompleto = 'ZIP incompleto: {motivo}'
     pdf_faltante = 'PDF faltante en factura'
     correo_sin_adjuntos = 'Correo sin adjuntos válidos'
+    verificacion_grafica_fallida = 'Verificación gráfica fallida para factura {numero_factura}'
     validacion_parcial = 'Factura {numero_factura} con validaciones fallidas'
     duplicado_detectado = 'Factura duplicada omitida (CUFE: {cufe})'
 

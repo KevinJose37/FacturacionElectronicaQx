@@ -168,6 +168,15 @@ class InvoiceProcessor:
             else:
                 ad_ev = ev
 
+        # Si no hay PDF en los eventos pendientes, buscarlo en la familia completa en la BD
+        if not pdf_ev and invoice_ev:
+            with self._repo.get_connection() as conn:
+                adjuntos_familia = self._repo.obtener_adjuntos_familia(conn, invoice_ev['adjunto_id'])
+                for adj in adjuntos_familia:
+                    if adj.get('id_tipo_archivo') == IdTipoArchivo.pdf:
+                        pdf_ev = adj
+                        break
+
         if not invoice_ev and pdf_ev and len(eventos) == 1:
             # Es un PDF huérfano
             return self._procesar_pdf_huerfano(pdf_ev)

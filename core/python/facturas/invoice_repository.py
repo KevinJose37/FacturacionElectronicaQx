@@ -182,6 +182,7 @@ class InvoiceRepository:
                 SELECT
                     ADJUNTO_ID,
                     ADJUNTO_PADRE_ID,
+                    CORREO_ID,
                     NOMBRE_ARCHIVO,
                     URI_ALMACENAMIENTO,
                     ID_TIPO_ARCHIVO,

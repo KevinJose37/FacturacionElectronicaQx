@@ -759,7 +759,8 @@ INSERT INTO FACTURACION.TIPO_ALERTA (CODIGO_TIPO_ALERTA, DESCRIPCION, CODIGO_PRI
 ('CORREO_SIN_ADJUNTOS',         'Correo de facturación sin adjuntos válidos',                  'MEDIA'),
 ('VERIFICACION_GRAFICA_FALLIDA','Discrepancias gráficas PDF vs XML detectadas por IA',         'MEDIA'),
 ('VALIDACION_PARCIAL',          'Factura registrada con algunas validaciones fallidas',        'BAJA'),
-('DUPLICADO_DETECTADO',         'Factura duplicada detectada y omitida',                       'BAJA')
+('DUPLICADO_DETECTADO',         'Factura duplicada detectada y omitida',                       'BAJA'),
+('VERIFICACION_GRAFICA_FALLIDA', 'Análisis del PDF con IA fallido',                               'MEDIA'),
 ON CONFLICT DO NOTHING;
 
 

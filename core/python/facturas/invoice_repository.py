@@ -85,7 +85,7 @@ class InvoiceRepository:
                         ADJUNTO_PADRE_ID,
                         ADJUNTO_ID AS ADJUNTO_RAIZ_ID
                     FROM FACTURACION.ADJUNTOS_CORREO
-                    WHERE ADJUNTO_PADRE_ID IS NULL
+                    WHERE ADJUNTO_PADRE_ID IS NULL OR ADJUNTO_PADRE_ID = ADJUNTO_ID
 
                     UNION ALL
 
@@ -96,6 +96,7 @@ class InvoiceRepository:
                         padre.ADJUNTO_RAIZ_ID
                     FROM FACTURACION.ADJUNTOS_CORREO hijo
                     JOIN arbol padre ON hijo.ADJUNTO_PADRE_ID = padre.ADJUNTO_ID
+                    WHERE hijo.ADJUNTO_ID != padre.ADJUNTO_ID
                 )
                 SELECT
                     ei.ADJUNTO_ID,

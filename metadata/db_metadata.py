@@ -115,6 +115,9 @@ class IdTipoProceso:
     registro_factura = 24
     """Registro final de la factura en BD."""
 
+    filtro_recepcion = 25
+    """Evaluación de correo en filtro de recepción de facturación."""
+
 
 class IdTipoError:
     """Tipos de error en el procesamiento de ingesta.

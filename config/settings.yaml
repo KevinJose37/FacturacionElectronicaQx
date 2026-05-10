@@ -63,6 +63,13 @@ dashboard:
   factor_pipeline_warn: 0.9 # Factor para warning en etapa de procesamiento
 
 # ──────────────────────────────────────────────
+# Procesador de facturas
+# ──────────────────────────────────────────────
+invoice_processor:
+  max_reintentos: 3           # Intentos máximos antes de marcar como fallido
+  max_workers: 4              # Hilos concurrentes para procesar familias
+
+# ──────────────────────────────────────────────
 # Proveedores
 # ──────────────────────────────────────────────
 proveedores:
@@ -83,7 +90,7 @@ llm:
 # Seguridad y Antivirus
 # ──────────────────────────────────────────────
 security:
-  clamav_host: "127.0.0.1"
+  clamav_host: "clamav"    # Cambiado de 127.0.0.1 a 'clamav' para Docker
   clamav_port: 3310
   clamav_timeout: 10
 

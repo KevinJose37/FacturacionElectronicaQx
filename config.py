@@ -206,3 +206,15 @@ def get_queries_excel() -> dict:
     """
     queries = load_yaml_queries('excel/queries_excel.yml')
     return queries
+
+
+def get_queries_email() -> dict:
+    """Obtiene las consultas SQL para notificaciones de email.
+ 
+    Carga queries desde ``input/queries/email/queries_email.yml``.
+ 
+    Returns:
+        Diccionario con las queries SQL para rechazos y notificaciones.
+    """
+    queries = load_yaml_queries('email/queries_email.yml')
+    return queries

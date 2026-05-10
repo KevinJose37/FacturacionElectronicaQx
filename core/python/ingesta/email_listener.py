@@ -1,36 +1,40 @@
 """Listener de correos IMAP para ingesta de facturas electrónicas."""
 
 from __future__ import annotations
-
+ 
+import asyncio
+import email as _email
 import imaplib
 import logging
 import os
-import time
-import email as _email
-from datetime import datetime, timezone
-from pathlib import Path
-from email.utils import parsedate_to_datetime
-from typing import List, Optional
 import tempfile
-
-from utils.s3_utils import subir_archivo_s3
-from core.python.utils.xml_utils import extraer_xmls_embebidos
-
+import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from pathlib import Path
+from typing import Optional
+ 
 import yaml
 from dotenv import load_dotenv
-
+ 
 from config import get_postgres_config
 from core.python.ingesta.queue_publisher import get_publisher
-
-from metadata.db_metadata import IdEstadoProceso, IdTipoArchivo, IdTipoProceso, IdTipoError
-
+from core.python.rechazos.rechazo_handler import RechazoHandler
+from core.python.utils.xml_utils import extraer_xmls_embebidos
+from metadata.db_metadata import (
+    IdEstadoProceso,
+    IdTipoArchivo,
+    IdTipoError,
+    IdTipoProceso,
+)
 from utils.alerts import AlertManager
-from utils.attachment_handler import AttachmentHandler, AdjuntoDescargado
+from utils.attachment_handler import AdjuntoDescargado, AttachmentHandler
 from utils.attachment_validator import AttachmentValidator, ParXmlPdf
 from utils.email_parser import EmailParser
 from utils.email_repository import EmailRepository
 from utils.factura_filter import FacturaFilter
 from utils.malware_scanner import MalwareScanner
+from utils.s3_utils import subir_archivo_s3
 
 load_dotenv()
 
@@ -42,10 +46,25 @@ def _load_config() -> dict:
     if not _CONFIG_PATH.exists():
         raise FileNotFoundError(f"Configuración no encontrada en {_CONFIG_PATH}")
     with _CONFIG_PATH.open("r", encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
+        config = yaml.safe_load(fh)
+        
+    # Permitir sobreescribir el nivel de log por variable de entorno
+    env_log_level = os.environ.get('LOG_LEVEL')
+    if env_log_level and 'logging' in config:
+        config['logging']['level'] = env_log_level.upper()
+        
+    return config
 
 
 _CONFIG = _load_config()
+
+# Configurar logging global basado en la configuración cargada
+log_level_str = _CONFIG.get('logging', {}).get('level', 'INFO').upper()
+logging.basicConfig(
+    level=getattr(logging, log_level_str, logging.INFO),
+    format=_CONFIG.get('logging', {}).get('format', "%(asctime)s [%(levelname)s] %(name)s - %(message)s")
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -91,7 +110,7 @@ class EmailListener:
                 logger.warning("Intento %d/%d fallido: %s", intento, self.max_attempts, exc)
                 time.sleep(self.backoff_base**intento)
 
-    def _obtener_uids(self, conn: imaplib.IMAP4_SSL) -> list[bytes]:
+    def _obtener_uids(self, conn: imaplib.IMAP4_SSL) -> list:
         """Obtiene UIDs de correos no leídos."""
         status, data = conn.uid("search", None, "UNSEEN")
         uids = data[0].split() if status == "OK" else []
@@ -117,19 +136,23 @@ class EmailListener:
         """
         scan = self._scanner.escanear_archivo(ruta)
         if not scan.seguro:
-            self._alert_manager.malware_detectado(ruta.name, scan.nivel_riesgo)
-            logger.critical("Malware detectado en %s: %s", ruta, scan.detalle)
+            if not scan.servicio_disponible:
+                logger.error("Error de disponibilidad en escáner para %s: %s", ruta.name, scan.detalle)
+                # No lanzamos alerta de malware porque es un error de infraestructura
+            else:
+                self._alert_manager.malware_detectado(ruta.name, scan.nivel_riesgo)
+                logger.critical("Malware detectado en %s: %s", ruta, scan.detalle)
         return scan
 
     def _procesar_zips(
         self,
-        zips: List[AdjuntoDescargado],
+        zips: list,
         conn_db,
         id_correo: int,
         id_mensaje: str,
         fecha_envio: Optional[datetime],
         parsed: dict,
-    ) -> List[dict]:
+    ) -> list:
         """Procesa una lista de adjuntos ZIP, extrae pares XML+PDF.
 
         Soporta ZIPs con contenido directo y ZIPs con sub-ZIPs anidados.
@@ -151,24 +174,40 @@ class EmailListener:
                 continue
 
             # Escanear el ZIP
-            scan_zip = self._escanear_archivo(adj_zip.ruta)
-            if not scan_zip.seguro:
-                logger.critical("ZIP infectado: %s", adj_zip.nombre_original)
-                # Registrar ZIP infectado en BD para trazabilidad
-                id_zip_infectado, _ = self._repository.guardar_adjunto_correo(
-                    conn=conn_db, id_correo=id_correo, ruta_archivo=adj_zip.ruta,
-                    id_tipo_archivo=IdTipoArchivo.zip, archivo_seguro=False,
-                    fecha_envio=fecha_envio,
-                )
-                if id_zip_infectado != -1:
-                    self._repository.crear_proceso_ingesta(
-                        conn=conn_db, adjunto_id=id_zip_infectado,
-                        id_proceso=IdTipoProceso.escaneo_malware,
-                        observacion=f"ZIP rechazado: {scan_zip.detalle}",
-                        id_estado=IdEstadoProceso.procesado,
-                        id_error=IdTipoError.malware_detectado,
+            try:
+                scan_zip = self._escanear_archivo(adj_zip.ruta)
+                if not scan_zip.seguro:
+                    if not scan_zip.servicio_disponible:
+                        raise ConnectionError(f"Servicio de seguridad no disponible durante escaneo de ZIP: {scan_zip.detalle}")
+                    
+                    logger.critical("ZIP infectado: %s", adj_zip.nombre_original)
+                    # Registrar ZIP infectado en BD para trazabilidad
+                    id_zip_infectado, _ = self._repository.guardar_adjunto_correo(
+                        conn=conn_db, id_correo=id_correo, ruta_archivo=adj_zip.ruta,
+                        id_tipo_archivo=IdTipoArchivo.zip, archivo_seguro=False,
+                        fecha_envio=fecha_envio,
                     )
-                continue
+                    if id_zip_infectado != -1:
+                        self._repository.crear_proceso_ingesta(
+                            conn=conn_db, adjunto_id=id_zip_infectado,
+                            id_proceso=IdTipoProceso.escaneo_malware,
+                            observacion=f"ZIP rechazado: {scan_zip.detalle}",
+                            id_estado=IdEstadoProceso.procesado,
+                            id_error=IdTipoError.malware_detectado,
+                        )
+                    continue
+            except ConnectionError:
+                # Registrar el fallo de infraestructura a nivel de correo antes de re-lanzar
+                self._repository.crear_proceso_ingesta(
+                    conn=conn_db, 
+                    id_proceso=IdTipoProceso.escaneo_malware,
+                    observacion="Falla de infraestructura: ClamAV no disponible",
+                    id_estado=IdEstadoProceso.error,
+                    correo_id=id_correo,
+                    id_error=IdTipoError.conexion_fallida if hasattr(IdTipoError, 'conexion_fallida') else None
+                )
+                conn_db.commit()
+                raise
 
             # Validar contenido (con soporte para ZIPs anidados)
             validacion = self._validator.validar_zip_completo(adj_zip.ruta)
@@ -245,14 +284,14 @@ class EmailListener:
 
     def _procesar_sueltos(
         self,
-        xmls: List[AdjuntoDescargado],
-        pdfs: List[AdjuntoDescargado],
+        xmls: list,
+        pdfs: list,
         conn_db,
         id_correo: int,
         id_mensaje: str,
         fecha_envio: Optional[datetime],
         parsed: dict,
-    ) -> List[dict]:
+    ) -> list:
         """Procesa archivos XML y PDF adjuntos directamente al correo (sin ZIP).
 
         Returns:
@@ -314,6 +353,9 @@ class EmailListener:
         # 1. Escanear malware — XML es obligatorio
         scan_xml = self._escanear_archivo(par.xml_path)
         if not scan_xml.seguro:
+            if not scan_xml.servicio_disponible:
+                raise ConnectionError(f"Servicio de seguridad no disponible durante escaneo de XML: {scan_xml.detalle}")
+            
             id_xml_infectado, _ = self._repository.guardar_adjunto_correo(
                 conn=conn_db, id_correo=id_correo, ruta_archivo=par.xml_path,
                 id_tipo_archivo=IdTipoArchivo.xml, adjunto_padre_id=id_adjunto_padre,
@@ -332,6 +374,9 @@ class EmailListener:
         if par.pdf_path:
             scan_pdf = self._escanear_archivo(par.pdf_path)
             if not scan_pdf.seguro:
+                if not scan_pdf.servicio_disponible:
+                    raise ConnectionError(f"Servicio de seguridad no disponible durante escaneo de PDF: {scan_pdf.detalle}")
+                
                 id_pdf_infectado, _ = self._repository.guardar_adjunto_correo(
                     conn=conn_db, id_correo=id_correo, ruta_archivo=par.pdf_path,
                     id_tipo_archivo=IdTipoArchivo.pdf, adjunto_padre_id=id_adjunto_padre,
@@ -393,7 +438,7 @@ class EmailListener:
                         subir_archivo_s3(tmp_path, uri_embebido)
                         self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_embebido)
         else:
-            logger.warning(f"No se extrajeron XMLs embebidos de {par.xml_path.name}: {contenidos_xml}")
+            logger.warning('No se extrajeron XMLs embebidos de %s: %s', par.xml_path.name, contenidos_xml)
 
         # 6. Registrar procesos de ingesta realizados
         obs_malware = "Escaneo malware exitoso."
@@ -450,8 +495,8 @@ class EmailListener:
                 self._validator.temp_root = Path(temp_dir_str)
                 
                 try:
-                    # 1. FETCH del correo
-                    status, data = conn.uid("fetch", uid, "(RFC822)")
+                    # 1. FETCH del correo sin marcarlo como leído (PEEK)
+                    status, data = conn.uid("fetch", uid, "(BODY.PEEK[])")
                     if status != "OK" or not data:
                         logger.error("No se pudo obtener correo UID=%s", uid)
                         return False
@@ -513,36 +558,97 @@ class EmailListener:
                         resultado_filtro = filtro.evaluar(parsed, tiene_adjuntos_factura, remitente)
 
                         if not resultado_filtro.es_factura:
-                            if resultado_filtro.motivo_rechazo == "SIN_ADJUNTOS_FACTURA":
+                            motivo = resultado_filtro.motivo_rechazo
+
+                            if motivo == "SIN_ADJUNTOS_FACTURA":
+                                obs_rechazo = (
+                                    "Correo sin adjuntos válidos de facturación (ZIP/XML)."
+                                )
+                                id_error_rechazo = IdTipoError.correo_sin_adjuntos_validos
+                            else:
+                                obs_rechazo = f"Rechazado por filtro: {motivo}"
+                                id_error_rechazo = IdTipoError.correo_rechazado_filtro
+
+                            # Registrar en PROCESO_INGESTA (usa correo_id, no adjunto_id)
+                            self._repository.crear_proceso_ingesta(
+                                conn=conn_db,
+                                id_proceso=IdTipoProceso.filtro_recepcion,
+                                observacion=obs_rechazo,
+                                id_estado=IdEstadoProceso.error,
+                                correo_id=id_correo,
+                                id_error=id_error_rechazo,
+                            )
+
+                            # Commit ANTES de llamar handlers externos
+                            # (usan conexiones/pools separados que no ven datos sin commit)
+                            conn_db.commit()
+
+                            if motivo == "SIN_ADJUNTOS_FACTURA":
                                 logger.info(
                                     "Correo de facturación sin adjuntos válidos (ID_CORREO=%s): %s",
                                     id_correo, id_mensaje,
                                 )
-                                self._alert_manager.adjunto_incompleto(
-                                    email_uid=id_mensaje, archivos=[],
-                                    motivo="El correo de facturación no contiene adjuntos válidos (ZIP, XML o PDF)",
+                                self._alert_manager.correo_sin_adjuntos(
+                                    email_uid=id_mensaje,
+                                    motivo=obs_rechazo,
+                                    correo_id=id_correo,
                                 )
+                                try:
+                                    rechazo_handler = RechazoHandler()
+                                    asyncio.run(rechazo_handler.manejar_sin_adjuntos(id_correo))
+                                except Exception as e:
+                                    logger.error(
+                                        "Error al procesar rechazo sin adjuntos para ID_CORREO=%s: %s",
+                                        id_correo, e,
+                                    )
                             else:
-                                self._alert_manager.factura_rechazada(
-                                    motivo=resultado_filtro.motivo_rechazo or "No cumple criterios",
-                                    nit=parsed.get("nit"),
-                                    num_factura=parsed.get("num_factura"),
-                                )
                                 logger.warning(
-                                    "Correo rechazado por filtro: %s | %s",
-                                    id_mensaje, resultado_filtro.motivo_rechazo,
+                                    "Correo rechazado por filtro (ID_CORREO=%s): %s | %s",
+                                    id_correo, id_mensaje, motivo,
                                 )
+                                try:
+                                    rechazo_handler = RechazoHandler()
+                                    asyncio.run(rechazo_handler.procesar_rechazo(
+                                        id_correo, obs_rechazo,
+                                    ))
+                                except Exception as e:
+                                    logger.error(
+                                        "Error al procesar notificación de rechazo para ID_CORREO=%s: %s",
+                                        id_correo, e,
+                                    )
+
                             conn.uid("store", uid, "+FLAGS", "\\Seen")
                             return True
 
                         # 5c. Descargar TODOS los adjuntos válidos
                         adjuntos = self._attachment_handler.descargar_todos_adjuntos(msg, parsed)
                         if not adjuntos:
+                            motivo_fallo = "No se pudieron descargar los adjuntos del correo."
+                            self._repository.crear_proceso_ingesta(
+                                conn=conn_db,
+                                id_proceso=IdTipoProceso.descarga_almacenamiento,
+                                observacion=motivo_fallo,
+                                id_estado=IdEstadoProceso.error,
+                                correo_id=id_correo,
+                                id_error=IdTipoError.fallo_descarga_adjuntos,
+                            )
+                            conn_db.commit()
+
                             self._alert_manager.adjunto_incompleto(
                                 email_uid=id_mensaje, archivos=[],
-                                motivo="No se pudieron descargar adjuntos",
+                                motivo=motivo_fallo,
                             )
                             logger.error("Falla al descargar adjuntos para correo %s", id_mensaje)
+                            try:
+                                rechazo_handler = RechazoHandler()
+                                asyncio.run(rechazo_handler.procesar_rechazo(
+                                    id_correo, motivo_fallo,
+                                ))
+                            except Exception as e:
+                                logger.error(
+                                    "Error al registrar rechazo por fallo de descarga para ID_CORREO=%s: %s",
+                                    id_correo, e,
+                                )
                             conn.uid("store", uid, "+FLAGS", "\\Seen")
                             return False
 
@@ -571,10 +677,34 @@ class EmailListener:
                             todos_resultados.extend(resultados_sueltos)
 
                         if not todos_resultados:
+                            motivo_sin_pares = (
+                                "Ningún par XML+PDF pudo procesarse exitosamente. "
+                                "Los adjuntos no contenían archivos válidos de factura electrónica."
+                            )
+                            self._repository.crear_proceso_ingesta(
+                                conn=conn_db,
+                                id_proceso=IdTipoProceso.filtro_recepcion,
+                                observacion=motivo_sin_pares[:255],
+                                id_estado=IdEstadoProceso.error,
+                                correo_id=id_correo,
+                                id_error=IdTipoError.correo_sin_adjuntos_validos,
+                            )
+                            conn_db.commit()
+
                             logger.warning(
                                 "Ningún par XML+PDF procesado exitosamente para correo %s",
                                 id_mensaje,
                             )
+                            try:
+                                rechazo_handler = RechazoHandler()
+                                asyncio.run(rechazo_handler.procesar_rechazo(
+                                    id_correo, motivo_sin_pares,
+                                ))
+                            except Exception as e:
+                                logger.error(
+                                    "Error al registrar rechazo por procesamiento fallido para ID_CORREO=%s: %s",
+                                    id_correo, e,
+                                )
                             conn.uid("store", uid, "+FLAGS", "\\Seen")
                             return False
 
@@ -605,8 +735,18 @@ class EmailListener:
                     self._attachment_handler = old_handler
                     self._validator.temp_root = old_temp_root
 
+        except ConnectionError as ce:
+            logger.error("Falla de infraestructura (reintentable) para correo UID=%s: %s", uid, ce)
+            # Intentamos asegurar que el correo permanezca como no leído
+            try:
+                conn.uid("store", uid, "-FLAGS", "\\Seen")
+            except Exception:
+                pass
+            return False
         except Exception as exc:
-            logger.exception("Error procesando correo UID=%s: %s", uid, exc)
+            logger.exception("Error fatal procesando correo UID=%s: %s", uid, exc)
+            # En errores fatales desconocidos, marcamos como visto para evitar bucles infinitos de error
+            # pero notificamos el fallo
             try:
                 conn.uid("store", uid, "+FLAGS", "\\Seen")
             except Exception:

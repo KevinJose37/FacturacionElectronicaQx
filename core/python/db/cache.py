@@ -45,21 +45,22 @@ async def cached(key: str, fn, ttl: int = DEFAULT_TTL, *args, **kwargs):
         expires_at, value = _cache[key]
         if now < expires_at:
             resultado = value
-            return resultado
 
-    if key not in _locks:
-        _locks[key] = asyncio.Lock()
+    if resultado is None:
+        if key not in _locks:
+            _locks[key] = asyncio.Lock()
 
-    async with _locks[key]:
-        if key in _cache:
-            expires_at, value = _cache[key]
-            if now < expires_at:
-                resultado = value
-                return resultado
+        async with _locks[key]:
+            if key in _cache:
+                expires_at, value = _cache[key]
+                if now < expires_at:
+                    resultado = value
 
-        resultado = await fn(*args, **kwargs)
-        _cache[key] = (now + ttl, resultado)
-        logger.debug(MensajesDB.cache_set, key, ttl)
+            if resultado is None:
+                resultado = await fn(*args, **kwargs)
+                _cache[key] = (now + ttl, resultado)
+                logger.debug(MensajesDB.cache_set, key, ttl)
+
     return resultado
 
 

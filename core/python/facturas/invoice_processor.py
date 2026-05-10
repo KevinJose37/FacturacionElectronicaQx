@@ -449,6 +449,17 @@ class InvoiceProcessor:
 
             datos_factura = self._repo.obtener_datos_completos_factura(conn, cufe)
             if not datos_factura:
+                logger.warning(
+                    'No se encontraron datos de factura (CUFE=%s) para verificación gráfica. '
+                    'La factura puede no haberse registrado aún.',
+                    cufe[:20],
+                )
+                self._repo.crear_proceso_ingesta(
+                    conn, adjunto_id, IdTipoProceso.verificacion_grafica,
+                    f'Sin datos de factura en BD (CUFE={cufe[:20]}...). '
+                    'Verificación gráfica omitida.',
+                    IdEstadoProceso.error,
+                )
                 return
 
             resultado = asyncio.run(verificar_requisitos_pdf(tmp_path, datos_factura))

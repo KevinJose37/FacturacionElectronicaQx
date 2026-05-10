@@ -642,9 +642,17 @@ class EmailListener:
                             id_origen=self.id_origen,
                         )
                         if not es_correo_nuevo:
-                            # El correo ya fue procesado anteriormente. Registrar
-                            # trazabilidad del intento duplicado y salir sin reprocesar.
-                            if id_correo:
+                            # El correo ya está en BD. Verificar si fue procesado
+                            # completamente (tiene adjuntos exitosos) o si falló a
+                            # mitad de camino (ej: ClamAV caído → sin adjuntos).
+                            tiene_adjuntos = (
+                                id_correo
+                                and self._repository.correo_tiene_adjuntos_exitosos(
+                                    conn_db, id_correo
+                                )
+                            )
+                            if tiene_adjuntos:
+                                # Duplicado real: correo ya procesado exitosamente.
                                 self._repository.crear_proceso_ingesta(
                                     conn=conn_db,
                                     id_proceso=IdTipoProceso.filtro_recepcion,
@@ -653,12 +661,20 @@ class EmailListener:
                                     correo_id=id_correo,
                                 )
                                 conn_db.commit()
-                            logger.info(
-                                "Correo ya existente en BD (ID=%s): %s. Marcando como leído.",
-                                id_correo, id_mensaje,
-                            )
-                            conn.uid("store", uid, "+FLAGS", "\\Seen")
-                            return True
+                                logger.info(
+                                    "Correo ya procesado (ID=%s): %s. Marcando como leído.",
+                                    id_correo, id_mensaje,
+                                )
+                                conn.uid("store", uid, "+FLAGS", "\\Seen")
+                                return True
+                            else:
+                                # Correo en BD pero sin adjuntos exitosos → falló antes.
+                                # Continuar con el procesamiento normal (reintento).
+                                logger.info(
+                                    "Correo ya en BD (ID=%s) pero sin adjuntos exitosos "
+                                    "(posible fallo previo). Reintentando procesamiento.",
+                                    id_correo,
+                                )
 
                         # 5b. Aplicar filtro de facturación
                         resultado_filtro = filtro.evaluar(parsed, tiene_adjuntos_factura, remitente)

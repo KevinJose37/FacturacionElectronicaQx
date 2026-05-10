@@ -116,8 +116,14 @@ class EmailRepository:
         cuerpo_html: Optional[str] = None,
         contiene_adjuntos: bool = False,
         id_origen: int = 1,
-    ) -> Optional[int]:
-        """Guarda un correo en CORREO_ENTRANTE (sin commit)."""
+    ) -> tuple[Optional[int], bool]:
+        """Guarda un correo en CORREO_ENTRANTE (sin commit).
+
+        Returns:
+            Tupla ``(correo_id, es_nuevo)``:
+            - ``es_nuevo=True``  → correo recién insertado.
+            - ``es_nuevo=False`` → correo ya existía (ON CONFLICT).
+        """
         if fecha_deteccion is None:
             fecha_deteccion = datetime.now(tz=timezone.utc)
 
@@ -149,11 +155,20 @@ class EmailRepository:
             if resultado:
                 id_correo = resultado[0]
                 logger.debug("Correo guardado: ID=%s mensaje=%s", id_correo, id_mensaje)
-                return id_correo
+                return id_correo, True
             else:
-                cur.execute("SELECT CORREO_ID FROM FACTURACION.CORREO_ENTRANTE WHERE MESSAGE_ID = %s", (id_mensaje,))
+                # ON CONFLICT: el correo ya existía. Recuperamos el ID para
+                # permitir trazabilidad del duplicado, pero indicamos es_nuevo=False.
+                cur.execute(
+                    "SELECT CORREO_ID FROM FACTURACION.CORREO_ENTRANTE WHERE MESSAGE_ID = %s",
+                    (id_mensaje,),
+                )
                 existente = cur.fetchone()
-                return existente[0] if existente else None
+                logger.debug(
+                    "Correo duplicado detectado (ON CONFLICT): mensaje=%s id_existente=%s",
+                    id_mensaje, existente[0] if existente else None,
+                )
+                return (existente[0] if existente else None), False
 
     def guardar_adjunto_correo(
         self,

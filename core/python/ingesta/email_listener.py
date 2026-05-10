@@ -506,6 +506,9 @@ class EmailListener:
             )
             if id_adjunto_pdf != -1:
                 subir_archivo_s3(par.pdf_path, uri_pdf)
+                # Crear EVENTO_INGESTA para el PDF: permite que invoice_processor
+                # lo incluya en la familia y ejecute la verificación gráfica LLM.
+                self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_adjunto_pdf)
 
         # 4. Crear evento de ingesta para XML padre
         self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_adjunto_xml)
@@ -626,7 +629,7 @@ class EmailListener:
                     # 5. Procesamiento principal con transacción
                     with self._repository._get_connection() as conn_db:
                         # 5a. Guardar correo en BD
-                        id_correo = self._repository.guardar_correo_entrante(
+                        id_correo, es_correo_nuevo = self._repository.guardar_correo_entrante(
                             conn=conn_db,
                             id_mensaje=id_mensaje,
                             remitente=remitente,
@@ -638,8 +641,22 @@ class EmailListener:
                             contiene_adjuntos=tiene_adjuntos,
                             id_origen=self.id_origen,
                         )
-                        if not id_correo:
-                            logger.warning("Correo ya existente en BD: %s. Marcando como leído.", id_mensaje)
+                        if not es_correo_nuevo:
+                            # El correo ya fue procesado anteriormente. Registrar
+                            # trazabilidad del intento duplicado y salir sin reprocesar.
+                            if id_correo:
+                                self._repository.crear_proceso_ingesta(
+                                    conn=conn_db,
+                                    id_proceso=IdTipoProceso.filtro_recepcion,
+                                    observacion="Correo duplicado: ya fue registrado y procesado anteriormente.",
+                                    id_estado=IdEstadoProceso.procesado,
+                                    correo_id=id_correo,
+                                )
+                                conn_db.commit()
+                            logger.info(
+                                "Correo ya existente en BD (ID=%s): %s. Marcando como leído.",
+                                id_correo, id_mensaje,
+                            )
                             conn.uid("store", uid, "+FLAGS", "\\Seen")
                             return True
 

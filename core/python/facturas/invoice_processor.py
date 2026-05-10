@@ -544,6 +544,11 @@ class InvoiceProcessor:
             d_firma = res_firma['datos']
             d_denom = res_denom['datos']
             d_pago = res_forma['datos']
+            
+            # Mapeo de campos adicionales requeridos
+            nombre_proveedor = datos_emisor.get('razon_social') or datos_emisor.get('nombre_comercial')
+            nit_proveedor = datos_emisor.get('numero_documento')
+            forma_pago_desc = "CREDITO" if d_pago.get('codigo_forma_pago') == '2' else "CONTADO"
 
             id_factura = self._repo.insertar_factura(conn, {
                 'cufe': cufe,
@@ -552,7 +557,7 @@ class InvoiceProcessor:
                 'prefijo': datos_num.get('prefijo') or '',
                 'numero_factura': datos_num.get('numero_factura') or cufe[:20],
                 'id_tercero_emisor': id_emisor,
-                'razon_social_emisor': datos_emisor.get('razon_social') or datos_emisor.get('nombre_comercial'),
+                'razon_social_emisor': nombre_proveedor,
                 'id_tercero_adquiriente': id_adq,
                 'razon_social_adquiriente': datos_adq.get('razon_social') or datos_adq.get('nombre_comercial'),
                 'id_autorizacion': id_autorizacion,
@@ -570,6 +575,17 @@ class InvoiceProcessor:
             if id_factura <= 0:
                 logger.error('No se pudo insertar la factura CUFE=%s', cufe[:20])
                 return
+
+            # Insertar en FACTURA_CONTROL
+            self._repo.upsert_factura_control(conn, {
+                'id_factura': id_factura,
+                'fecha_admision_proveedor': fecha_gen.date() if fecha_gen else None,
+                'medio_recepcion': 'CORREO',
+                'nombre_proveedor': nombre_proveedor,
+                'nit_proveedor': nit_proveedor,
+                'numero_factura': datos_num.get('numero_factura'),
+                'forma_pago': forma_pago_desc
+            })
 
             # DETALLE_FACTURA
             for linea in res_items['datos'].get('lineas', []):

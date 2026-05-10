@@ -27,6 +27,7 @@ from routers import (
     proveedores,
     rechazos,
     validaciones,
+    exports,
     auth,
 )
 
@@ -74,6 +75,7 @@ app.include_router(validaciones.router)
 app.include_router(rechazos.router)
 app.include_router(logs_router.router)
 app.include_router(chat.router)
+app.include_router(exports.router)
 app.include_router(auth.router)
 
 

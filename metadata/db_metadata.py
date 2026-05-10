@@ -115,7 +115,10 @@ class IdTipoProceso:
     registro_factura = 24
     """Registro final de la factura en BD."""
 
-    filtro_recepcion = 25
+    verificacion_grafica = 25
+    """Verificación de representación gráfica PDF vs XML."""
+    
+    filtro_recepcion = 26
     """Evaluación de correo en filtro de recepción de facturación."""
 
 

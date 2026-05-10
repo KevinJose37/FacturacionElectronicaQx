@@ -63,6 +63,7 @@ class ZipValidacionCompleta:
     es_valido: bool
     motivo_error: Optional[str] = None
     pares: List[ParXmlPdf] = field(default_factory=list)
+    pdfs_huerfanos: List[Path] = field(default_factory=list)
     archivos_encontrados: List[str] = field(default_factory=list)
     tiene_zips_anidados: bool = False
     id_error: Optional[int] = None
@@ -209,6 +210,7 @@ class AttachmentValidator:
                         zip_files.append(f)
 
                 pares: List[ParXmlPdf] = []
+                pdfs_huerfanos: List[Path] = []
                 tiene_zips_anidados = len(zip_files) > 0
 
                 # Caso 1: El ZIP contiene XMLs (con o sin PDFs)
@@ -271,6 +273,7 @@ class AttachmentValidator:
                                 "PDF sin XML correspondiente en ZIP %s: %s",
                                 ruta_zip.name, pf
                             )
+                            pdfs_huerfanos.append(extract_dir / pf)
 
                 # Caso 2: El ZIP contiene sub-ZIPs
                 if zip_files:
@@ -288,6 +291,7 @@ class AttachmentValidator:
                             for par in sub_resultado.pares:
                                 par.zip_origen = sub_zip_path
                             pares.extend(sub_resultado.pares)
+                            pdfs_huerfanos.extend(sub_resultado.pdfs_huerfanos)
                         else:
                             logger.warning(
                                 "Sub-ZIP inválido dentro de %s: %s | Motivo: %s",
@@ -320,6 +324,7 @@ class AttachmentValidator:
                 return ZipValidacionCompleta(
                     es_valido=True,
                     pares=pares,
+                    pdfs_huerfanos=pdfs_huerfanos,
                     archivos_encontrados=archivos_en_zip,
                     tiene_zips_anidados=tiene_zips_anidados,
                 )
@@ -336,7 +341,7 @@ class AttachmentValidator:
         self,
         xmls: List[Path],
         pdfs: List[Path],
-    ) -> List[ParXmlPdf]:
+    ) -> tuple[List[ParXmlPdf], List[Path]]:
         """Agrupa archivos XML y PDF sueltos en pares de factura.
 
         Empareja por nombre de archivo (mismo stem) o por dígitos
@@ -348,9 +353,10 @@ class AttachmentValidator:
             pdfs: Lista de rutas a archivos PDF sueltos.
 
         Returns:
-            Lista de pares ParXmlPdf (sin zip_origen).
+            Tupla (Lista de pares ParXmlPdf, Lista de PDFs huérfanos).
         """
         pares: List[ParXmlPdf] = []
+        pdfs_huerfanos: List[Path] = []
 
         # Indexar PDFs por stem y por dígitos
         pdf_por_stem = {p.stem.lower(): p for p in pdfs}
@@ -392,8 +398,9 @@ class AttachmentValidator:
         for pdf_path in pdfs:
             if pdf_path.stem.lower() not in pdf_usados:
                 logger.warning("PDF sin XML correspondiente (suelto): %s", pdf_path.name)
+                pdfs_huerfanos.append(pdf_path)
 
-        return pares
+        return pares, pdfs_huerfanos
 
     def limpiar_temp(self):
         """Elimina todos los archivos del directorio temporal."""

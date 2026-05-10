@@ -62,7 +62,8 @@ INSERT INTO FACTURACION.TIPO_PROCESO (ID_TIPO_PROCESO, CODIGO_REFERENCIA, DESCRI
 (22, 'VALIDACION_ANEXO_TECNICO',     'Validación del anexo técnico UBL'),
 (23, 'EXTRACCION_SOFTWARE',          'Extracción datos del software y proveedor tecnológico'),
 (24, 'REGISTRO_FACTURA',             'Registro final de la factura en BD'),
-(25, 'FILTRO_RECEPCION',             'Evaluación de correo en filtro de recepción de facturación')
+(25, 'VERIFICACION_GRAFICA',         'Verificación de representación gráfica PDF vs XML'),
+(26, 'FILTRO_RECEPCION',             'Evaluación de correo en filtro de recepción de facturación')
 ON CONFLICT DO NOTHING;
 
 
@@ -774,17 +775,19 @@ CREATE TABLE FACTURACION.TIPO_ALERTA (
 );
 
 INSERT INTO FACTURACION.TIPO_ALERTA (CODIGO_TIPO_ALERTA, DESCRIPCION, CODIGO_PRIORIDAD_DEF) VALUES
-('MALWARE_DETECTADO',    'Archivo infectado con virus o malware',                   'CRITICA'),
-('BOT_INACTIVO',         'El bot de extracción dejó de funcionar',                  'CRITICA'),
-('CONEXION_FALLIDA',     'Fallo de conexión a servicio externo (IMAP, BD, S3)',     'CRITICA'),
-('FACTURA_RECHAZADA',    'Factura no pasó las validaciones DIAN',                   'ALTA'),
-('VENCIMIENTO_PROXIMO',  'Factura próxima a vencer sin evento de aceptación DIAN',  'ALTA'),
-('MAX_REINTENTOS',       'Factura agotó el máximo de reintentos de procesamiento',  'ALTA'),
-('ZIP_INCOMPLETO',       'ZIP sin pares XML+PDF válidos',                           'MEDIA'),
-('PDF_FALTANTE',         'Factura procesada sin PDF adjunto',                       'MEDIA'),
-('CORREO_SIN_ADJUNTOS',  'Correo de facturación sin adjuntos válidos',              'MEDIA'),
-('VALIDACION_PARCIAL',   'Factura registrada con algunas validaciones fallidas',    'BAJA'),
-('DUPLICADO_DETECTADO',  'Factura duplicada detectada y omitida',                   'BAJA')
+('MALWARE_DETECTADO',           'Archivo infectado con virus o malware',                       'CRITICA'),
+('BOT_INACTIVO',                'El bot de extracción dejó de funcionar',                      'CRITICA'),
+('CONEXION_FALLIDA',            'Fallo de conexión a servicio externo (IMAP, BD, S3)',         'CRITICA'),
+('FACTURA_RECHAZADA',           'Factura no pasó las validaciones DIAN',                       'ALTA'),
+('VENCIMIENTO_PROXIMO',         'Factura próxima a vencer sin evento de aceptación DIAN',      'ALTA'),
+('MAX_REINTENTOS',              'Factura agotó el máximo de reintentos de procesamiento',      'ALTA'),
+('ZIP_INCOMPLETO',              'ZIP sin pares XML+PDF válidos',                               'MEDIA'),
+('PDF_FALTANTE',                'Factura procesada sin PDF adjunto',                           'MEDIA'),
+('CORREO_SIN_ADJUNTOS',         'Correo de facturación sin adjuntos válidos',                  'MEDIA'),
+('VERIFICACION_GRAFICA_FALLIDA','Discrepancias gráficas PDF vs XML detectadas por IA',         'MEDIA'),
+('VALIDACION_PARCIAL',          'Factura registrada con algunas validaciones fallidas',        'BAJA'),
+('DUPLICADO_DETECTADO',         'Factura duplicada detectada y omitida',                       'BAJA'),
+('VERIFICACION_GRAFICA_FALLIDA', 'Análisis del PDF con IA fallido',                               'MEDIA'),
 ON CONFLICT DO NOTHING;
 
 

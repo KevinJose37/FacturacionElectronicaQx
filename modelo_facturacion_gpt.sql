@@ -748,17 +748,18 @@ CREATE TABLE FACTURACION.TIPO_ALERTA (
 );
 
 INSERT INTO FACTURACION.TIPO_ALERTA (CODIGO_TIPO_ALERTA, DESCRIPCION, CODIGO_PRIORIDAD_DEF) VALUES
-('MALWARE_DETECTADO',    'Archivo infectado con virus o malware',                   'CRITICA'),
-('BOT_INACTIVO',         'El bot de extracción dejó de funcionar',                  'CRITICA'),
-('CONEXION_FALLIDA',     'Fallo de conexión a servicio externo (IMAP, BD, S3)',     'CRITICA'),
-('FACTURA_RECHAZADA',    'Factura no pasó las validaciones DIAN',                   'ALTA'),
-('VENCIMIENTO_PROXIMO',  'Factura próxima a vencer sin evento de aceptación DIAN',  'ALTA'),
-('MAX_REINTENTOS',       'Factura agotó el máximo de reintentos de procesamiento',  'ALTA'),
-('ZIP_INCOMPLETO',       'ZIP sin pares XML+PDF válidos',                           'MEDIA'),
-('PDF_FALTANTE',         'Factura procesada sin PDF adjunto',                       'MEDIA'),
-('CORREO_SIN_ADJUNTOS',  'Correo de facturación sin adjuntos válidos',              'MEDIA'),
-('VALIDACION_PARCIAL',   'Factura registrada con algunas validaciones fallidas',    'BAJA'),
-('DUPLICADO_DETECTADO',  'Factura duplicada detectada y omitida',                   'BAJA')
+('MALWARE_DETECTADO',           'Archivo infectado con virus o malware',                       'CRITICA'),
+('BOT_INACTIVO',                'El bot de extracción dejó de funcionar',                      'CRITICA'),
+('CONEXION_FALLIDA',            'Fallo de conexión a servicio externo (IMAP, BD, S3)',         'CRITICA'),
+('FACTURA_RECHAZADA',           'Factura no pasó las validaciones DIAN',                       'ALTA'),
+('VENCIMIENTO_PROXIMO',         'Factura próxima a vencer sin evento de aceptación DIAN',      'ALTA'),
+('MAX_REINTENTOS',              'Factura agotó el máximo de reintentos de procesamiento',      'ALTA'),
+('ZIP_INCOMPLETO',              'ZIP sin pares XML+PDF válidos',                               'MEDIA'),
+('PDF_FALTANTE',                'Factura procesada sin PDF adjunto',                           'MEDIA'),
+('CORREO_SIN_ADJUNTOS',         'Correo de facturación sin adjuntos válidos',                  'MEDIA'),
+('VERIFICACION_GRAFICA_FALLIDA','Discrepancias gráficas PDF vs XML detectadas por IA',         'MEDIA'),
+('VALIDACION_PARCIAL',          'Factura registrada con algunas validaciones fallidas',        'BAJA'),
+('DUPLICADO_DETECTADO',         'Factura duplicada detectada y omitida',                       'BAJA')
 ON CONFLICT DO NOTHING;
 
 

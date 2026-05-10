@@ -124,29 +124,26 @@ async def verificar_requisitos_pdf(pdf_path: str | Path, datos_xml: Dict[str, An
     system_prompt = (
         "Eres un experto auditor de Facturación Electrónica DIAN en Colombia.\n"
         "Tu tarea es verificar que la representación gráfica (PDF) de una factura contenga "
-        "la misma información requerida que fue extraída de su XML oficial.\n\n"
+        "la misma información que fue extraída de su XML oficial.\n\n"
         "Debes responder ÚNICAMENTE en formato JSON válido con la siguiente estructura:\n"
         "{\n"
         '  "valido": true/false,\n'
-        '  "faltantes": ["lista de discrepancias o datos que no se encontraron en el PDF, si aplica"]\n'
+        '  "faltantes": ["nombre_campo_1", "nombre_campo_2"]\n'
         "}\n"
+        "IMPORTANTE: en 'faltantes' coloca únicamente el NOMBRE CORTO del campo no encontrado "
+        "(por ejemplo: 'NIT emisor', 'CUFE', 'Valor total'). "
+        "NO incluyas los valores esperados ni explicaciones adicionales.\n"
+        "Si todos los campos están presentes, 'faltantes' debe ser una lista vacía []."
     )
 
     datos_json = json.dumps(datos_xml, ensure_ascii=False, indent=2)
     user_prompt = (
-        f"A continuación se presenta la información extraída del XML de la factura:\n"
+        f"Datos del XML de la factura (valores de referencia):\n"
         f"```json\n{datos_json}\n```\n\n"
-        f"Y a continuación se presenta el texto extraído del PDF de la misma factura:\n"
+        f"Texto extraído del PDF:\n"
         f"```text\n{texto_pdf}\n```\n\n"
-        "Verifica que el PDF refleje adecuadamente la información del XML, en especial:\n"
-        "- Datos del Emisor y Adquiriente (NIT, Razón Social)\n"
-        "- Numeración de la factura\n"
-        "- Fecha de generación\n"
-        "- Valor total, impuestos\n"
-        "- CUFE\n"
-        "- Detalles de las líneas (Ítems)\n"
-        "- Forma y Medio de pago\n\n"
-        "Devuelve un JSON estrictamente."
+        "Verifica que el PDF refleje adecuadamente la información del XML.\n"
+        "Devuelve un JSON estrictamente con los campos 'valido' y 'faltantes'."
     )
 
     respuesta_llm = await _llamar_llm(system_prompt, user_prompt)

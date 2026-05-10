@@ -65,7 +65,6 @@ services:
       - CLAMAV_PORT=3310
     volumes:
       - ./input/credentials:/app/input/credentials:ro
-      - ./input/credentials/s3_connection.yml:/app/input/credentials/s3_connection.yml:ro
     logging:
       driver: "json-file"
       options:

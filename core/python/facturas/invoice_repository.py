@@ -486,6 +486,49 @@ class InvoiceRepository:
             return datos
 
     # ------------------------------------------------------------------
+    # Operaciones de FACTURA_CONTROL
+    # ------------------------------------------------------------------
+
+    def upsert_factura_control(
+        self,
+        conn: Connection,
+        datos: dict,
+    ) -> int:
+        """Inserta o actualiza los datos de control de una factura.
+
+        Args:
+            conn: Conexión activa.
+            datos: Diccionario con campos de control.
+
+        Returns:
+            ID del registro de control.
+        """
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO FACTURACION.FACTURA_CONTROL (
+                    ID_FACTURA, FECHA_ADMISION_PROVEEDOR, MEDIO_RECEPCION,
+                    NOMBRE_PROVEEDOR, NIT_PROVEEDOR, NUMERO_FACTURA, FORMA_PAGO
+                )
+                VALUES (
+                    %(id_factura)s, %(fecha_admision_proveedor)s, %(medio_recepcion)s,
+                    %(nombre_proveedor)s, %(nit_proveedor)s, %(numero_factura)s, %(forma_pago)s
+                )
+                ON CONFLICT (ID_FACTURA) DO UPDATE SET
+                    FECHA_ADMISION_PROVEEDOR = EXCLUDED.FECHA_ADMISION_PROVEEDOR,
+                    NOMBRE_PROVEEDOR = EXCLUDED.NOMBRE_PROVEEDOR,
+                    NIT_PROVEEDOR = EXCLUDED.NIT_PROVEEDOR,
+                    NUMERO_FACTURA = EXCLUDED.NUMERO_FACTURA,
+                    FORMA_PAGO = EXCLUDED.FORMA_PAGO,
+                    FECHA_ACTUALIZACION = NOW()
+                RETURNING ID_CONTROL
+                """,
+                datos,
+            )
+            resultado = cur.fetchone()
+            return resultado[0] if resultado else -1
+
+    # ------------------------------------------------------------------
     # Operaciones de TERCERO
     # ------------------------------------------------------------------
 

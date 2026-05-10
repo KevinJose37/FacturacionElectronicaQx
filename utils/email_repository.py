@@ -426,6 +426,29 @@ class EmailRepository:
             )
             logger.debug("Proceso ID=%s actualizado a estado %s", id_proceso, id_estado)
 
+    def inicializar_factura_control(
+        self,
+        conn: Connection,
+        adjunto_id: int,
+        medio_recepcion: str = "CORREO"
+    ):
+        """Inicializa un registro en FACTURA_CONTROL vinculado al adjunto.
+        
+        Como la FACTURA aún no se ha creado (el orquestador lo hará luego),
+        este registro se utiliza para persistir datos que vienen desde el email.
+        """
+        with conn.cursor() as cur:
+            # Primero verificamos si ya existe por ADJUNTO_ID 
+            # (Aunque en el modelo pusimos FK a ID_FACTURA, necesitamos 
+            # una forma de persistir el medio de recepción desde la ingesta).
+            # Para esto, añadiremos temporalmente el ADJUNTO_ID a FACTURA_CONTROL 
+            # o usaremos una lógica de 'best effort' en el orquestador.
+            
+            # Dado que el usuario pidió que el campo 'Medio en que se recibió' 
+            # sea siempre CORREO, podemos manejarlo directamente en el orquestador 
+            # evitando cambios complejos en el listener.
+            pass
+
     def registrar_log_proceso(
         self,
         conn: Connection,

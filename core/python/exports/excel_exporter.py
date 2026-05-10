@@ -106,10 +106,16 @@ class ExcelExporter:
         # 4. Data Rows
         for r_idx, row_data in enumerate(data, 4):
             for c_idx, col in enumerate(self.columns, 1):
-                value = row_data.get(col["db_field"])
+                field = col["db_field"]
+                value = row_data.get(field)
+
+                # Transform boolean to 'X' for specific columns
+                if field in ["acuso_recibido", "recibido_bien_servicio", "aceptacion_empresa", "recibido"]:
+                    value = "X" if value is True else ""
+                
                 # Format dates if necessary
                 if isinstance(value, datetime):
-                    value = value.strftime("%Y-%m-%d %H:%M:%S")
+                    value = value.strftime("%Y-%m-%d")
                 elif value is None:
                     value = ""
                 

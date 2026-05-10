@@ -3,6 +3,8 @@
 import calendar
 import logging
 from datetime import date, datetime
+
+from openpyxl import Workbook
  
 from config import get_queries_excel
 from core.python.db import get_pool

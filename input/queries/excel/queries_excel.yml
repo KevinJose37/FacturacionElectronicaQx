@@ -4,15 +4,25 @@
 
 exportacion:
   generar_reporte: >
-    SELECT id_factura, cufe, denominacion, 
-           prefijo_facturacion, numero_factura, id_tercero_emisor, razon_social_emisor, 
-           id_tercero_adquiriente, razon_social_adquiriente, id_autorizacion, 
-           fecha_generacion, fecha_expedicion, fecha_vencimiento, codigo_moneda, 
-           valor_total, hash_firma_digital, contenido_qr, adjunto_id, 
-           id_estado_proceso, fecha_creacion, fecha_actualizacion
-    FROM facturacion.factura
-    WHERE fecha_generacion::date BETWEEN %s AND %s
-    ORDER BY fecha_creacion DESC
+    SELECT 
+        fc.fecha_admision_proveedor,
+        fc.medio_recepcion,
+        fc.fecha_entrega_contabilidad,
+        fc.nombre_recibe_contabilidad,
+        fc.nombre_proveedor,
+        fc.nit_proveedor,
+        fc.numero_factura,
+        fc.forma_pago,
+        fc.acuso_recibido,
+        fc.recibido_bien_servicio,
+        fc.aceptacion_empresa,
+        fc.recibido,
+        fc.observaciones_entrega,
+        fc.eventos_dian_notif
+    FROM facturacion.factura f
+    JOIN facturacion.factura_control fc ON f.id_factura = fc.id_factura
+    WHERE f.fecha_generacion::date BETWEEN %s AND %s
+    ORDER BY f.fecha_creacion DESC
 
   contar_facturas_rango: >
     SELECT COUNT(*) FROM facturacion.factura 

@@ -2,11 +2,18 @@
 
 Define tipos de documento, estados de factura y criterios de ordenamiento
 utilizados en servicios y herramientas del chatbot.
+
+Esquema actual — TIPO_ESTADO_PROCESO:
+  1=PENDIENTE, 2=EN_PROCESO, 3=PROCESADO, 4=ERROR, 5=FALLIDO
+
+Tipo documento — TIPO_DOCUMENTO_DIAN (códigos):
+  01=FE Venta, 02=FE Exportación, 03=Instrumento, 04=FE tipo 04,
+  91=Nota Crédito, 92=Nota Débito, 96=Eventos
 """
 
 
 class TiposDocumento:
-    """Mapeo de códigos de tipo de documento a nombres legibles."""
+    """Mapeo de códigos de tipo de documento DIAN a nombres legibles."""
 
     FE = 'Factura electrónica'
     """Factura electrónica de venta. Usado en dashboard y chat tools."""
@@ -20,23 +27,41 @@ class TiposDocumento:
     DS = 'Documento soporte'
     """Documento soporte en adquisiciones. Usado en dashboard y chat tools."""
 
-    mapa = {'FE': FE, 'NC': NC, 'ND': ND, 'DS': DS}
+    # Mapeo código DIAN → nombre legible
+    mapa = {
+        '01': FE,
+        '02': 'Factura electrónica (exportación)',
+        '03': 'Instrumento electrónico',
+        '04': FE,
+        '91': NC,
+        '92': ND,
+        '96': 'Eventos (ApplicationResponse)',
+        # Compatibilidad con códigos antiguos
+        'FE': FE,
+        'NC': NC,
+        'ND': ND,
+        'DS': DS,
+    }
     """Diccionario código → nombre legible. Usado en chat/tools.py y dashboard_service.py."""
 
 
 class EstadosFactura:
-    """Mapeo de estados de factura a IDs de proceso en TIPO_ESTADO_PROCESO."""
+    """Mapeo de estados de factura a IDs de TIPO_ESTADO_PROCESO.
 
-    validada = (7, 9)
-    """IDs de estado para facturas validadas (VALIDADO_DIAN, PERSISTIDO)."""
+    Estados actuales:
+        1=PENDIENTE, 2=EN_PROCESO, 3=PROCESADO, 4=ERROR, 5=FALLIDO
+    """
 
-    rechazada = (8, 10)
-    """IDs de estado para facturas rechazadas (RECHAZADO_DIAN, ERROR)."""
+    validada = (3,)
+    """IDs de estado para facturas procesadas/validadas."""
 
-    pendiente = (5, 6)
-    """IDs de estado para facturas pendientes (XML_EXTRAIDO, FACTURA_PARSED)."""
+    rechazada = (4, 5)
+    """IDs de estado para facturas con error o fallidas."""
 
-    error = (10,)
+    pendiente = (1, 2)
+    """IDs de estado para facturas pendientes o en proceso."""
+
+    error = (4, 5)
     """IDs de estado para facturas con error."""
 
     mapa_ids = {
@@ -48,17 +73,20 @@ class EstadosFactura:
     """Mapeo nombre → tupla de IDs. Usado en chat/tools.py y facturas_service.py para filtros SQL."""
 
     mapa_texto = {
-        7: 'validada', 8: 'rechazada', 9: 'validada',
-        10: 'error', 5: 'pendiente', 6: 'pendiente',
+        1: 'pendiente',
+        2: 'pendiente',
+        3: 'validada',
+        4: 'rechazada',
+        5: 'error',
     }
     """Mapeo ID → texto de estado. Usado en facturas_service.py para la respuesta de la API."""
 
     mapa_descripcion = {
-        'Validado por DIAN': 'validada',
-        'Rechazado por DIAN': 'rechazada',
-        'Error en el proceso': 'error',
-        'Persistido en BD': 'validada',
-        'XML parseado': 'pendiente',
+        'Pendiente de procesamiento': 'pendiente',
+        'En proceso de ingesta': 'pendiente',
+        'Procesado de ingesta': 'validada',
+        'Estado de error en el procesamiento': 'rechazada',
+        'Estado de fallo definitivo (agotó reintentos)': 'error',
     }
     """Mapeo descripción BD → estado normalizado. Usado en dashboard_service.py para últimas facturas."""
 

@@ -55,7 +55,7 @@ async def listar_proveedores() -> list:
             estado = 'blocked'
 
         resultado.append({
-            'name': r[1] or r[2] or DefaultTextos.sin_nombre,
+            'name': r[1] or DefaultTextos.sin_nombre,
             'cuit': r[0],
             'invoices': total,
             'validRate': tasa,

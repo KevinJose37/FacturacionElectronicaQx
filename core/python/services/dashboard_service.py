@@ -172,6 +172,7 @@ async def obtener_ultimas_facturas(limite: int = 8) -> list:
             'type': DefaultTextos.factura_electronica,
             'status': estado,
             'date': r[3].strftime(DefaultTextos.formato_fecha_corto) if r[3] else '',
+            'amount': float(r[4]) if r[4] else 0,
             'time': '1.2s',
         })
     return resultado
@@ -195,10 +196,14 @@ async def obtener_actividad_reciente(limite: int = 8) -> list:
     ahora = datetime.now(tz=timezone.utc)
     resultado = []
     for r in filas:
-        fecha_log = r[2].replace(tzinfo=timezone.utc) if r[2].tzinfo is None else r[2]
-        delta = ahora - fecha_log
-        minutos = int(delta.total_seconds() / 60)
-        tiempo_texto = FormatoTiempo.desde_minutos(minutos)
+        # r[0]=etapa(descripcion), r[1]=detalle_error(nullable), r[2]=fecha_inicio
+        fecha_log = r[2].replace(tzinfo=timezone.utc) if r[2] and r[2].tzinfo is None else r[2]
+        if fecha_log:
+            delta = ahora - fecha_log
+            minutos = int(delta.total_seconds() / 60)
+            tiempo_texto = FormatoTiempo.desde_minutos(minutos)
+        else:
+            tiempo_texto = FormatoTiempo.nunca
 
         if r[1]:
             tipo = MensajesLog.nivel_error
@@ -237,7 +242,7 @@ async def obtener_tipos_documento() -> list:
 async def obtener_heatmap_errores(dias: int = 7) -> list:
     """Genera datos para el heatmap de errores por día de la semana y hora.
 
-    Cuenta registros en log_proceso donde detalle_error IS NOT NULL,
+    Cuenta registros en proceso_ingesta donde id_error IS NOT NULL,
     agrupados por día de la semana (0=Lun..6=Dom) y hora del día.
 
     Args:
@@ -291,7 +296,7 @@ async def obtener_indicadores_pipeline() -> dict:
 async def obtener_eventos_por_minuto(ventana_minutos: int = 10) -> dict:
     """Calcula eventos procesados por minuto y porcentaje de capacidad.
 
-    Cuenta registros en log_proceso dentro de una ventana de tiempo
+    Cuenta registros en proceso_ingesta dentro de una ventana de tiempo
     y calcula la tasa por minuto.
 
     Args:

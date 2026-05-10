@@ -26,7 +26,8 @@ async def listar_rechazos() -> list:
 
     resultado = []
     for r in filas:
-        severidad = 'high' if r[5] == 10 else 'medium'
+        # r[5]=id_estado_proceso: 5=FALLIDO → high, 4=ERROR → medium
+        severidad = 'high' if r[5] == 5 else 'medium'
         resultado.append({
             'id': r[0],
             'provider': r[1] or DefaultTextos.sin_nombre,

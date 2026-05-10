@@ -29,9 +29,8 @@ exportacion:
     WHERE fecha_generacion::date BETWEEN %s AND %s
 
   listar_facturas_paginado: >
-    SELECT f.id_factura, f.numero_factura, t.razon_social_emisor, f.valor_total, f.fecha_generacion
+    SELECT f.id_factura, f.numero_factura, f.razon_social_emisor, f.valor_total, f.fecha_generacion
     FROM facturacion.factura f
-    JOIN facturacion.tercero t ON f.id_tercero_emisor = t.id_tercero
     WHERE f.fecha_generacion::date BETWEEN %s AND %s
     ORDER BY f.fecha_creacion DESC
     LIMIT %s OFFSET %s

@@ -830,7 +830,7 @@ class EmailListener:
                             conn.uid("store", uid, "+FLAGS", "\\Seen")
                             return False
 
-                            # 5g. Publicar eventos en cola
+                        # 5g. Publicar eventos en cola
                         for res in todos_resultados:
                             if res.get("pdf_huerfano"):
                                 evento = {
@@ -856,6 +856,7 @@ class EmailListener:
                                 }
                             self._publisher.publish(evento, db_conn=conn_db)
 
+                        conn_db.commit()
                         conn.uid("store", uid, "+FLAGS", "\\Seen")
                         logger.debug(
                             "Correo procesado: %s | %d facturas encoladas",

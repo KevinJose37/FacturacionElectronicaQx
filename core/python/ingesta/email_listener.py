@@ -225,7 +225,15 @@ class EmailListener:
                 continue
 
             # Subir a S3
-            subir_archivo_s3(adj_zip.ruta, uri_zip)
+            if not subir_archivo_s3(adj_zip.ruta, uri_zip):
+                self._repository.crear_proceso_ingesta(
+                    conn=conn_db, adjunto_id=id_adjunto_zip,
+                    id_proceso=IdTipoProceso.descarga_almacenamiento,
+                    observacion="Error al subir ZIP a S3.",
+                    id_estado=IdEstadoProceso.error,
+                    id_error=IdTipoError.fallo_subida_s3
+                )
+                continue
 
             if not validacion.es_valido or not validacion.pares:
                 self._alert_manager.adjunto_incompleto(
@@ -263,8 +271,16 @@ class EmailListener:
                                 fecha_envio=fecha_envio,
                             )
                             if id_sub_zip != -1:
-                                subir_archivo_s3(par.zip_origen, uri_sub_zip)
-                                zips_anidados_ids[sub_zip_key] = id_sub_zip
+                                if subir_archivo_s3(par.zip_origen, uri_sub_zip):
+                                    zips_anidados_ids[sub_zip_key] = id_sub_zip
+                                else:
+                                    self._repository.crear_proceso_ingesta(
+                                        conn=conn_db, adjunto_id=id_sub_zip,
+                                        id_proceso=IdTipoProceso.descarga_almacenamiento,
+                                        observacion="Error al subir sub-ZIP a S3.",
+                                        id_estado=IdEstadoProceso.error,
+                                        id_error=IdTipoError.fallo_subida_s3
+                                    )
 
             # Procesar cada par XML+PDF
             for par in validacion.pares:
@@ -390,7 +406,16 @@ class EmailListener:
             return None
 
         # Subir a S3
-        subir_archivo_s3(pdf_path, uri_pdf)
+        exito_s3 = subir_archivo_s3(pdf_path, uri_pdf)
+        if not exito_s3:
+            self._repository.crear_proceso_ingesta(
+                conn=conn_db, adjunto_id=id_adjunto_pdf,
+                id_proceso=IdTipoProceso.descarga_almacenamiento,
+                observacion="Error al subir PDF huérfano a S3.",
+                id_estado=IdEstadoProceso.error,
+                id_error=IdTipoError.fallo_subida_s3
+            )
+            return None
 
         # 3. Crear EVENTO_INGESTA
         self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_adjunto_pdf)
@@ -494,7 +519,17 @@ class EmailListener:
             return None
 
         # Subir XML Padre a S3
-        subir_archivo_s3(par.xml_path, uri_xml)
+        exito_xml = subir_archivo_s3(par.xml_path, uri_xml)
+        
+        if not exito_xml:
+            self._repository.crear_proceso_ingesta(
+                conn=conn_db, adjunto_id=id_adjunto_xml,
+                id_proceso=IdTipoProceso.descarga_almacenamiento,
+                observacion="Error al subir XML a S3.",
+                id_estado=IdEstadoProceso.error,
+                id_error=IdTipoError.fallo_subida_s3
+            )
+            return None
 
         id_adjunto_pdf = None
         uri_pdf = None
@@ -505,10 +540,23 @@ class EmailListener:
                 archivo_seguro=True, fecha_envio=fecha_envio,
             )
             if id_adjunto_pdf != -1:
-                subir_archivo_s3(par.pdf_path, uri_pdf)
-                # Crear EVENTO_INGESTA para el PDF: permite que invoice_processor
-                # lo incluya en la familia y ejecute la verificación gráfica LLM.
-                self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_adjunto_pdf)
+                exito_pdf = subir_archivo_s3(par.pdf_path, uri_pdf)
+                if exito_pdf:
+                    # Crear EVENTO_INGESTA para el PDF: permite que invoice_processor
+                    # lo incluya en la familia y ejecute la verificación gráfica LLM.
+                    self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_adjunto_pdf)
+                else:
+                    self._repository.crear_proceso_ingesta(
+                        conn=conn_db, adjunto_id=id_adjunto_pdf,
+                        id_proceso=IdTipoProceso.descarga_almacenamiento,
+                        observacion="Error al subir PDF a S3.",
+                        id_estado=IdEstadoProceso.error,
+                        id_error=IdTipoError.fallo_subida_s3
+                    )
+                    # Si el PDF falla, marcamos como faltante para el flujo principal
+                    uri_pdf = None
+                    par.pdf_path = None
+                    par.pdf_faltante = True
 
         # 4. Crear evento de ingesta para XML padre
         self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_adjunto_xml)
@@ -527,8 +575,16 @@ class EmailListener:
                         archivo_seguro=True, fecha_envio=fecha_envio,
                     )
                     if id_embebido != -1:
-                        subir_archivo_s3(tmp_path, uri_embebido)
-                        self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_embebido)
+                        if subir_archivo_s3(tmp_path, uri_embebido):
+                            self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_embebido)
+                        else:
+                            self._repository.crear_proceso_ingesta(
+                                conn=conn_db, adjunto_id=id_embebido,
+                                id_proceso=IdTipoProceso.descarga_almacenamiento,
+                                observacion=f"Error al subir XML embebido ({tipo}) a S3.",
+                                id_estado=IdEstadoProceso.error,
+                                id_error=IdTipoError.fallo_subida_s3
+                            )
         else:
             logger.warning('No se extrajeron XMLs embebidos de %s: %s', par.xml_path.name, contenidos_xml)
 

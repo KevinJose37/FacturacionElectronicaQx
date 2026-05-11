@@ -9,7 +9,7 @@ from core import EmailListener
 
 from core.python.facturas.invoice_processor import InvoiceProcessor
 
-router = APIRouter(prefix='/webhook', tags=['webhook'])
+router = APIRouter(prefix='/api/webhook', tags=['webhook'])
 
 logger = logging.getLogger(__name__)
 

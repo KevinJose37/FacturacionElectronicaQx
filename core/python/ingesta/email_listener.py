@@ -111,10 +111,10 @@ class EmailListener:
                 time.sleep(self.backoff_base**intento)
 
     def _obtener_uids(self, conn: imaplib.IMAP4_SSL) -> list:
-        """Obtiene UIDs de correos no leídos."""
-        status, data = conn.uid("search", None, "UNSEEN")
+        """Obtiene UIDs de todos los correos en la bandeja."""
+        status, data = conn.uid("search", None, "ALL")
         uids = data[0].split() if status == "OK" else []
-        logger.info("Correos no leídos encontrados: %d", len(uids))
+        logger.info("Correos encontrados en la bandeja: %d", len(uids))
         return uids
 
     def _extraer_id_mensaje(self, msg: _email.message.Message) -> str:

@@ -75,7 +75,6 @@ services:
   # ── Worker de Cola ──
   worker:
     build: .
-    container_name: facturacion_worker
     restart: unless-stopped
     depends_on:
       database:
@@ -99,8 +98,7 @@ services:
     volumes:
       - ./input/credentials:/app/input/credentials:ro
       - ./input/credentials/s3_connection.yml:/app/input/credentials/s3_connection.yml:ro
-    command: ["python", "-m", "core.python.ingesta.queue_worker"]
-
+    command: [ "python", "-m", "core.python.ingesta.queue_worker" ]
   # ── Frontend (se clona y construye desde GitHub automáticamente) ──
   frontend:
     build:

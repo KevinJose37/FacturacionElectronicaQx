@@ -108,14 +108,14 @@ class QueueWorker:
 
     def recover_stuck_jobs(self, conn):
         """Resetea jobs que quedaron atascados en EN_PROCESO."""
-        query = """
+        query = f"""
         UPDATE FACTURACION.EVENTO_INGESTA
         SET ID_ESTADO = %(estado_pendiente)s,
             WORKER_ID = NULL,
             FECHA_ACTUALIZACION = NOW()
         WHERE ID_ESTADO = %(estado_en_proceso)s
-          AND FECHA_ACTUALIZACION < NOW() - INTERVAL '%s minutes';
-        """ % QueueWorkerConfig.stuck_job_timeout_minutes
+          AND FECHA_ACTUALIZACION < NOW() - INTERVAL '{QueueWorkerConfig.stuck_job_timeout_minutes} minutes';
+        """
         
         with conn.cursor() as cur:
             cur.execute(query, {

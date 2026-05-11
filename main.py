@@ -70,7 +70,9 @@ app.add_middleware(
 # Centralizamos todas las rutas bajo el prefijo /api
 api_router = APIRouter(prefix="/api")
 
-api_router.include_router(ingesta.router)
+# Registramos el webhook directamente en la app para que la ruta sea /webhook/gmail y no /api/webhook/gmail
+app.include_router(ingesta.router)
+
 api_router.include_router(dashboard.router)
 api_router.include_router(facturas.router)
 api_router.include_router(proveedores.router)

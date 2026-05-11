@@ -110,6 +110,10 @@ class FacturaFilter:
 
         asunto_lower = asunto.lower()
 
+        # EXCLUSIÓN: No procesar correos de rechazo para evitar bucles
+        if "rechazo" in asunto_lower:
+            return False
+
         # 2. Criterio de Palabras Clave
         for kw in self.keywords:
             if kw in asunto_lower:

@@ -6,8 +6,8 @@ from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
 
 from config import get_config
 from core import EmailListener
-
-from core.python.facturas.invoice_processor import InvoiceProcessor
+from core.python.db.connection import get_pool
+from metadata.db_metadata import IdEstadoProceso
 
 router = APIRouter(prefix='/webhook', tags=['webhook'])
 
@@ -17,17 +17,10 @@ _WEBHOOK_SECRET = get_config('WEBHOOK_SECRET', '')
 
 
 def _run_ingesta() -> None:
-    """Ejecuta el listener de correos y luego procesa las facturas pendientes."""
+    """Ejecuta el listener de correos. Los workers procesan las facturas."""
     try:
-        # 1. Ingesta: descargar de correo -> extraer ZIPs -> subir a S3 -> EVENTO_INGESTA
         EmailListener().run()
-        
-        # 2. Procesamiento: EVENTO_INGESTA -> Validaciones DIAN -> FACTURA
-        logger.info('Iniciando procesamiento de facturas pendientes...')
-        processor = InvoiceProcessor()
-        resultados = processor.procesar_pendientes()
-        logger.info('Procesamiento completado: %s', resultados)
-        
+        logger.info('Ingesta completada. Workers procesarán los eventos pendientes.')
     except Exception as e:
         logger.exception('Falla en background task de ingesta: %s', e)
 
@@ -52,3 +45,34 @@ async def gmail_webhook(
     background_tasks.add_task(_run_ingesta)
     respuesta = {'status': 'accepted'}
     return respuesta
+
+
+@router.get('/queue/status')
+async def queue_status() -> dict:
+    """Retorna el estado actual de la cola de trabajo."""
+    pool = get_pool()
+    try:
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute('''
+                    SELECT 
+                        COUNT(*) FILTER (WHERE ID_ESTADO = %s) as pendientes,
+                        COUNT(*) FILTER (WHERE ID_ESTADO = %s) as en_proceso,
+                        COUNT(*) FILTER (WHERE ID_ESTADO = %s AND FECHA_ACTUALIZACION > NOW() - INTERVAL '1 hour') as procesados_ultima_hora,
+                        COUNT(*) FILTER (WHERE ID_ESTADO = %s) as fallidos,
+                        ARRAY_AGG(DISTINCT WORKER_ID) FILTER (WHERE WORKER_ID IS NOT NULL AND ID_ESTADO = %s) as workers_activos
+                    FROM FACTURACION.EVENTO_INGESTA
+                ''', (IdEstadoProceso.pendiente, IdEstadoProceso.en_proceso, IdEstadoProceso.procesado, IdEstadoProceso.fallido, IdEstadoProceso.en_proceso))
+                row = await cur.fetchone()
+                
+        return {
+            'pendientes': row[0] or 0,
+            'en_proceso': row[1] or 0,
+            'procesados_ultima_hora': row[2] or 0,
+            'fallidos': row[3] or 0,
+            'workers_activos': row[4] or []
+        }
+    except Exception as e:
+        logger.error('Error consultando estado de la cola: %s', e)
+        return {'status': 'error'}
+

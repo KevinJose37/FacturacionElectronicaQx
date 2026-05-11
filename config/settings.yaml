@@ -22,6 +22,16 @@ queue:
   local_path: queue/events.json
 
 # ──────────────────────────────────────────────
+# Worker de cola de trabajo
+# ──────────────────────────────────────────────
+queue_worker:
+  poll_interval_seconds: 5       # Polling cuando no hay trabajo
+  max_backoff_seconds: 60        # Máximo backoff entre polls
+  stuck_job_timeout_minutes: 10  # Timeout para jobs atascados
+  batch_size: 10                 # Eventos por iteración
+  max_reintentos: 3              # Máximo reintentos antes de FALLIDO
+
+# ──────────────────────────────────────────────
 # Almacenamiento de adjuntos
 # ──────────────────────────────────────────────
 downloads:

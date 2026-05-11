@@ -57,71 +57,85 @@ class ExcelExporter:
                            size=self.styles["font_size"], 
                            bold=True, 
                            color=self.styles["header_font_color"])
-        thin_border = Border(left=Side(style='thin'), 
-                             right=Side(style='thin'), 
-                             top=Side(style='thin'), 
-                             bottom=Side(style='thin'))
+        
+        # Border styles
+        medium_side = Side(style='medium', color='000000')
+        thin_side = Side(style='thin', color='000000')
+        
+        thin_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
 
         # 1. Quipux SAS Header
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(self.columns))
-        cell_1 = ws.cell(row=1, column=1, value=self.config["company_name"])
+        cell_1 = ws.cell(row=1, column=1, value=self.config["company_name"].upper())
         cell_1.font = Font(name=self.styles["font_name"], size=12, bold=True)
         cell_1.alignment = Alignment(horizontal="center")
-        cell_1.border = thin_border
-        # Aplicar borde a las celdas combinadas de la fila 1
+        # Apply borders to Row 1
         for i in range(1, len(self.columns) + 1):
-            ws.cell(row=1, column=i).border = thin_border
+            cell = ws.cell(row=1, column=i)
+            # Special case for column 1, 2 and last
+            r_border = medium_side if i in (1, 2, len(self.columns)) else thin_side
+            l_border = medium_side if i == 1 else (medium_side if i in (2, 3) else thin_side)
+            # Simplifiying: User says: "borde derecho de la columna EVENTO DIAN ... y asi para la columna 1 y 2"
+            # And "cuadricula bordes de 1.0pt"
+            right_s = medium_side if i in (1, 2, len(self.columns)) else thin_side
+            left_s = medium_side if i == 1 else (medium_side if i in (2, 3) else thin_side) # If i=2, its left is i=1's right
+            cell.border = Border(left=thin_side, right=right_s, top=thin_side, bottom=thin_side)
 
         # 2. Title Header
         ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(self.columns))
-        title = self.config["report_title"].format(MONTH=month_name.upper(), YEAR=year)
+        title = self.config["report_title"].format(MONTH=month_name.upper(), YEAR=year).upper()
         cell_2 = ws.cell(row=2, column=1, value=title)
         cell_2.font = Font(name=self.styles["font_name"], size=11, bold=True)
         cell_2.alignment = Alignment(horizontal="center")
-        cell_2.border = thin_border
-        # Aplicar borde a las celdas combinadas de la fila 2
         for i in range(1, len(self.columns) + 1):
-            ws.cell(row=2, column=i).border = thin_border
+            cell = ws.cell(row=2, column=i)
+            right_s = medium_side if i in (1, 2, len(self.columns)) else thin_side
+            cell.border = Border(left=thin_side, right=right_s, top=thin_side, bottom=thin_side)
 
         # 3. Table Headers
-        header_fill = PatternFill(start_color=self.styles["header_bg_color"], 
-                                  end_color=self.styles["header_bg_color"], 
-                                  fill_type="solid")
-        header_font = Font(name=self.styles["font_name"], 
-                           size=self.styles["font_size"], 
-                           bold=True, 
-                           color=self.styles["header_font_color"])
-        thin_border = Border(left=Side(style='thin'), 
-                             right=Side(style='thin'), 
-                             top=Side(style='thin'), 
-                             bottom=Side(style='thin'))
-
         for i, col in enumerate(self.columns, 1):
             cell = ws.cell(row=3, column=i, value=col["label"])
             cell.fill = header_fill
             cell.font = header_font
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-            cell.border = thin_border
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            right_s = medium_side if i in (1, 2, len(self.columns)) else thin_side
+            cell.border = Border(left=thin_side, right=right_s, top=thin_side, bottom=thin_side)
 
         # 4. Data Rows
+        num_rows = len(data)
         for r_idx, row_data in enumerate(data, 4):
+            is_last_row = (r_idx == num_rows + 3)
             for c_idx, col in enumerate(self.columns, 1):
                 field = col["db_field"]
                 value = row_data.get(field)
 
-                # Transform boolean to 'X' for specific columns
+                # Transform boolean to 'X'
                 if field in ["acuso_recibido", "recibido_bien_servicio", "aceptacion_empresa", "recibido"]:
                     value = "X" if value is True else ""
                 
-                # Format dates if necessary
+                # Format dates
                 if isinstance(value, datetime):
-                    value = value.strftime("%Y-%m-%d")
+                    value = value.strftime("%d/%m/%Y")
                 elif value is None:
                     value = ""
                 
+                # Convert to uppercase string
+                value = str(value).upper()
+                
                 cell = ws.cell(row=r_idx, column=c_idx, value=value)
                 cell.font = Font(name=self.styles["font_name"], size=self.styles["font_size"])
-                cell.border = thin_border
-                cell.alignment = Alignment(vertical="center")
+                
+                # Borders
+                right_s = medium_side if c_idx in (1, 2, len(self.columns)) else thin_side
+                bottom_s = medium_side if is_last_row else thin_side
+                cell.border = Border(left=thin_side, right=right_s, top=thin_side, bottom=bottom_s)
+                
+                # Alignment
+                h_align = "left"
+                # c_idx 1: Fecha em, 3: Fecha ent, 5: NIT, 7: No. Factura
+                if c_idx in (1, 3, 5, 7):
+                    h_align = "right"
+                
+                cell.alignment = Alignment(horizontal=h_align, vertical="center")
 
         return wb

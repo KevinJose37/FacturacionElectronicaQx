@@ -53,22 +53,22 @@ async def obtener_kpis() -> list:
 
     valores = {
         'processed': {'value': str(procesadas_hoy), 'delta': delta_proc, 'spark': spark_base},
-        'validated': {'value': str(validadas), 'delta': 8.7, 'spark': spark_base[:]},
+        'validated': {'value': str(validadas), 'delta': 0.0, 'spark': [max(0, validadas - i) for i in range(12, 0, -1)]},
         'rejected': {
-            'value': str(rechazadas), 'delta': -3.2,
-            'spark': [max(1, rechazadas - i) for i in range(12, 0, -1)],
+            'value': str(rechazadas), 'delta': 0.0,
+            'spark': [max(0, rechazadas - i) for i in range(12, 0, -1)],
         },
         'time': {
-            'value': '1.8s', 'delta': -14.1,
-            'spark': [3.2, 3.0, 2.8, 2.6, 2.4, 2.3, 2.1, 2.0, 1.9, 1.85, 1.82, 1.8],
+            'value': '0.0s', 'delta': 0.0,
+            'spark': [0.0] * 12,
         },
         'auto': {
-            'value': f'{pct_auto}%', 'delta': 2.1,
-            'spark': [max(80, pct_auto - i * 0.5) for i in range(12, 0, -1)],
+            'value': f'{pct_auto}%', 'delta': 0.0,
+            'spark': [max(0, pct_auto - i * 0.5) for i in range(12, 0, -1)],
         },
         'providers': {
-            'value': str(proveedores), 'delta': 4.9,
-            'spark': [max(1, proveedores - i) for i in range(12, 0, -1)],
+            'value': str(proveedores), 'delta': 0.0,
+            'spark': [max(0, proveedores - i) for i in range(12, 0, -1)],
         },
     }
 

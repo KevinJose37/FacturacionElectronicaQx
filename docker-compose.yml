@@ -59,7 +59,7 @@ services:
       - RUTA_CA_CONFIABLE_XML_DSIG=input/credentials/ca_bundle.pem
       - CLAMAV_HOST=clamav
       - CLAMAV_PORT=3310
-      - LOG_LEVEL=WARNING
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - PYTHONUNBUFFERED=1
     volumes:
       - ./input/credentials:/app/input/credentials:ro

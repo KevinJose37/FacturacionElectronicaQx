@@ -426,7 +426,7 @@ CREATE TABLE FACTURACION.USUARIO (
 
 -- Usuario administrador por defecto (password: 'admin123' bcrypt hash)
 INSERT INTO FACTURACION.USUARIO (CORREO, HASH_CONTRASENA, NOMBRE_COMPLETO, ROL)
-VALUES ('admin@quipux.com', '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', 'Administrador Quipux', 'admin')
+VALUES ('admin@quipux.com', '$2b$12$/RGL6lIyyHew007hL3LkE.o5XPk..8tRtXHaHENs1/CYBnGOKcbve', 'Administrador Quipux', 'admin')
 ON CONFLICT DO NOTHING;
 
 CREATE TABLE FACTURACION.TERCERO (

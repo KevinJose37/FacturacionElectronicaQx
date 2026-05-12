@@ -152,22 +152,17 @@ class QueueWorker:
                         # 1. Reclamar jobs
                         conn.execute("BEGIN;")
                         jobs = self.claim_jobs(conn)
-                        conn.commit()  # Hacer commit para asegurar el lock a otros workers
+                        conn.commit()
                         
                         if not jobs:
-                            # 2. Esperar nuevos jobs vía LISTEN/NOTIFY o polling timeout
+                            # 2. Esperar nuevos jobs de forma bloqueante ligera
+                            # LISTEN/NOTIFY es el trigger primario, sleep es el fail-safe
                             conn.execute("LISTEN factura_nueva;")
                             conn.commit()
                             
-                            # Generadores en psycopg3
-                            gen = conn.notifies()
-                            try:
-                                # Esperar hasta el poll_interval
-                                for notify in gen:
-                                    logger.debug("Notificación recibida: %s", notify.channel)
-                                    break # Salir para reclamar
-                            except StopIteration:
-                                pass # Timeout, continue to poll
+                            # Esperar notificación o timeout (fail-safe cada 10 segs)
+                            if conn.wait(timeout=10.0):
+                                logger.debug("Notificación de DB recibida.")
                             
                             conn.execute("UNLISTEN factura_nueva;")
                             conn.commit()

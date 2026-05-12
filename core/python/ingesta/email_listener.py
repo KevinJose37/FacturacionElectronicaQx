@@ -111,24 +111,12 @@ class EmailListener:
                 time.sleep(self.backoff_base**intento)
 
     def _obtener_uids(self, conn: imaplib.IMAP4_SSL) -> list:
-        """Obtiene UIDs de correos de forma agnóstica al volumen (Híbrido Estado + Tiempo)."""
-        from datetime import timedelta
+        """Obtiene UIDs de correos no leídos."""
+        status, data = conn.uid("search", None, "UNSEEN")
+        uids = data[0].split() if status == "OK" else []
+        logger.info("Correos no leídos encontrados: %d", len(uids))
+        return uids
 
-        status_unseen, data_unseen = conn.uid("search", None, "UNSEEN")
-        unseen_uids = data_unseen[0].split() if status_unseen == "OK" and data_unseen[0].strip() else []
-        
-        fecha_desde = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%d-%b-%Y")
-        status_time, data_time = conn.uid("search", None, f'SINCE "{fecha_desde}"')
-        time_uids = data_time[0].split() if status_time == "OK" and data_time[0].strip() else []
-        
-        uids_unicos = {int(u) for u in (unseen_uids + time_uids) if u.strip()}
-        total_uids = [str(u).encode() for u in sorted(list(uids_unicos))]
-        
-        logger.info(
-            "Buzón: %d no leídos. Ventana 24h: %d. Total a verificar contra BD: %d", 
-            len(unseen_uids), len(time_uids), len(total_uids)
-        )
-        return total_uids
 
 
     def _extraer_id_mensaje(self, msg: _email.message.Message) -> str:
@@ -310,18 +298,17 @@ class EmailListener:
                 if resultado:
                     resultados.append(resultado)
 
-            # Procesar PDFs huérfanos
-            for pdf_huerfano in validacion.pdfs_huerfanos:
-                resultado_huerfano = self._registrar_pdf_huerfano(
-                    pdf_path=pdf_huerfano,
-                    conn_db=conn_db,
-                    id_correo=id_correo,
-                    id_adjunto_padre=zips_anidados_ids.get(str(validacion.pares[0].zip_origen if validacion.pares else adj_zip.ruta), id_adjunto_zip),
-                    fecha_envio=fecha_envio,
-                    id_mensaje=id_mensaje,
-                )
-                if resultado_huerfano:
-                    resultados.append(resultado_huerfano)
+        for pdf_huerfano in validacion.pdfs_huerfanos:
+            resultado_huerfano = self._registrar_pdf_huerfano(
+                pdf_path=pdf_huerfano,
+                conn_db=conn_db,
+                id_correo=id_correo,
+                id_adjunto_padre=zips_anidados_ids.get(str(validacion.pares[0].zip_origen if validacion.pares else adj_zip.ruta), id_adjunto_zip),
+                fecha_envio=fecha_envio,
+                id_mensaje=id_mensaje,
+            )
+            if resultado_huerfano:
+                resultados.append(resultado_huerfano)
 
         return resultados
 
@@ -712,39 +699,14 @@ class EmailListener:
                             id_origen=self.id_origen,
                         )
                         if not es_correo_nuevo:
-                            # El correo ya está en BD. Verificar si fue procesado
-                            # completamente (tiene adjuntos exitosos) o si falló a
-                            # mitad de camino (ej: ClamAV caído → sin adjuntos).
-                            tiene_adjuntos = (
-                                id_correo
-                                and self._repository.correo_tiene_adjuntos_exitosos(
-                                    conn_db, id_correo
-                                )
+                            # El correo ya está en BD. Marcar como leído en IMAP y saltar.
+                            # No re-procesamos para evitar bucles de rechazo o duplicados.
+                            logger.info(
+                                "Correo ya existe en BD (ID=%s): %s. Saltando.",
+                                id_correo, id_mensaje,
                             )
-                            if tiene_adjuntos:
-                                # Duplicado real: correo ya procesado exitosamente.
-                                self._repository.crear_proceso_ingesta(
-                                    conn=conn_db,
-                                    id_proceso=IdTipoProceso.filtro_recepcion,
-                                    observacion="Correo duplicado: ya fue registrado y procesado anteriormente.",
-                                    id_estado=IdEstadoProceso.procesado,
-                                    correo_id=id_correo,
-                                )
-                                conn_db.commit()
-                                logger.info(
-                                    "Correo ya procesado (ID=%s): %s. Marcando como leído.",
-                                    id_correo, id_mensaje,
-                                )
-                                conn.uid("store", uid, "+FLAGS", "\\Seen")
-                                return True
-                            else:
-                                # Correo en BD pero sin adjuntos exitosos → falló antes.
-                                # Continuar con el procesamiento normal (reintento).
-                                logger.info(
-                                    "Correo ya en BD (ID=%s) pero sin adjuntos exitosos "
-                                    "(posible fallo previo). Reintentando procesamiento.",
-                                    id_correo,
-                                )
+                            conn.uid("store", uid, "+FLAGS", "\\Seen")
+                            return True
 
                         # 5b. Aplicar filtro de facturación
                         resultado_filtro = filtro.evaluar(parsed, tiene_adjuntos_factura, remitente)

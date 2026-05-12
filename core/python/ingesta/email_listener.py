@@ -643,8 +643,8 @@ class EmailListener:
                 self._validator.temp_root = Path(temp_dir_str)
                 
                 try:
-                    # 1. FETCH del correo sin marcarlo como leído (PEEK)
-                    status, data = conn.uid("fetch", uid, "(BODY.PEEK[])")
+                    # 1. FETCH del correo y marcarlo como leído inmediatamente para evitar procesamientos concurrentes
+                    status, data = conn.uid("fetch", uid, "(BODY[])")
                     if status != "OK" or not data:
                         logger.error("No se pudo obtener correo UID=%s", uid)
                         return False

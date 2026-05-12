@@ -26,8 +26,6 @@ def _run_ingesta() -> None:
 
 
 @router.post('/webhook/gmail')
-@router.post('/api/webhook')
-@router.post('/api/webhook/')
 async def gmail_webhook(
     background_tasks: BackgroundTasks,
     x_webhook_secret: str = Header(None),
@@ -50,7 +48,6 @@ async def gmail_webhook(
 
 
 @router.get('/webhook/queue/status')
-@router.get('/api/webhook/queue/status')
 async def queue_status() -> dict:
     """Retorna el estado actual de la cola de trabajo."""
     pool = get_pool()

@@ -111,13 +111,10 @@ class EmailListener:
                 time.sleep(self.backoff_base**intento)
 
     def _obtener_uids(self, conn: imaplib.IMAP4_SSL) -> list:
-        """Obtiene UIDs de los correos recientes (últimos 2 días), sean leídos o no."""
-        from datetime import timedelta
-        fecha_desde = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%d-%b-%Y")
-        
-        status, data = conn.uid("search", None, f'(SINCE "{fecha_desde}")')
+        """Obtiene UIDs de correos no leídos."""
+        status, data = conn.uid("search", None, "UNSEEN")
         uids = data[0].split() if status == "OK" else []
-        logger.info("Correos recientes encontrados (desde %s): %d", fecha_desde, len(uids))
+        logger.info("Correos no leídos encontrados: %d", len(uids))
         return uids
 
     def _extraer_id_mensaje(self, msg: _email.message.Message) -> str:

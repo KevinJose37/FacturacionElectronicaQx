@@ -26,6 +26,7 @@ def _run_ingesta() -> None:
 
 
 @router.post('/webhook/gmail')
+@router.post('/api/webhook/')
 async def gmail_webhook(
     background_tasks: BackgroundTasks,
     x_webhook_secret: str = Header(None),

@@ -115,13 +115,13 @@ class EmailListener:
         from datetime import timedelta
 
         status_unseen, data_unseen = conn.uid("search", None, "UNSEEN")
-        unseen_uids = data_unseen[0].split() if status_unseen == "OK" else []
+        unseen_uids = data_unseen[0].split() if status_unseen == "OK" and data_unseen[0].strip() else []
         
         fecha_desde = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%d-%b-%Y")
         status_time, data_time = conn.uid("search", None, f'SINCE "{fecha_desde}"')
-        time_uids = data_time[0].split() if status_time == "OK" else []
+        time_uids = data_time[0].split() if status_time == "OK" and data_time[0].strip() else []
         
-        uids_unicos = {int(u) for u in (unseen_uids + time_uids)}
+        uids_unicos = {int(u) for u in (unseen_uids + time_uids) if u.strip()}
         total_uids = [str(u).encode() for u in sorted(list(uids_unicos))]
         
         logger.info(

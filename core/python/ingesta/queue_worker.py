@@ -2,6 +2,7 @@
 
 import logging
 import os
+import select
 import signal
 import socket
 import time
@@ -160,8 +161,14 @@ class QueueWorker:
                             conn.execute("LISTEN factura_nueva;")
                             conn.commit()
                             
-                            # Esperar notificación o timeout (fail-safe cada 10 segs)
-                            if conn.wait(timeout=10.0):
+                            # Esperar notificación o timeout usando select (fail-safe cada 10 segs)
+                            # Esto es eficiente y no consume CPU
+                            if select.select([conn.pgconn.socket], [], [], 10.0) == ([], [], []):
+                                logger.debug("Timeout de espera de notificación (10s).")
+                            else:
+                                # Hay actividad en el socket, procesar notificaciones
+                                # Esto hace que psycopg lea las notificaciones del buffer
+                                conn.pgconn.consume_input()
                                 logger.debug("Notificación de DB recibida.")
                             
                             conn.execute("UNLISTEN factura_nueva;")

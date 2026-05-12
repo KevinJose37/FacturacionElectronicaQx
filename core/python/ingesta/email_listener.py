@@ -111,11 +111,25 @@ class EmailListener:
                 time.sleep(self.backoff_base**intento)
 
     def _obtener_uids(self, conn: imaplib.IMAP4_SSL) -> list:
-        """Obtiene UIDs de correos no leídos."""
-        status, data = conn.uid("search", None, "UNSEEN")
-        uids = data[0].split() if status == "OK" else []
-        logger.info("Correos no leídos encontrados: %d", len(uids))
-        return uids
+        """Obtiene UIDs de correos de forma agnóstica al volumen (Híbrido Estado + Tiempo)."""
+        from datetime import timedelta
+
+        status_unseen, data_unseen = conn.uid("search", None, "UNSEEN")
+        unseen_uids = data_unseen[0].split() if status_unseen == "OK" else []
+        
+        fecha_desde = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%d-%b-%Y")
+        status_time, data_time = conn.uid("search", None, f'SINCE "{fecha_desde}"')
+        time_uids = data_time[0].split() if status_time == "OK" else []
+        
+        uids_unicos = {int(u) for u in (unseen_uids + time_uids)}
+        total_uids = [str(u).encode() for u in sorted(list(uids_unicos))]
+        
+        logger.info(
+            "Buzón: %d no leídos. Ventana 24h: %d. Total a verificar contra BD: %d", 
+            len(unseen_uids), len(time_uids), len(total_uids)
+        )
+        return total_uids
+
 
     def _extraer_id_mensaje(self, msg: _email.message.Message) -> str:
         """Extrae el Message-ID del correo."""

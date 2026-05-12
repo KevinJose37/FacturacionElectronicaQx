@@ -111,10 +111,38 @@ class EmailListener:
                 time.sleep(self.backoff_base**intento)
 
     def _obtener_uids(self, conn: imaplib.IMAP4_SSL) -> list:
-        """Obtiene UIDs de correos no leídos."""
-        status, data = conn.uid("search", None, "UNSEEN")
-        uids = data[0].split() if status == "OK" else []
-        logger.info("Correos no leídos encontrados: %d", len(uids))
+        """Obtiene UIDs de correos pendientes usando Checkpointing por UID (Solución Industrial)."""
+        # 1. Refrescar estado de la carpeta
+        conn.select(self.carpeta)
+        
+        # 2. Obtener el último UID procesado desde nuestra base de datos
+        ultimo_uid = 0
+        with self._repository._get_connection() as db:
+            with db.cursor() as cur:
+                # Verificar si la columna existe antes de consultar
+                cur.execute("SELECT MAX(imap_uid) FROM FACTURACION.CORREO_ENTRANTE")
+                res = cur.fetchone()
+                if res and res[0]:
+                    ultimo_uid = int(res[0])
+        
+        # 3. Definir criterio de búsqueda: UIDs mayores al último procesado
+        if ultimo_uid > 0:
+            # Buscamos correos con UID mayor al último guardado
+            criterio = f"UID {ultimo_uid + 1}:*"
+            status, data = conn.uid("search", None, criterio)
+            uids = data[0].split() if status == "OK" else []
+            
+            # Filtro de seguridad: el rango * devuelve el último si no hay más nuevos,
+            # lo removemos si ya lo procesamos.
+            uids = [u for u in uids if int(u) > ultimo_uid]
+            
+            logger.info("Puntero UID=%d. Encontrados %d nuevos correos por rango UID.", ultimo_uid, len(uids))
+        else:
+            # Si no hay puntero (BD limpia), procesamos los UNSEEN para establecer el punto de partida
+            status, data = conn.uid("search", None, "UNSEEN")
+            uids = data[0].split() if status == "OK" else []
+            logger.info("Sin puntero previo. Iniciando con %d correos no leídos.", len(uids))
+            
         return uids
 
 
@@ -697,6 +725,7 @@ class EmailListener:
                             cuerpo_html=cuerpo_html,
                             contiene_adjuntos=tiene_adjuntos,
                             id_origen=self.id_origen,
+                            imap_uid=int(uid),
                         )
                         if not es_correo_nuevo:
                             # El correo ya está en BD. Marcar como leído en IMAP y saltar.

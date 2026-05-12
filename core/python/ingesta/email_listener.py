@@ -119,29 +119,34 @@ class EmailListener:
         ultimo_uid = 0
         with self._repository._get_connection() as db:
             with db.cursor() as cur:
-                # Verificar si la columna existe antes de consultar
                 cur.execute("SELECT MAX(imap_uid) FROM FACTURACION.CORREO_ENTRANTE")
                 res = cur.fetchone()
                 if res and res[0]:
                     ultimo_uid = int(res[0])
         
-        # 3. Definir criterio de búsqueda: UIDs mayores al último procesado
+        # 3. Definir criterio de búsqueda
         if ultimo_uid > 0:
-            # Buscamos correos con UID mayor al último guardado
+            # Escenario Normal: UIDs mayores al último procesado
             criterio = f"UID {ultimo_uid + 1}:*"
             status, data = conn.uid("search", None, criterio)
             uids = data[0].split() if status == "OK" else []
-            
-            # Filtro de seguridad: el rango * devuelve el último si no hay más nuevos,
-            # lo removemos si ya lo procesamos.
             uids = [u for u in uids if int(u) > ultimo_uid]
-            
-            logger.info("Puntero UID=%d. Encontrados %d nuevos correos por rango UID.", ultimo_uid, len(uids))
+            logger.info("Puntero UID=%d. Encontrados %d nuevos correos.", ultimo_uid, len(uids))
         else:
-            # Si no hay puntero (BD limpia), procesamos los UNSEEN para establecer el punto de partida
-            status, data = conn.uid("search", None, "UNSEEN")
-            uids = data[0].split() if status == "OK" else []
-            logger.info("Sin puntero previo. Iniciando con %d correos no leídos.", len(uids))
+            # Escenario de Arranque/BD Limpia: 
+            # Traemos los UNSEEN + los últimos dos correos (aunque estén leídos)
+            # para asegurar que no se pierda nada en la transición.
+            status_unseen, data_unseen = conn.uid("search", None, "UNSEEN")
+            unseen_uids = data_unseen[0].split() if status_unseen == "OK" else []
+            
+            status_all, data_all = conn.uid("search", None, "ALL")
+            all_uids = data_all[0].split() if status_all == "OK" else []
+            recent_all = all_uids[-2:] if all_uids else []
+            
+            # Combinar y ordenar
+            uids_set = {int(u) for u in (unseen_uids + recent_all)}
+            uids = [str(u).encode() for u in sorted(list(uids_set))]
+            logger.info("Arranque inicial: Verificando %d correos para establecer puntero.", len(uids))
             
         return uids
 
@@ -741,6 +746,10 @@ class EmailListener:
                         resultado_filtro = filtro.evaluar(parsed, tiene_adjuntos_factura, remitente)
 
                         if not resultado_filtro.es_factura:
+                            logger.warning(
+                                "Correo UID=%s (ID=%s) RECHAZADO por filtro: %s | Motivo: %s",
+                                uid.decode(), id_mensaje, asunto, resultado_filtro.motivo_rechazo
+                            )
                             motivo = resultado_filtro.motivo_rechazo
 
                             if motivo == "SIN_ADJUNTOS_FACTURA":

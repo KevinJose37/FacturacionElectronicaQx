@@ -22,7 +22,7 @@ def _run_ingesta() -> None:
         EmailListener().run()
         logger.info('Ingesta completada. Workers procesarán los eventos pendientes.')
     except Exception as e:
-        logger.exception('Falla en background task de ingesta: %s', e)
+        logger.exception('Falla crítica en background task de ingesta: %s', e)
 
 
 @router.post('/webhook/gmail')
@@ -40,10 +40,14 @@ async def gmail_webhook(
     Raises:
         HTTPException: Si el secreto es inválido o no está configurado.
     """
+    logger.info('Webhook de Gmail invocado. Validando secreto...')
     if not _WEBHOOK_SECRET or x_webhook_secret != _WEBHOOK_SECRET:
+        logger.warning('Webhook rechazado: Secreto inválido o no configurado.')
         raise HTTPException(status_code=403, detail='Unauthorized')
 
+    logger.info('Secreto validado. Encolando _run_ingesta en BackgroundTasks...')
     background_tasks.add_task(_run_ingesta)
+    logger.info('Tarea encolada. Retornando 200 OK.')
     respuesta = {'status': 'accepted'}
     return respuesta
 

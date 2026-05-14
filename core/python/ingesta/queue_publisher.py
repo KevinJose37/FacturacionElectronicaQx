@@ -108,6 +108,9 @@ class PostgresQueuePublisher(QueuePublisher):
                 enriched.get('event_type'),
                 enriched.get('id_adjunto_zip') or enriched.get('id_adjunto_xml'),
             )
+            if db_conn:
+                with db_conn.cursor() as cur:
+                    cur.execute("NOTIFY factura_nueva")
             return True
         except Exception as exc:
             logger.error('Error Postgres: %s', exc)

@@ -142,13 +142,11 @@ class EmailRepository:
         cuerpo_html: Optional[str] = None,
         contiene_adjuntos: bool = False,
         id_origen: int = 1,
+        imap_uid: Optional[int] = None,
     ) -> tuple[Optional[int], bool]:
         """Guarda un correo en CORREO_ENTRANTE (sin commit).
-
-        Returns:
-            Tupla ``(correo_id, es_nuevo)``:
-            - ``es_nuevo=True``  → correo recién insertado.
-            - ``es_nuevo=False`` → correo ya existía (ON CONFLICT).
+        
+        Incluye el IMAP UID para seguimiento de puntero.
         """
         if fecha_deteccion is None:
             fecha_deteccion = datetime.now(tz=timezone.utc)
@@ -159,10 +157,11 @@ class EmailRepository:
                 INSERT INTO FACTURACION.CORREO_ENTRANTE (
                     MESSAGE_ID, REMITENTE, ASUNTO,
                     FECHA_DETECCION, FECHA_ENVIO, CUERPO_TEXTO, CUERPO_HTML,
-                    CONTIENE_ADJUNTOS, ID_ORIGEN
+                    CONTIENE_ADJUNTOS, ID_ORIGEN, IMAP_UID
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (MESSAGE_ID) DO NOTHING
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (MESSAGE_ID) DO UPDATE SET
+                    IMAP_UID = COALESCE(EXCLUDED.IMAP_UID, FACTURACION.CORREO_ENTRANTE.IMAP_UID)
                 RETURNING CORREO_ID
                 """,
                 (
@@ -175,6 +174,7 @@ class EmailRepository:
                     cuerpo_html,
                     contiene_adjuntos,
                     id_origen,
+                    imap_uid,
                 ),
             )
             resultado = cur.fetchone()

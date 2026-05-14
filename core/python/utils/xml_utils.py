@@ -51,17 +51,24 @@ def extraer_xmls_embebidos(ruta_xml: Path) -> dict | str:
         )
         dian_nodes = root.xpath(xpath_dian, namespaces=ns)
 
-        if not factura_nodes:
-            resultado = 'No se encontró el XML de la factura embebido'
-        elif not dian_nodes:
-            resultado = 'No se encontró el XML de respuesta de la DIAN embebido'
-        else:
+        res_dict = {}
+        
+        if factura_nodes:
             xml_factura_str = factura_nodes[0].text
+            res_dict['invoice'] = xml_factura_str.strip().encode('utf-8')
+        else:
+            logger.warning('No se encontró el XML de la factura embebido en el AttachedDocument.')
+            
+        if dian_nodes:
             xml_dian_str = dian_nodes[0].text
-            resultado = {
-                'invoice': xml_factura_str.strip().encode('utf-8'),
-                'applicationresponse': xml_dian_str.strip().encode('utf-8')
-            }
+            res_dict['applicationresponse'] = xml_dian_str.strip().encode('utf-8')
+        else:
+            logger.warning('No se encontró el XML de respuesta de la DIAN embebido en el AttachedDocument.')
+            
+        if not res_dict:
+            resultado = 'No se encontraron XMLs embebidos (ni Invoice ni ApplicationResponse)'
+        else:
+            resultado = res_dict
     except Exception as e:
         resultado = f'Error al parsear XML: {str(e)}'
 

@@ -4,6 +4,8 @@ services:
     image: postgres:15-alpine
     container_name: facturacion_db
     restart: unless-stopped
+    networks:
+      - backend_net
     ports:
       - "${DB_EXTERNAL_PORT:-5433}:5432"
     environment:
@@ -19,26 +21,25 @@ services:
     image: clamav/clamav:latest
     container_name: facturacion_clamav
     restart: unless-stopped
+    networks:
+      - backend_net
     ports:
       - "3310:3310"
     healthcheck:
-      # Verificamos que el puerto 3310 responda vía TCP usando netcat (nc)
       test: [ "CMD", "nc", "-z", "localhost", "3310" ]
       interval: 15s
       timeout: 10s
       retries: 5
       start_period: 60s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   # ── Backend API ──
   api:
     build: .
     container_name: facturacion_api
     restart: unless-stopped
+    networks:
+      - backend_net
+      - nginx-proxy
     depends_on:
       database:
         condition: service_started
@@ -59,19 +60,43 @@ services:
       - RUTA_CA_CONFIABLE_XML_DSIG=input/credentials/ca_bundle.pem
       - CLAMAV_HOST=clamav
       - CLAMAV_PORT=3310
-      - LOG_LEVEL=INFO
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - PYTHONUNBUFFERED=1
-      - CLAMAV_HOST=clamav
-      - CLAMAV_PORT=3310
     volumes:
       - ./input/credentials:/app/input/credentials:ro
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+      - ./input/credentials/s3_connection.yml:/app/input/credentials/s3_connection.yml:ro
 
-  # ── Frontend (se clona y construye desde GitHub automáticamente) ──
+  # ── Worker de Cola ──
+  worker:
+    build: .
+    restart: unless-stopped
+    networks:
+      - backend_net
+    depends_on:
+      database:
+        condition: service_started
+      clamav:
+        condition: service_healthy
+    deploy:
+      replicas: 2
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_HOST=database
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - CLAMAV_HOST=clamav
+      - CLAMAV_PORT=3310
+      - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./input/credentials:/app/input/credentials:ro
+      - ./input/credentials/s3_connection.yml:/app/input/credentials/s3_connection.yml:ro
+    command: [ "python", "-m", "core.python.ingesta.queue_worker" ]
+
+  # ── Frontend ──
   frontend:
     build:
       context: ${FRONTEND_REPO:-https://github.com/KevinJose37/quipuxaiprueba.git}
@@ -80,6 +105,9 @@ services:
         VITE_API_URL: ""
     container_name: facturacion_frontend
     restart: unless-stopped
+    networks:
+      - backend_net
+      - nginx-proxy
     depends_on:
       - api
     expose:
@@ -88,14 +116,13 @@ services:
       - VIRTUAL_HOST=${DOMAIN}
       - VIRTUAL_PORT=3000
       - LETSENCRYPT_HOST=${DOMAIN}
-    networks:
-      - default
-      - nginx-proxy
 
 volumes:
   postgres_data:
 
 networks:
+  backend_net:
+    driver: bridge
   nginx-proxy:
     external: true
     name: ${PROXY_NETWORK:-nginx-proxy_default}

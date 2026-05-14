@@ -6,31 +6,35 @@ encabezados combinados, bordes y formatos de fuente específicos.
 """
 
 import os
-import yaml
 from datetime import datetime
+
+import yaml
 from openpyxl import Workbook
-from openpyxl.styles import Font, Fill, PatternFill, Alignment, Border, Side
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+
+from metadata.columnas_excel import MetadatosReporte
+from metadata.estilos_excel import EstilosExcel
+
 
 class ExcelExporter:
     """Clase encargada de la generación de archivos Excel para reportes de control.
-    
+
     Carga la configuración de columnas y estilos desde un archivo de metadatos
     y aplica el formato requerido a las hojas de cálculo.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Inicializa el exportador cargando la configuración desde excel_config.yml."""
-        config_path = os.path.join("metadata", "excel_config.yml")
-        with open(config_path, "r", encoding="utf-8") as f:
+        config_path = os.path.join('metadata', 'excel_config.yml')
+        with open(config_path, 'r', encoding='utf-8') as f:
             self.config = yaml.safe_load(f)
-        
-        self.styles = self.config["styles"]
-        self.columns = self.config["columns"]
+
+        self.columns = self.config['columns']
 
     def generate_excel(
         self,
-        data: list[dict],
+        data: list,
         month_name: str,
         year: str | int,
     ) -> Workbook:
@@ -43,85 +47,103 @@ class ExcelExporter:
 
         Returns:
             Workbook listo para ser guardado o transmitido.
-
         """
         wb = Workbook()
         ws = wb.active
-        ws.title = self.config.get("sheet_name", "Facturas")
+        ws.title = self.config.get('sheet_name', 'Facturas')
 
         # Styles
-        header_fill = PatternFill(start_color=self.styles["header_bg_color"], 
-                                  end_color=self.styles["header_bg_color"], 
-                                  fill_type="solid")
-        header_font = Font(name=self.styles["font_name"], 
-                           size=self.styles["font_size"], 
-                           bold=True, 
-                           color=self.styles["header_font_color"])
-        thin_border = Border(left=Side(style='thin'), 
-                             right=Side(style='thin'), 
-                             top=Side(style='thin'), 
-                             bottom=Side(style='thin'))
+        header_fill = PatternFill(
+            start_color=EstilosExcel.header_bg_color,
+            end_color=EstilosExcel.header_bg_color,
+            fill_type='solid',
+        )
+        header_font = Font(
+            name=EstilosExcel.font_name,
+            size=EstilosExcel.font_size,
+            bold=True,
+            color=EstilosExcel.header_font_color,
+        )
+
+        # Border styles
+        medium_side = Side(style='medium', color='000000')
+        thin_side = Side(style='thin', color='000000')
 
         # 1. Quipux SAS Header
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(self.columns))
-        cell_1 = ws.cell(row=1, column=1, value=self.config["company_name"])
-        cell_1.font = Font(name=self.styles["font_name"], size=12, bold=True)
-        cell_1.alignment = Alignment(horizontal="center")
-        cell_1.border = thin_border
-        # Aplicar borde a las celdas combinadas de la fila 1
+        cell_1 = ws.cell(row=1, column=1, value=EstilosExcel.nombre_empresa.upper())
+        cell_1.font = Font(name=EstilosExcel.font_name, size=EstilosExcel.font_size, bold=True)
+        cell_1.alignment = Alignment(horizontal='center', vertical='center')
+
+        # Apply borders to Row 1
         for i in range(1, len(self.columns) + 1):
-            ws.cell(row=1, column=i).border = thin_border
+            cell = ws.cell(row=1, column=i)
+            right_s = medium_side if i == len(self.columns) else thin_side
+            cell.border = Border(left=thin_side, right=right_s, top=thin_side, bottom=thin_side)
 
         # 2. Title Header
         ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(self.columns))
-        title = self.config["report_title"].format(MONTH=month_name.upper(), YEAR=year)
+        title = EstilosExcel.titulo_reporte_base.format(MONTH=month_name.upper(), YEAR=year).upper()
         cell_2 = ws.cell(row=2, column=1, value=title)
-        cell_2.font = Font(name=self.styles["font_name"], size=11, bold=True)
-        cell_2.alignment = Alignment(horizontal="center")
-        cell_2.border = thin_border
-        # Aplicar borde a las celdas combinadas de la fila 2
+        cell_2.font = Font(name=EstilosExcel.font_name, size=EstilosExcel.font_size, bold=True)
+        cell_2.alignment = Alignment(horizontal='center', vertical='center')
+
         for i in range(1, len(self.columns) + 1):
-            ws.cell(row=2, column=i).border = thin_border
+            cell = ws.cell(row=2, column=i)
+            right_s = medium_side if i == len(self.columns) else thin_side
+            cell.border = Border(left=thin_side, right=right_s, top=thin_side, bottom=thin_side)
 
         # 3. Table Headers
-        header_fill = PatternFill(start_color=self.styles["header_bg_color"], 
-                                  end_color=self.styles["header_bg_color"], 
-                                  fill_type="solid")
-        header_font = Font(name=self.styles["font_name"], 
-                           size=self.styles["font_size"], 
-                           bold=True, 
-                           color=self.styles["header_font_color"])
-        thin_border = Border(left=Side(style='thin'), 
-                             right=Side(style='thin'), 
-                             top=Side(style='thin'), 
-                             bottom=Side(style='thin'))
-
         for i, col in enumerate(self.columns, 1):
-            cell = ws.cell(row=3, column=i, value=col["label"])
+            cell = ws.cell(row=3, column=i, value=str(col['label']).upper())
             cell.fill = header_fill
             cell.font = header_font
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-            cell.border = thin_border
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            right_s = medium_side if i == len(self.columns) else thin_side
+            cell.border = Border(left=thin_side, right=right_s, top=thin_side, bottom=thin_side)
+
+        # Configure fixed column widths
+        for i, col in enumerate(self.columns, 1):
+            label_upper = str(col['label']).upper()
+            width = EstilosExcel.anchos_fijos.get(label_upper, 15)
+            ws.column_dimensions[get_column_letter(i)].width = width
 
         # 4. Data Rows
+        num_rows = len(data)
         for r_idx, row_data in enumerate(data, 4):
+            is_last_row = r_idx == num_rows + 3
             for c_idx, col in enumerate(self.columns, 1):
-                field = col["db_field"]
+                field = col['db_field']
                 value = row_data.get(field)
 
-                # Transform boolean to 'X' for specific columns
-                if field in ["acuso_recibido", "recibido_bien_servicio", "aceptacion_empresa", "recibido"]:
-                    value = "X" if value is True else ""
-                
-                # Format dates if necessary
-                if isinstance(value, datetime):
-                    value = value.strftime("%Y-%m-%d")
-                elif value is None:
-                    value = ""
-                
-                cell = ws.cell(row=r_idx, column=c_idx, value=value)
-                cell.font = Font(name=self.styles["font_name"], size=self.styles["font_size"])
-                cell.border = thin_border
-                cell.alignment = Alignment(vertical="center")
+                # Transform boolean to 'X' or '***' for Contado
+                if field in ['acuso_recibido', 'recibido_bien_servicio', 'aceptacion_empresa', 'recibido']:
+                    forma_pago = str(row_data.get('forma_pago', '')).upper()
+                    if 'CONTADO' in forma_pago:
+                        value = '***' if field == 'acuso_recibido' else ''
+                    else:
+                        value = 'X' if value is True else ''
 
-        return wb
+                # Format dates
+                if isinstance(value, datetime):
+                    value = value.strftime('%d/%m/%Y')
+                elif value is None:
+                    value = ''
+
+                # Convert to uppercase string
+                value = str(value).upper()
+
+                cell = ws.cell(row=r_idx, column=c_idx, value=value)
+                cell.font = Font(name=EstilosExcel.font_name, size=EstilosExcel.font_size)
+
+                # Borders
+                right_s = medium_side if c_idx == len(self.columns) else thin_side
+                bottom_s = medium_side if is_last_row else thin_side
+                cell.border = Border(left=thin_side, right=right_s, top=thin_side, bottom=bottom_s)
+
+                # Alignment
+                h_align = 'right' if field in MetadatosReporte.alineacion_derecha else 'left'
+                cell.alignment = Alignment(horizontal=h_align, vertical='center', wrap_text=True)
+
+        resultado = wb
+        return resultado

@@ -96,6 +96,30 @@ services:
       - ./input/credentials/s3_connection.yml:/app/input/credentials/s3_connection.yml:ro
     command: [ "python", "-m", "core.python.ingesta.queue_worker" ]
 
+  # ── Listener de Eventos DIAN ──
+  dian_events_listener:
+    build: .
+    container_name: facturacion_dian_events
+    restart: unless-stopped
+    networks:
+      - backend_net
+    depends_on:
+      database:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_HOST=database
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - EMAIL_EVENTS_USER=${EMAIL_EVENTS_USER}
+      - EMAIL_EVENTS_PASSWORD=${EMAIL_EVENTS_PASSWORD}
+      - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1
+    command: [ "python", "-m", "core.python.ingesta.dian_events.listener" ]
+
   # ── Frontend ──
   frontend:
     build:

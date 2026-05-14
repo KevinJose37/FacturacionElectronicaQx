@@ -17,21 +17,28 @@ class DianEventFilter:
     """Filtro para correos de eventos DIAN de CEN Financiero.
     
     Reglas:
-    1. Remitente: FacturaCTSColombia@cenbiz.com
+    1. Remitente: facturacionelectronicaqx@gmail.com (Para pruebas)
     2. Asunto: Empieza con "Evento" y termina con ";030", ";032" o ";033"
     """
     
-    #ALLOWED_SENDER = "FacturaCTSColombia@cenbiz.com"
-    ALLOWED_SENDER = "facturaciondianqx@gmail.com"
+    # Durante pruebas permitimos el remitente de pruebas
+    ALLOWED_SENDERS = [
+        "facturacionelectronicaqx@gmail.com",
+        "FacturaCTSColombia@cenbiz.com",
+        "FacturaCTSColombia@cenbiz"
+    ]
     ALLOWED_CODES = {"030", "032", "033"}
     
     def evaluate(self, sender: str, subject: str) -> DianEventFilterResult:
         # 1. Validar remitente
         # Extraer solo el email si viene con nombre: "Nombre <email>"
-        sender_email = re.search(r'[\w\.-]+@[\w\.-]+', sender)
-        sender_email = sender_email.group(0) if sender_email else sender
+        sender_email_match = re.search(r'[\w\.-]+@[\w\.-]+', sender)
+        sender_email = sender_email_match.group(0) if sender_email_match else sender
         
-        if sender_email.lower() != self.ALLOWED_SENDER.lower():
+        sender_lower = sender_email.lower()
+        is_authorized = any(s.lower() == sender_lower for s in self.ALLOWED_SENDERS)
+        
+        if not is_authorized:
             return DianEventFilterResult(False, reason=f"Remitente no autorizado: {sender_email}")
             
         # 2. Validar asunto

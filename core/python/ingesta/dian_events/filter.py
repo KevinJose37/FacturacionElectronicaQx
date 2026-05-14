@@ -21,7 +21,8 @@ class DianEventFilter:
     2. Asunto: Empieza con "Evento" y termina con ";030", ";032" o ";033"
     """
     
-    ALLOWED_SENDER = "FacturaCTSColombia@cenbiz.com"
+    #ALLOWED_SENDER = "FacturaCTSColombia@cenbiz.com"
+    ALLOWED_SENDER = "facturaciondianqx@gmail.com"
     ALLOWED_CODES = {"030", "032", "033"}
     
     def evaluate(self, sender: str, subject: str) -> DianEventFilterResult:

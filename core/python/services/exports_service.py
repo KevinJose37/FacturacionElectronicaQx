@@ -64,11 +64,13 @@ async def generar_reporte_excel(
     if not usa_filtros:
         month_label = MesesEspanol.mapa[fecha_inicio.month]
         year_label = str(fecha_inicio.year)
-        filename = f"Relación entrega facturas_MES {month_label}"
+        filename = f"relacion_entrega_facturas_mes_{month_label.lower()}"
     else:
         month_label = f"{fecha_inicio.strftime('%Y/%m/%d')} a {fecha_fin.strftime('%Y/%m/%d')}"
         year_label = ""
-        filename = f"Relación entrega facturas {month_label}"
+        # Reemplazar barras y espacios por snake_case para el nombre del archivo
+        label_clean = month_label.replace("/", "_").replace(" a ", "_a_").replace(" ", "_")
+        filename = f"relacion_entrega_facturas_{label_clean}"
         
     wb = exporter.generate_excel(data, month_label, year_label)
     

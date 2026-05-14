@@ -67,29 +67,24 @@ class ExcelExporter:
         # 1. Quipux SAS Header
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(self.columns))
         cell_1 = ws.cell(row=1, column=1, value=self.config["company_name"].upper())
-        cell_1.font = Font(name=self.styles["font_name"], size=12, bold=True)
+        cell_1.font = Font(name=self.styles["font_name"], size=self.styles["font_size"], bold=True)
         cell_1.alignment = Alignment(horizontal="center")
         # Apply borders to Row 1
         for i in range(1, len(self.columns) + 1):
             cell = ws.cell(row=1, column=i)
-            # Special case for column 1, 2 and last
-            r_border = medium_side if i in (1, 2, len(self.columns)) else thin_side
-            l_border = medium_side if i == 1 else (medium_side if i in (2, 3) else thin_side)
-            # Simplifiying: User says: "borde derecho de la columna EVENTO DIAN ... y asi para la columna 1 y 2"
-            # And "cuadricula bordes de 1.0pt"
-            right_s = medium_side if i in (1, 2, len(self.columns)) else thin_side
-            left_s = medium_side if i == 1 else (medium_side if i in (2, 3) else thin_side) # If i=2, its left is i=1's right
+            # Only the last column in the header row should have a medium right border
+            right_s = medium_side if i == len(self.columns) else thin_side
             cell.border = Border(left=thin_side, right=right_s, top=thin_side, bottom=thin_side)
 
         # 2. Title Header
         ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(self.columns))
         title = self.config["report_title"].format(MONTH=month_name.upper(), YEAR=year).upper()
         cell_2 = ws.cell(row=2, column=1, value=title)
-        cell_2.font = Font(name=self.styles["font_name"], size=11, bold=True)
+        cell_2.font = Font(name=self.styles["font_name"], size=self.styles["font_size"], bold=True)
         cell_2.alignment = Alignment(horizontal="center")
         for i in range(1, len(self.columns) + 1):
             cell = ws.cell(row=2, column=i)
-            right_s = medium_side if i in (1, 2, len(self.columns)) else thin_side
+            right_s = medium_side if i == len(self.columns) else thin_side
             cell.border = Border(left=thin_side, right=right_s, top=thin_side, bottom=thin_side)
 
         # 3. Table Headers
@@ -98,7 +93,8 @@ class ExcelExporter:
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            right_s = medium_side if i in (1, 2, len(self.columns)) else thin_side
+            # Only the last column should have a medium right border
+            right_s = medium_side if i == len(self.columns) else thin_side
             cell.border = Border(left=thin_side, right=right_s, top=thin_side, bottom=thin_side)
 
         # 4. Data Rows
@@ -129,8 +125,8 @@ class ExcelExporter:
                 cell = ws.cell(row=r_idx, column=c_idx, value=value)
                 cell.font = Font(name=self.styles["font_name"], size=self.styles["font_size"])
                 
-                # Borders
-                right_s = medium_side if c_idx in (1, 2, len(self.columns)) else thin_side
+                # Borders: Only the last column has medium right border. Last row has medium bottom border.
+                right_s = medium_side if c_idx == len(self.columns) else thin_side
                 bottom_s = medium_side if is_last_row else thin_side
                 cell.border = Border(left=thin_side, right=right_s, top=thin_side, bottom=bottom_s)
                 

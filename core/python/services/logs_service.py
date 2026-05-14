@@ -1,6 +1,7 @@
 """Servicio de consultas para la página de logs."""
 
 import logging
+import re
 from datetime import datetime, timezone
 
 from config import get_queries_services
@@ -52,22 +53,35 @@ async def listar_logs(
 
     resultado = []
     for r in filas:
-        # r[0]=fecha_inicio, r[1]=etapa, r[2]=detalle_error, r[3]=observacion, r[4]=num_factura
+        # r[0]=fecha_inicio, r[1]=etapa, r[2]=detalle_error, r[3]=observacion,
+        # r[4]=num_factura, r[5]=remitente, r[6]=asunto
         fecha = r[0]
         ts = fecha.strftime(DefaultTextos.formato_hora) if fecha else ''
-        num_factura = f'{r[4]}: ' if len(r) > 4 and r[4] else ''
+        num_factura = r[4]
+        remitente = r[5]
+        asunto = r[6]
 
         if r[2]:
             nivel_log = MensajesLog.nivel_error
-            msg = MensajesLog.error_prefijo.format(etapa=r[1], detalle=r[2][:120])
+            msg_base = MensajesLog.error_prefijo.format(etapa=r[1], detalle=r[2][:120])
         else:
             nivel_log = MensajesLog.nivel_default
-            msg = MensajesLog.completado.format(etapa=r[1])
+            msg_base = MensajesLog.completado.format(etapa=r[1])
 
-        msg_final = f'{num_factura}{msg}'
+        # Lógica de construcción del mensaje final
+        msg_final = msg_base
+        if num_factura:
+            msg_final = f'{num_factura}: {msg_base}'
+        elif remitente and 'Evaluación de correo' in msg_base:
+            # Limpiar remitente
+            match_email = re.search(r'[\w\.-]+@[\w\.-]+', remitente)
+            email_limpio = match_email.group(0) if match_email else remitente
+            asunto_txt = asunto or 'Sin Asunto'
+            msg_final = f'Asunto: "{asunto_txt}" de {email_limpio} · {msg_base}'
+
         fuente = MensajesLog.fuente_default
-
         resultado.append({'ts': ts, 'level': nivel_log, 'source': fuente, 'msg': msg_final})
+
     return resultado
 
 

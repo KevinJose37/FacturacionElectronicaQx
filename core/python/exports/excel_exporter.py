@@ -94,7 +94,7 @@ class ExcelExporter:
 
         # 3. Table Headers
         for i, col in enumerate(self.columns, 1):
-            cell = ws.cell(row=3, column=i, value=col["label"])
+            cell = ws.cell(row=3, column=i, value=str(col["label"]).upper())
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)

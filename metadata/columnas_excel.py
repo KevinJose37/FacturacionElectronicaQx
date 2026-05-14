@@ -7,46 +7,46 @@ y sus etiquetas amigables para el usuario final, siguiendo el estándar de clase
 class ColumnasExcel:
     """Mapeo de nombres de columnas de base de datos a etiquetas de reporte."""
 
-    fecha_admision_proveedor = "Fecha emisión factura del proveedor"
+    fecha_admision_proveedor = "fecha emisión factura del proveedor"
     """Fecha de la factura emitida por el proveedor."""
 
-    medio_recepcion = "Medio en que se recibe"
+    medio_recepcion = "medio en que se recibe"
     """Canal por el cual ingresó la factura al sistema."""
 
-    fecha_entrega_contabilidad = "Fecha entrega factura a contabilidad"
+    fecha_entrega_contabilidad = "fecha entrega factura a contabilidad"
     """Fecha en la que el documento se remite al área contable."""
 
-    nombre_recibe_contabilidad = "Nombre de quién recibe en contabilidad"
+    nombre_recibe_contabilidad = "nombre de quién recibe en contabilidad"
     """Funcionario que recepciona el documento en contabilidad."""
 
-    nombre_proveedor = "DESCRIPCION"
+    nombre_proveedor = "descripcion"
     """Corresponde al nombre o razón social del proveedor."""
 
-    nit_proveedor = "NIT"
+    nit_proveedor = "nit"
     """Número de identificación tributaria del emisor."""
 
-    numero_factura = "No. Factura"
+    numero_factura = "no. factura"
     """Número consecutivo de la factura electrónica."""
 
-    forma_pago = "FORMA DE PAGO"
+    forma_pago = "forma de pago"
     """Condición de pago: CREDITO o CONTADO."""
 
-    acuso_recibido = "Acuse de recibido"
+    acuso_recibido = "acuse de recibido"
     """Indicador booleano de acuse de recibo."""
 
-    recibido_bien_servicio = "Recibo de bien y/o servicio"
+    recibido_bien_servicio = "recibo de bien y/o servicio"
     """Indicador booleano de recibo de bienes o servicios."""
 
-    aceptacion_empresa = "Aceptacion expresa"
+    aceptacion_empresa = "aceptacion expresa"
     """Indicador booleano de aceptación por parte de la empresa."""
 
-    recibido = "RECIBIDO"
+    recibido = "recibido"
     """Indicador general de recepción."""
 
-    observaciones_entrega = "OBSERVACIONES"
+    observaciones_entrega = "observaciones"
     """Comentarios sobre la oportunidad de la entrega."""
 
-    eventos_dian_notif = "EVENTO DIAN"
+    eventos_dian_notif = "evento dian"
     """Notificaciones y eventos registrados ante la DIAN."""
 
     mapa = {

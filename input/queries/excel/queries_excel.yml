@@ -19,20 +19,17 @@ exportacion:
         fc.recibido,
         fc.observaciones_entrega,
         COALESCE(
-            string_agg(te.nombre_evento, ', ' ORDER BY edf.fecha_evento) FILTER (WHERE edf.codigo_evento IN ('030', '032', '033')),
+            (
+                SELECT string_agg(edf.codigo_evento, ', ' ORDER BY edf.fecha_evento)
+                FROM facturacion.evento_dian_factura edf
+                WHERE edf.id_factura = f.id_factura
+                  AND edf.codigo_evento IN ('030', '032', '033')
+            ),
             fc.eventos_dian_notif
         ) as eventos_dian_notif
     FROM facturacion.factura f
     JOIN facturacion.factura_control fc ON f.id_factura = fc.id_factura
-    LEFT JOIN facturacion.evento_dian_factura edf ON f.id_factura = edf.id_factura
-    LEFT JOIN facturacion.tipo_evento_dian te ON edf.codigo_evento = te.codigo_evento
     WHERE f.fecha_generacion::date BETWEEN %s AND %s
-    GROUP BY fc.id_control, fc.fecha_admision_proveedor, fc.medio_recepcion, 
-             fc.fecha_entrega_contabilidad, fc.nombre_recibe_contabilidad, 
-             fc.nombre_proveedor, fc.nit_proveedor, fc.numero_factura, 
-             fc.forma_pago, fc.acuso_recibido, fc.recibido_bien_servicio, 
-             fc.aceptacion_empresa, fc.recibido, fc.observaciones_entrega, 
-             fc.eventos_dian_notif
     ORDER BY f.fecha_creacion DESC
 
   contar_facturas_rango: >

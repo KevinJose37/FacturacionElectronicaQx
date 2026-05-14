@@ -7,13 +7,12 @@ def create_trigger():
     BEGIN
         -- Solo actuar si el evento es uno de los requeridos (030, 032, 033)
         IF NEW.codigo_evento IN ('030', '032', '033') THEN
-            -- Actualizar el campo eventos_dian_notif concatenando los nombres de eventos permitidos
+            -- Actualizar el campo eventos_dian_notif concatenando los códigos de eventos permitidos
             UPDATE facturacion.factura_control
             SET 
                 eventos_dian_notif = (
-                    SELECT string_agg(te.nombre_evento, ', ' ORDER BY edf.fecha_evento)
+                    SELECT string_agg(edf.codigo_evento, ', ' ORDER BY edf.fecha_evento)
                     FROM facturacion.evento_dian_factura edf
-                    JOIN facturacion.tipo_evento_dian te ON edf.codigo_evento = te.codigo_evento
                     WHERE edf.id_factura = NEW.id_factura
                       AND edf.codigo_evento IN ('030', '032', '033')
                 ),

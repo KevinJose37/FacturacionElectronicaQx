@@ -45,110 +45,84 @@ class DianEventListener:
         conn.select(self.folder)
         return conn
 
-    async def _process_email(self, conn, uid):
+    async def _process_email(self, conn: imaplib.IMAP4_SSL, uid: bytes) -> bool:
+        """Procesa un correo individual buscando eventos DIAN.
+
+        Args:
+            conn: Conexión IMAP activa.
+            uid: Identificador único del correo.
+
+        Returns:
+            Verdadero si el proceso fue exitoso o el correo fue descartado.
+        """
+        exito = False
         try:
-            status, data = conn.uid("fetch", uid, "(BODY[HEADER.FIELDS (SUBJECT FROM DATE)])")
-            if status != "OK": return False
-            
-            raw_header = data[0][1].decode(errors='ignore')
-            msg = _email.message_from_string(raw_header)
-            
-            subject = msg.get("Subject", "")
-            sender = msg.get("From", "")
-            
-            # Decodificar asunto si viene en MIME encoding
-            from email.header import decode_header
-            decoded_parts = decode_header(subject)
-            subject = "".join(
-                str(p[0], p[1] or 'utf-8') if isinstance(p[0], bytes) else str(p[0])
-                for p in decoded_parts
-            )
-            
-            logger.info(f"Evaluando correo de eventos: {subject}")
-            
-            result = self.filter.evaluate(sender, subject)
-            if not result.is_dian_event:
-                logger.debug(f"Correo ignorado: {result.reason}")
-                conn.uid("store", uid, "+FLAGS", "\\Seen")
-                return True
+            status, data = conn.uid('fetch', uid, '(BODY[HEADER.FIELDS (SUBJECT FROM DATE)])')
+            if status == 'OK' and data:
+                raw_header = data[0][1].decode(errors='ignore')
+                msg = _email.message_from_string(raw_header)
+                subject_raw = msg.get('Subject', '')
+                sender = msg.get('From', '')
+                from email.header import decode_header
+                decoded = decode_header(subject_raw)
+                subject = ''.join(str(p[0], p[1] or 'utf-8') if isinstance(p[0], bytes) else str(p[0]) for p in decoded)
+                logger.info(f'Evaluando correo: {subject} | De: {sender}')
+                res_filtro = self.filter.evaluate(sender, subject)
+                if not res_filtro.is_dian_event:
+                    logger.info(f'Correo descartado: {res_filtro.reason}')
+                    conn.uid('store', uid, '+FLAGS', '\\Seen')
+                    exito = True
+                else:
+                    parts = subject.split(';')
+                    num_factura = None
+                    if subject.lower().startswith('evento;') and len(parts) >= 2:
+                        num_factura = parts[1].strip()
+                    else:
+                        p_subj = self.parser.parsear(subject)
+                        num_factura = p_subj.get('num_factura') or (parts[2].strip() if len(parts) >= 3 else None)
 
-            # Es un evento válido (030, 032, 033)
-            # Intentar extraer número de factura del formato CEN
-            parts = subject.split(";")
-            num_factura = None
-            
-            if subject.lower().startswith("evento;") and len(parts) >= 2:
-                num_factura = parts[1].strip()
-                logger.info(f"Formato CEN detectado. Factura a buscar: {num_factura}")
-            else:
-                parsed = self.parser.parsear(subject)
-                num_factura = parsed.get("num_factura")
-                if not num_factura and len(parts) >= 3:
-                    num_factura = parts[2].strip()
-
-            if not num_factura:
-                logger.error(f"No se pudo extraer número de factura del asunto: {subject}")
-                conn.uid("store", uid, "+FLAGS", "\\Seen")
-                return False
-
-            # 2. Buscar la factura en la BD para obtener su ID
-            pool = get_pool()
-            logger.info(f"Buscando factura {num_factura} en base de datos...")
-            async with pool.connection() as db_conn:
-                async with db_conn.cursor() as cur:
-                    # Búsqueda flexible por número exacto o prefijo-número
-                    await cur.execute(
-                        """
-                        SELECT id_factura 
-                        FROM facturacion.factura 
-                        WHERE numero_factura = %s 
-                           OR prefijo_facturacion || '-' || numero_factura = %s 
-                           OR prefijo_facturacion || numero_factura = %s
-                        LIMIT 1
-                        """,
-                        (num_factura, num_factura, num_factura)
-                    )
-                    res = await cur.fetchone()
-                    
-                    if not res:
-                        logger.warning(f"Factura [{num_factura}] NO encontrada en la tabla facturacion.factura. Saltando evento.")
-                        conn.uid("store", uid, "+FLAGS", "\\Seen")
-                        return False
-                    
-                    id_factura = res[0]
-                    logger.info(f"Factura encontrada (ID: {id_factura}). Registrando evento {result.event_code}...")
-                    
-                    await cur.execute(
-                        """
-                        INSERT INTO facturacion.evento_dian_factura (id_factura, codigo_evento, descripcion, fecha_evento)
-                        VALUES (%s, %s, %s, NOW())
-                        """,
-                        (id_factura, result.event_code, f"Evento recibido vía email CEN: {subject}")
-                    )
-                    await db_conn.commit()
-                    logger.info(f"Evento {result.event_code} registrado exitosamente para factura ID {id_factura}")
-                    
-            conn.uid("store", uid, "+FLAGS", "\\Seen")
-            return True
-
+                    if not num_factura:
+                        logger.error(f'Sin factura en asunto: {subject}')
+                        conn.uid('store', uid, '+FLAGS', '\\Seen')
+                    else:
+                        pool = get_pool()
+                        async with pool.connection() as db_conn:
+                            async with db_conn.cursor() as cur:
+                                query = "SELECT id_factura FROM facturacion.factura WHERE numero_factura = %s OR prefijo_facturacion || '-' || numero_factura = %s OR prefijo_facturacion || numero_factura = %s LIMIT 1"
+                                await cur.execute(query, (num_factura, num_factura, num_factura))
+                                row = await cur.fetchone()
+                                if not row:
+                                    logger.warning(f'Factura [{num_factura}] no encontrada.')
+                                    conn.uid('store', uid, '+FLAGS', '\\Seen')
+                                    exito = True
+                                else:
+                                    id_fac = row[0]
+                                    ins = "INSERT INTO facturacion.evento_dian_factura (id_factura, codigo_evento, descripcion, fecha_evento) VALUES (%s, %s, %s, NOW())"
+                                    await cur.execute(ins, (id_fac, res_filtro.event_code, f'Evento email: {subject}'))
+                                    await db_conn.commit()
+                                    logger.info(f'Evento {res_filtro.event_code} registrado para factura {id_fac}')
+                                    conn.uid('store', uid, '+FLAGS', '\\Seen')
+                                    exito = True
         except Exception as e:
-            logger.exception(f"Error procesando correo de evento UID {uid}: {e}")
-            return False
+            logger.exception(f'Error procesando correo UID {uid}: {e}')
+        return exito
 
-    async def run_once(self):
+    async def run_once(self) -> None:
+        """Ejecuta un ciclo de búsqueda y procesamiento."""
         try:
             conn = self._connect()
-            status, data = conn.uid("search", None, "UNSEEN")
-            if status == "OK":
+            status, data = conn.uid('search', None, 'UNSEEN')
+            if status == 'OK':
                 uids = data[0].split()
                 for uid in uids:
                     await self._process_email(conn, uid)
             conn.logout()
         except Exception as e:
-            logger.error(f"Error en ciclo de eventos DIAN: {e}")
+            logger.error(f'Error en ciclo de eventos DIAN: {e}')
 
-    async def run_forever(self):
-        logger.info(f"Iniciando Listener de Eventos DIAN en {self.user}...")
+    async def run_forever(self) -> None:
+        """Mantiene el listener en ejecución continua."""
+        logger.info(f'Iniciando Listener de Eventos DIAN en {self.user}...')
         await init_pool()
         try:
             while True:

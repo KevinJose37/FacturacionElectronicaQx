@@ -52,10 +52,10 @@ async def listar_logs(
 
     resultado = []
     for r in filas:
-        # r[0]=fecha_inicio, r[1]=etapa(tipo_proceso.descripcion),
-        # r[2]=detalle_error(tipo_error.descripcion, nullable), r[3]=observacion
+        # r[0]=fecha_inicio, r[1]=etapa, r[2]=detalle_error, r[3]=observacion, r[4]=num_factura
         fecha = r[0]
         ts = fecha.strftime(DefaultTextos.formato_hora) if fecha else ''
+        num_factura = f'{r[4]}: ' if len(r) > 4 and r[4] else ''
 
         if r[2]:
             nivel_log = MensajesLog.nivel_error
@@ -64,9 +64,10 @@ async def listar_logs(
             nivel_log = MensajesLog.nivel_default
             msg = MensajesLog.completado.format(etapa=r[1])
 
+        msg_final = f'{num_factura}{msg}'
         fuente = MensajesLog.fuente_default
 
-        resultado.append({'ts': ts, 'level': nivel_log, 'source': fuente, 'msg': msg})
+        resultado.append({'ts': ts, 'level': nivel_log, 'source': fuente, 'msg': msg_final})
     return resultado
 
 

@@ -196,8 +196,10 @@ async def obtener_actividad_reciente(limite: int = 8) -> list:
     ahora = datetime.now(tz=timezone.utc)
     resultado = []
     for r in filas:
-        # r[0]=etapa(descripcion), r[1]=detalle_error(nullable), r[2]=fecha_inicio
+        # r[0]=etapa, r[1]=detalle_error, r[2]=fecha_inicio, r[3]=num_factura
         fecha_log = r[2].replace(tzinfo=timezone.utc) if r[2] and r[2].tzinfo is None else r[2]
+        num_factura = f'{r[3]}: ' if len(r) > 3 and r[3] else ''
+
         if fecha_log:
             delta = ahora - fecha_log
             minutos = int(delta.total_seconds() / 60)
@@ -213,7 +215,8 @@ async def obtener_actividad_reciente(limite: int = 8) -> list:
             tipo = MensajesLog.tipo_auto
             texto = MensajesLog.completado.format(etapa=r[0])
 
-        resultado.append({'type': tipo, 'text': texto, 'time': tiempo_texto})
+        texto_final = f'{num_factura}{texto}'
+        resultado.append({'type': tipo, 'text': texto_final, 'time': tiempo_texto})
     return resultado
 
 
@@ -319,7 +322,7 @@ async def obtener_eventos_por_minuto(ventana_minutos: int = 10) -> dict:
     return resultado
 
 async def obtener_alertas_activas(limite: int = 5) -> list:
-    """Obtiene las alertas activas (no resueltas) más recientes, ordenadas por prioridad y fecha.
+    """Obtiene las alertas activas (no resueltas) más recientes.
 
     Args:
         limite: Cantidad máxima de alertas a retornar.
@@ -332,18 +335,20 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
         async with conn.cursor() as cur:
             await cur.execute(
                 """
-                SELECT id_alerta, codigo_tipo_alerta, codigo_prioridad, titulo, mensaje, fecha_creacion
-                FROM facturacion.alerta
-                WHERE resuelta = FALSE
+                SELECT a.id_alerta, a.codigo_tipo_alerta, a.codigo_prioridad, 
+                       a.titulo, a.mensaje, a.fecha_creacion, c.remitente
+                FROM facturacion.alerta a
+                LEFT JOIN facturacion.correo_entrante c ON a.correo_id = c.correo_id
+                WHERE a.resuelta = FALSE
                 ORDER BY
-                  CASE codigo_prioridad
+                  CASE a.codigo_prioridad
                     WHEN 'CRITICA' THEN 1
                     WHEN 'ALTA' THEN 2
                     WHEN 'MEDIA' THEN 3
                     WHEN 'BAJA' THEN 4
                     ELSE 5
                   END,
-                  fecha_creacion DESC
+                  a.fecha_creacion DESC
                 LIMIT %s
                 """,
                 (limite,)
@@ -352,12 +357,24 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
 
     resultado = []
     for r in filas:
+        mensaje_original = r[4]
+        remitente = r[6]
+        
+        # Si existe el remitente (email real), intentamos limpiar el mensaje de alertas de correo
+        mensaje_final = mensaje_original
+        if remitente and ('fue identificado como facturación' in mensaje_original or 'Adjunto incompleto en correo' in mensaje_original):
+            # Extraer el Message-ID o identificador técnico si está presente
+            import re
+            # Buscamos patrones típicos de Message-ID o identificadores largos
+            mensaje_final = re.sub(r'El correo [^ ]+ fue identificado', f'El correo {remitente} fue identificado', mensaje_original)
+            mensaje_final = re.sub(r'en correo [^ ]+:', f'en correo {remitente}:', mensaje_final)
+
         resultado.append({
             'id': r[0],
             'type': r[1],
             'priority': r[2],
             'title': r[3],
-            'message': r[4],
+            'message': mensaje_final,
             'date': r[5].isoformat() if r[5] else '',
         })
     return resultado

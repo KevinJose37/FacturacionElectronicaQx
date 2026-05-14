@@ -81,11 +81,11 @@ class MetadatosReporte:
 
     editables = [
         "fecha_entrega_contabilidad",
+        "eventos_dian_notif",
+        "observaciones_entrega",
         "nombre_recibe_contabilidad",
         "acuso_recibido",
         "recibido_bien_servicio",
-        "aceptacion_empresa",
-        "observaciones_entrega",
-        "eventos_dian_notif"
+        "aceptacion_empresa"
     ]
     """Columnas habilitadas para edición desde el Frontend."""

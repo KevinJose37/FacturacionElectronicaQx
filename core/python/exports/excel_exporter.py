@@ -68,7 +68,7 @@ class ExcelExporter:
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(self.columns))
         cell_1 = ws.cell(row=1, column=1, value=self.config["company_name"].upper())
         cell_1.font = Font(name=self.styles["font_name"], size=self.styles["font_size"], bold=True)
-        cell_1.alignment = Alignment(horizontal="center")
+        cell_1.alignment = Alignment(horizontal="center", vertical="center")
         # Apply borders to Row 1
         for i in range(1, len(self.columns) + 1):
             cell = ws.cell(row=1, column=i)
@@ -81,7 +81,7 @@ class ExcelExporter:
         title = self.config["report_title"].format(MONTH=month_name.upper(), YEAR=year).upper()
         cell_2 = ws.cell(row=2, column=1, value=title)
         cell_2.font = Font(name=self.styles["font_name"], size=self.styles["font_size"], bold=True)
-        cell_2.alignment = Alignment(horizontal="center")
+        cell_2.alignment = Alignment(horizontal="center", vertical="center")
         for i in range(1, len(self.columns) + 1):
             cell = ws.cell(row=2, column=i)
             right_s = medium_side if i == len(self.columns) else thin_side
@@ -96,6 +96,32 @@ class ExcelExporter:
             # Only the last column should have a medium right border
             right_s = medium_side if i == len(self.columns) else thin_side
             cell.border = Border(left=thin_side, right=right_s, top=thin_side, bottom=thin_side)
+
+        # Configure fixed column widths
+        # Map labels to their fixed widths
+        width_map = {
+            "FECHA EMISIÓN FACTURA DEL PROVEEDOR": 15, # 17 - 2
+            "FECHA ENTREGA FACTURA A CONTABILIDAD": 15, # 17 - 2
+            "NIT": 12, # 10 + padding
+            "NO. FACTURA": 17, # 22 - 5
+            "FORMA DE PAGO": 22, # 20 + padding
+            "NOMBRE DE QUIÉN RECIBE EN CONTABILIDAD": 32, # 30 + padding
+            "DESCRIPCION": 32, # 30 + padding
+            "ACUSE DE RECIBIDO": 12, # 10 + padding
+            "RECIBO DE BIEN Y/O SERVICIO": 12, # 10 + padding
+            "ACEPTACION EXPRESA": 12, # 10 + padding
+            "EVENTO DIAN": 12, # 10 + padding
+            "OBSERVACIONES": 52, # 50 + padding
+        }
+
+        for i, col in enumerate(self.columns, 1):
+            label_upper = str(col["label"]).upper()
+            width = width_map.get(label_upper)
+            if width:
+                ws.column_dimensions[get_column_letter(i)].width = width
+            else:
+                # Default width for unspecified columns (Medio en que se recibe, etc.)
+                ws.column_dimensions[get_column_letter(i)].width = 15
 
         # 4. Data Rows
         num_rows = len(data)
@@ -132,10 +158,15 @@ class ExcelExporter:
                 
                 # Alignment
                 h_align = "left"
-                # c_idx 1: Fecha em, 3: Fecha ent, 5: NIT, 7: No. Factura
-                if c_idx in (1, 3, 5, 7):
+                # Check for headers that should be right aligned in data
+                label_upper = str(col["label"]).upper()
+                if label_upper in ["FECHA EMISIÓN FACTURA DEL PROVEEDOR", 
+                                  "FECHA ENTREGA FACTURA A CONTABILIDAD", 
+                                  "NIT", "NO. FACTURA"]:
                     h_align = "right"
                 
-                cell.alignment = Alignment(horizontal=h_align, vertical="center")
+                cell.alignment = Alignment(horizontal=h_align, vertical="center", wrap_text=True)
+
+        return wb
 
         return wb

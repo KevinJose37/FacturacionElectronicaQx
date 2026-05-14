@@ -12,6 +12,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Fill, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
+from metadata.estilos_excel import EstilosExcel
+
 class ExcelExporter:
     """Clase encargada de la generación de archivos Excel para reportes de control.
     
@@ -25,7 +27,6 @@ class ExcelExporter:
         with open(config_path, "r", encoding="utf-8") as f:
             self.config = yaml.safe_load(f)
         
-        self.styles = self.config["styles"]
         self.columns = self.config["columns"]
 
     def generate_excel(
@@ -50,24 +51,22 @@ class ExcelExporter:
         ws.title = self.config.get("sheet_name", "Facturas")
 
         # Styles
-        header_fill = PatternFill(start_color=self.styles["header_bg_color"], 
-                                  end_color=self.styles["header_bg_color"], 
+        header_fill = PatternFill(start_color=EstilosExcel.header_bg_color, 
+                                  end_color=EstilosExcel.header_bg_color, 
                                   fill_type="solid")
-        header_font = Font(name=self.styles["font_name"], 
-                           size=self.styles["font_size"], 
+        header_font = Font(name=EstilosExcel.font_name, 
+                           size=EstilosExcel.font_size, 
                            bold=True, 
-                           color=self.styles["header_font_color"])
+                           color=EstilosExcel.header_font_color)
         
         # Border styles
         medium_side = Side(style='medium', color='000000')
         thin_side = Side(style='thin', color='000000')
-        
-        thin_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
 
         # 1. Quipux SAS Header
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(self.columns))
-        cell_1 = ws.cell(row=1, column=1, value=self.config["company_name"].upper())
-        cell_1.font = Font(name=self.styles["font_name"], size=self.styles["font_size"], bold=True)
+        cell_1 = ws.cell(row=1, column=1, value=EstilosExcel.nombre_empresa.upper())
+        cell_1.font = Font(name=EstilosExcel.font_name, size=EstilosExcel.font_size, bold=True)
         cell_1.alignment = Alignment(horizontal="center", vertical="center")
         # Apply borders to Row 1
         for i in range(1, len(self.columns) + 1):
@@ -78,9 +77,9 @@ class ExcelExporter:
 
         # 2. Title Header
         ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(self.columns))
-        title = self.config["report_title"].format(MONTH=month_name.upper(), YEAR=year).upper()
+        title = EstilosExcel.titulo_reporte_base.format(MONTH=month_name.upper(), YEAR=year).upper()
         cell_2 = ws.cell(row=2, column=1, value=title)
-        cell_2.font = Font(name=self.styles["font_name"], size=self.styles["font_size"], bold=True)
+        cell_2.font = Font(name=EstilosExcel.font_name, size=EstilosExcel.font_size, bold=True)
         cell_2.alignment = Alignment(horizontal="center", vertical="center")
         for i in range(1, len(self.columns) + 1):
             cell = ws.cell(row=2, column=i)
@@ -98,30 +97,10 @@ class ExcelExporter:
             cell.border = Border(left=thin_side, right=right_s, top=thin_side, bottom=thin_side)
 
         # Configure fixed column widths
-        # Map labels to their fixed widths
-        width_map = {
-            "FECHA EMISIÓN FACTURA DEL PROVEEDOR": 15, # 17 - 2
-            "FECHA ENTREGA FACTURA A CONTABILIDAD": 15, # 17 - 2
-            "NIT": 12, # 10 + padding
-            "NO. FACTURA": 17, # 22 - 5
-            "FORMA DE PAGO": 22, # 20 + padding
-            "NOMBRE DE QUIÉN RECIBE EN CONTABILIDAD": 32, # 30 + padding
-            "DESCRIPCION": 32, # 30 + padding
-            "ACUSE DE RECIBIDO": 12, # 10 + padding
-            "RECIBO DE BIEN Y/O SERVICIO": 12, # 10 + padding
-            "ACEPTACION EXPRESA": 12, # 10 + padding
-            "EVENTO DIAN": 12, # 10 + padding
-            "OBSERVACIONES": 52, # 50 + padding
-        }
-
         for i, col in enumerate(self.columns, 1):
             label_upper = str(col["label"]).upper()
-            width = width_map.get(label_upper)
-            if width:
-                ws.column_dimensions[get_column_letter(i)].width = width
-            else:
-                # Default width for unspecified columns (Medio en que se recibe, etc.)
-                ws.column_dimensions[get_column_letter(i)].width = 15
+            width = EstilosExcel.anchos_fijos.get(label_upper, 15)
+            ws.column_dimensions[get_column_letter(i)].width = width
 
         # 4. Data Rows
         num_rows = len(data)
@@ -149,7 +128,7 @@ class ExcelExporter:
                 value = str(value).upper()
                 
                 cell = ws.cell(row=r_idx, column=c_idx, value=value)
-                cell.font = Font(name=self.styles["font_name"], size=self.styles["font_size"])
+                cell.font = Font(name=EstilosExcel.font_name, size=EstilosExcel.font_size)
                 
                 # Borders: Only the last column has medium right border. Last row has medium bottom border.
                 right_s = medium_side if c_idx == len(self.columns) else thin_side

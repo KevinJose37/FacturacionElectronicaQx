@@ -5,7 +5,10 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
+from metadata.eventos_dian_metadata import EventosDianMetadata
+
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class DianEventFilterResult:
@@ -17,17 +20,9 @@ class DianEventFilter:
     """Filtro para correos de eventos DIAN de CEN Financiero.
     
     Reglas:
-    1. Remitente: facturacionelectronicaqx@gmail.com (Para pruebas)
-    2. Asunto: Empieza con "Evento" y termina con ";030", ";032" o ";033"
+    1. Remitente: Configurado en EventosDianMetadata
+    2. Asunto: Empieza con "Evento" y termina con un código permitido
     """
-    
-    # Durante pruebas permitimos el remitente de pruebas
-    ALLOWED_SENDERS = [
-        "facturacionelectronicaqx@gmail.com",
-        "FacturaCTSColombia@cenbiz.com",
-        "FacturaCTSColombia@cenbiz"
-    ]
-    ALLOWED_CODES = {"030", "032", "033"}
     
     def evaluate(self, sender: str, subject: str) -> DianEventFilterResult:
         # 1. Validar remitente
@@ -36,7 +31,7 @@ class DianEventFilter:
         sender_email = sender_email_match.group(0) if sender_email_match else sender
         
         sender_lower = sender_email.lower()
-        is_authorized = any(s.lower() == sender_lower for s in self.ALLOWED_SENDERS)
+        is_authorized = any(s.lower() == sender_lower for s in EventosDianMetadata.remitentes_autorizados)
         
         if not is_authorized:
             return DianEventFilterResult(False, reason=f"Remitente no autorizado: {sender_email}")
@@ -53,10 +48,7 @@ class DianEventFilter:
             
         event_code = parts[-1].strip()
         
-        if event_code not in self.ALLOWED_CODES:
+        if event_code not in EventosDianMetadata.codigos_permitidos:
             return DianEventFilterResult(False, reason=f"Código de evento no permitido: {event_code}")
             
-        # 4. Extraer CUFE o número de factura si es posible (formato CEN suele ser NIT;NOMBRE;NUMERO;TIPO;...)
-        # Según el requerimiento, nos interesa el evento al final.
-        
         return DianEventFilterResult(True, event_code=event_code)

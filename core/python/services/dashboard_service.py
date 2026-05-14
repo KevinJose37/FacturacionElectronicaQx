@@ -336,7 +336,7 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
             await cur.execute(
                 """
                 SELECT a.id_alerta, a.codigo_tipo_alerta, a.codigo_prioridad, 
-                       a.titulo, a.mensaje, a.fecha_creacion, c.remitente
+                       a.titulo, a.mensaje, a.fecha_creacion, c.remitente, c.asunto
                 FROM facturacion.alerta a
                 LEFT JOIN facturacion.correo_entrante c ON a.correo_id = c.correo_id
                 WHERE a.resuelta = FALSE
@@ -357,17 +357,31 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
 
     resultado = []
     for r in filas:
+        # r[0]=id, r[1]=tipo, r[2]=prioridad, r[3]=titulo, r[4]=mensaje, r[5]=fecha, r[6]=remitente, r[7]=asunto
         mensaje_original = r[4]
         remitente = r[6]
+        asunto = r[7] or 'Sin Asunto'
         
         # Si existe el remitente (email real), intentamos limpiar el mensaje de alertas de correo
         mensaje_final = mensaje_original
         if remitente and ('fue identificado como facturación' in mensaje_original or 'Adjunto incompleto en correo' in mensaje_original):
-            # Extraer el Message-ID o identificador técnico si está presente
             import re
-            # Buscamos patrones típicos de Message-ID o identificadores largos
-            mensaje_final = re.sub(r'El correo [^ ]+ fue identificado', f'El correo {remitente} fue identificado', mensaje_original)
-            mensaje_final = re.sub(r'en correo [^ ]+:', f'en correo {remitente}:', mensaje_final)
+            
+            # Limpiar el nombre del remitente si viene con formato MIME o caracteres especiales
+            # Ejemplo: "=?iso-8859-1?Q?Iv=E1n... <email>" -> "email"
+            match_email = re.search(r'[\w\.-]+@[\w\.-]+', remitente)
+            email_limpio = match_email.group(0) if match_email else remitente
+            
+            # Construir el nuevo mensaje con Asunto y Remitente limpio
+            if 'fue identificado como facturación' in mensaje_original:
+                patron = r'El correo [^ ]+ fue identificado como facturación'
+                reemplazo = f'El correo con Asunto: "{asunto}" de {email_limpio} fue identificado como facturación'
+                mensaje_final = re.sub(patron, reemplazo, mensaje_original)
+            
+            if 'Adjunto incompleto en correo' in mensaje_original:
+                patron = r'Adjunto incompleto en correo [^:]+:'
+                reemplazo = f'Adjunto incompleto en correo con Asunto: "{asunto}" de {email_limpio}:'
+                mensaje_final = re.sub(patron, reemplazo, mensaje_final)
 
         resultado.append({
             'id': r[0],

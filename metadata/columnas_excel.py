@@ -89,3 +89,11 @@ class MetadatosReporte:
         "aceptacion_empresa"
     ]
     """Columnas habilitadas para edición desde el Frontend."""
+
+    alineacion_derecha = [
+        "fecha_admision_proveedor",
+        "fecha_entrega_contabilidad",
+        "nit_proveedor",
+        "numero_factura"
+    ]
+    """Columnas que deben alinearse a la derecha en el reporte Excel (basado en db_field)."""

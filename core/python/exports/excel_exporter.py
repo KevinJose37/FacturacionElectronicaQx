@@ -137,11 +137,8 @@ class ExcelExporter:
                 
                 # Alignment
                 h_align = "left"
-                # Check for headers that should be right aligned in data
-                label_upper = str(col["label"]).upper()
-                if label_upper in ["FECHA EMISIÓN FACTURA DEL PROVEEDOR", 
-                                  "FECHA ENTREGA FACTURA A CONTABILIDAD", 
-                                  "NIT", "NO. FACTURA"]:
+                # Check for fields that should be right aligned in data
+                if field in MetadatosReporte.alineacion_derecha:
                     h_align = "right"
                 
                 cell.alignment = Alignment(horizontal=h_align, vertical="center", wrap_text=True)

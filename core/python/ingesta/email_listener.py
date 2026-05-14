@@ -111,11 +111,46 @@ class EmailListener:
                 time.sleep(self.backoff_base**intento)
 
     def _obtener_uids(self, conn: imaplib.IMAP4_SSL) -> list:
-        """Obtiene UIDs de todos los correos en la bandeja."""
-        status, data = conn.uid("search", None, "ALL")
-        uids = data[0].split() if status == "OK" else []
-        logger.info("Correos encontrados en la bandeja: %d", len(uids))
+        """Obtiene UIDs de correos pendientes usando Checkpointing por UID (Solución Industrial)."""
+        # 1. Refrescar estado de la carpeta
+        conn.select(self.carpeta)
+        
+        # 2. Obtener el último UID procesado desde nuestra base de datos
+        ultimo_uid = 0
+        with self._repository._get_connection() as db:
+            with db.cursor() as cur:
+                cur.execute("SELECT MAX(imap_uid) FROM FACTURACION.CORREO_ENTRANTE")
+                res = cur.fetchone()
+                if res and res[0]:
+                    ultimo_uid = int(res[0])
+        
+        # 3. Definir criterio de búsqueda
+        if ultimo_uid > 0:
+            # Escenario Normal: UIDs mayores al último procesado
+            criterio = f"UID {ultimo_uid + 1}:*"
+            status, data = conn.uid("search", None, criterio)
+            uids = data[0].split() if status == "OK" else []
+            uids = [u for u in uids if int(u) > ultimo_uid]
+            logger.info("Puntero UID=%d. Encontrados %d nuevos correos.", ultimo_uid, len(uids))
+        else:
+            # Escenario de Arranque/BD Limpia: 
+            # Traemos los UNSEEN + los últimos dos correos (aunque estén leídos)
+            # para asegurar que no se pierda nada en la transición.
+            status_unseen, data_unseen = conn.uid("search", None, "UNSEEN")
+            unseen_uids = data_unseen[0].split() if status_unseen == "OK" else []
+            
+            status_all, data_all = conn.uid("search", None, "ALL")
+            all_uids = data_all[0].split() if status_all == "OK" else []
+            recent_all = all_uids[-2:] if all_uids else []
+            
+            # Combinar y ordenar
+            uids_set = {int(u) for u in (unseen_uids + recent_all)}
+            uids = [str(u).encode() for u in sorted(list(uids_set))]
+            logger.info("Arranque inicial: Verificando %d correos para establecer puntero.", len(uids))
+            
         return uids
+
+
 
     def _extraer_id_mensaje(self, msg: _email.message.Message) -> str:
         """Extrae el Message-ID del correo."""
@@ -225,7 +260,15 @@ class EmailListener:
                 continue
 
             # Subir a S3
-            subir_archivo_s3(adj_zip.ruta, uri_zip)
+            if not subir_archivo_s3(adj_zip.ruta, uri_zip):
+                self._repository.crear_proceso_ingesta(
+                    conn=conn_db, adjunto_id=id_adjunto_zip,
+                    id_proceso=IdTipoProceso.descarga_almacenamiento,
+                    observacion="Error al subir ZIP a S3.",
+                    id_estado=IdEstadoProceso.error,
+                    id_error=IdTipoError.fallo_subida_s3
+                )
+                continue
 
             if not validacion.es_valido or not validacion.pares:
                 self._alert_manager.adjunto_incompleto(
@@ -263,8 +306,16 @@ class EmailListener:
                                 fecha_envio=fecha_envio,
                             )
                             if id_sub_zip != -1:
-                                subir_archivo_s3(par.zip_origen, uri_sub_zip)
-                                zips_anidados_ids[sub_zip_key] = id_sub_zip
+                                if subir_archivo_s3(par.zip_origen, uri_sub_zip):
+                                    zips_anidados_ids[sub_zip_key] = id_sub_zip
+                                else:
+                                    self._repository.crear_proceso_ingesta(
+                                        conn=conn_db, adjunto_id=id_sub_zip,
+                                        id_proceso=IdTipoProceso.descarga_almacenamiento,
+                                        observacion="Error al subir sub-ZIP a S3.",
+                                        id_estado=IdEstadoProceso.error,
+                                        id_error=IdTipoError.fallo_subida_s3
+                                    )
 
             # Procesar cada par XML+PDF
             for par in validacion.pares:
@@ -280,18 +331,17 @@ class EmailListener:
                 if resultado:
                     resultados.append(resultado)
 
-            # Procesar PDFs huérfanos
-            for pdf_huerfano in validacion.pdfs_huerfanos:
-                resultado_huerfano = self._registrar_pdf_huerfano(
-                    pdf_path=pdf_huerfano,
-                    conn_db=conn_db,
-                    id_correo=id_correo,
-                    id_adjunto_padre=zips_anidados_ids.get(str(validacion.pares[0].zip_origen if validacion.pares else adj_zip.ruta), id_adjunto_zip),
-                    fecha_envio=fecha_envio,
-                    id_mensaje=id_mensaje,
-                )
-                if resultado_huerfano:
-                    resultados.append(resultado_huerfano)
+        for pdf_huerfano in validacion.pdfs_huerfanos:
+            resultado_huerfano = self._registrar_pdf_huerfano(
+                pdf_path=pdf_huerfano,
+                conn_db=conn_db,
+                id_correo=id_correo,
+                id_adjunto_padre=zips_anidados_ids.get(str(validacion.pares[0].zip_origen if validacion.pares else adj_zip.ruta), id_adjunto_zip),
+                fecha_envio=fecha_envio,
+                id_mensaje=id_mensaje,
+            )
+            if resultado_huerfano:
+                resultados.append(resultado_huerfano)
 
         return resultados
 
@@ -390,7 +440,16 @@ class EmailListener:
             return None
 
         # Subir a S3
-        subir_archivo_s3(pdf_path, uri_pdf)
+        exito_s3 = subir_archivo_s3(pdf_path, uri_pdf)
+        if not exito_s3:
+            self._repository.crear_proceso_ingesta(
+                conn=conn_db, adjunto_id=id_adjunto_pdf,
+                id_proceso=IdTipoProceso.descarga_almacenamiento,
+                observacion="Error al subir PDF huérfano a S3.",
+                id_estado=IdEstadoProceso.error,
+                id_error=IdTipoError.fallo_subida_s3
+            )
+            return None
 
         # 3. Crear EVENTO_INGESTA
         self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_adjunto_pdf)
@@ -494,7 +553,17 @@ class EmailListener:
             return None
 
         # Subir XML Padre a S3
-        subir_archivo_s3(par.xml_path, uri_xml)
+        exito_xml = subir_archivo_s3(par.xml_path, uri_xml)
+        
+        if not exito_xml:
+            self._repository.crear_proceso_ingesta(
+                conn=conn_db, adjunto_id=id_adjunto_xml,
+                id_proceso=IdTipoProceso.descarga_almacenamiento,
+                observacion="Error al subir XML a S3.",
+                id_estado=IdEstadoProceso.error,
+                id_error=IdTipoError.fallo_subida_s3
+            )
+            return None
 
         id_adjunto_pdf = None
         uri_pdf = None
@@ -505,10 +574,23 @@ class EmailListener:
                 archivo_seguro=True, fecha_envio=fecha_envio,
             )
             if id_adjunto_pdf != -1:
-                subir_archivo_s3(par.pdf_path, uri_pdf)
-                # Crear EVENTO_INGESTA para el PDF: permite que invoice_processor
-                # lo incluya en la familia y ejecute la verificación gráfica LLM.
-                self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_adjunto_pdf)
+                exito_pdf = subir_archivo_s3(par.pdf_path, uri_pdf)
+                if exito_pdf:
+                    # Crear EVENTO_INGESTA para el PDF: permite que invoice_processor
+                    # lo incluya en la familia y ejecute la verificación gráfica LLM.
+                    self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_adjunto_pdf)
+                else:
+                    self._repository.crear_proceso_ingesta(
+                        conn=conn_db, adjunto_id=id_adjunto_pdf,
+                        id_proceso=IdTipoProceso.descarga_almacenamiento,
+                        observacion="Error al subir PDF a S3.",
+                        id_estado=IdEstadoProceso.error,
+                        id_error=IdTipoError.fallo_subida_s3
+                    )
+                    # Si el PDF falla, marcamos como faltante para el flujo principal
+                    uri_pdf = None
+                    par.pdf_path = None
+                    par.pdf_faltante = True
 
         # 4. Crear evento de ingesta para XML padre
         self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_adjunto_xml)
@@ -527,8 +609,16 @@ class EmailListener:
                         archivo_seguro=True, fecha_envio=fecha_envio,
                     )
                     if id_embebido != -1:
-                        subir_archivo_s3(tmp_path, uri_embebido)
-                        self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_embebido)
+                        if subir_archivo_s3(tmp_path, uri_embebido):
+                            self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_embebido)
+                        else:
+                            self._repository.crear_proceso_ingesta(
+                                conn=conn_db, adjunto_id=id_embebido,
+                                id_proceso=IdTipoProceso.descarga_almacenamiento,
+                                observacion=f"Error al subir XML embebido ({tipo}) a S3.",
+                                id_estado=IdEstadoProceso.error,
+                                id_error=IdTipoError.fallo_subida_s3
+                            )
         else:
             logger.warning('No se extrajeron XMLs embebidos de %s: %s', par.xml_path.name, contenidos_xml)
 
@@ -587,8 +677,8 @@ class EmailListener:
                 self._validator.temp_root = Path(temp_dir_str)
                 
                 try:
-                    # 1. FETCH del correo sin marcarlo como leído (PEEK)
-                    status, data = conn.uid("fetch", uid, "(BODY.PEEK[])")
+                    # 1. FETCH del correo y marcarlo como leído inmediatamente para evitar procesamientos concurrentes
+                    status, data = conn.uid("fetch", uid, "(BODY[])")
                     if status != "OK" or not data:
                         logger.error("No se pudo obtener correo UID=%s", uid)
                         return False
@@ -640,46 +730,26 @@ class EmailListener:
                             cuerpo_html=cuerpo_html,
                             contiene_adjuntos=tiene_adjuntos,
                             id_origen=self.id_origen,
+                            imap_uid=int(uid),
                         )
                         if not es_correo_nuevo:
-                            # El correo ya está en BD. Verificar si fue procesado
-                            # completamente (tiene adjuntos exitosos) o si falló a
-                            # mitad de camino (ej: ClamAV caído → sin adjuntos).
-                            tiene_adjuntos = (
-                                id_correo
-                                and self._repository.correo_tiene_adjuntos_exitosos(
-                                    conn_db, id_correo
-                                )
+                            # El correo ya está en BD. Marcar como leído en IMAP y saltar.
+                            # No re-procesamos para evitar bucles de rechazo o duplicados.
+                            logger.info(
+                                "Correo ya existe en BD (ID=%s): %s. Saltando.",
+                                id_correo, id_mensaje,
                             )
-                            if tiene_adjuntos:
-                                # Duplicado real: correo ya procesado exitosamente.
-                                self._repository.crear_proceso_ingesta(
-                                    conn=conn_db,
-                                    id_proceso=IdTipoProceso.filtro_recepcion,
-                                    observacion="Correo duplicado: ya fue registrado y procesado anteriormente.",
-                                    id_estado=IdEstadoProceso.procesado,
-                                    correo_id=id_correo,
-                                )
-                                conn_db.commit()
-                                logger.info(
-                                    "Correo ya procesado (ID=%s): %s. Marcando como leído.",
-                                    id_correo, id_mensaje,
-                                )
-                                conn.uid("store", uid, "+FLAGS", "\\Seen")
-                                return True
-                            else:
-                                # Correo en BD pero sin adjuntos exitosos → falló antes.
-                                # Continuar con el procesamiento normal (reintento).
-                                logger.info(
-                                    "Correo ya en BD (ID=%s) pero sin adjuntos exitosos "
-                                    "(posible fallo previo). Reintentando procesamiento.",
-                                    id_correo,
-                                )
+                            conn.uid("store", uid, "+FLAGS", "\\Seen")
+                            return True
 
                         # 5b. Aplicar filtro de facturación
                         resultado_filtro = filtro.evaluar(parsed, tiene_adjuntos_factura, remitente)
 
                         if not resultado_filtro.es_factura:
+                            logger.warning(
+                                "Correo UID=%s (ID=%s) RECHAZADO por filtro: %s | Motivo: %s",
+                                uid.decode(), id_mensaje, asunto, resultado_filtro.motivo_rechazo
+                            )
                             motivo = resultado_filtro.motivo_rechazo
 
                             if motivo == "SIN_ADJUNTOS_FACTURA":
@@ -830,7 +900,7 @@ class EmailListener:
                             conn.uid("store", uid, "+FLAGS", "\\Seen")
                             return False
 
-                            # 5g. Publicar eventos en cola
+                        # 5g. Publicar eventos en cola
                         for res in todos_resultados:
                             if res.get("pdf_huerfano"):
                                 evento = {
@@ -856,6 +926,7 @@ class EmailListener:
                                 }
                             self._publisher.publish(evento, db_conn=conn_db)
 
+                        conn_db.commit()
                         conn.uid("store", uid, "+FLAGS", "\\Seen")
                         logger.debug(
                             "Correo procesado: %s | %d facturas encoladas",

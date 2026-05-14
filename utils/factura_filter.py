@@ -109,6 +109,16 @@ class FacturaFilter:
             return True
 
         asunto_lower = asunto.lower()
+        
+        # EXCLUSIÓN: No procesar correos de rechazo, alertas o reportes de sistema
+        exclusion_keywords = [
+            "rechazo", "error", "failure", "summary", "alert", 
+            "seguridad", "notificación", "notificacion", "failed"
+        ]
+        for ex_kw in exclusion_keywords:
+            if ex_kw in asunto_lower:
+                logger.debug("Correo excluido por palabra clave de sistema: %s", ex_kw)
+                return False
 
         # 2. Criterio de Palabras Clave
         for kw in self.keywords:

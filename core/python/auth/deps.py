@@ -19,7 +19,7 @@ async def get_user_by_email(correo: str) -> dict | None:
         async with conn.cursor() as cur:
             await cur.execute(
                 "SELECT id_usuario, correo, nombre_completo, rol, activo, hash_contrasena "
-                "FROM facturacion.usuario WHERE correo = %s",
+                "FROM facturacion.usuario WHERE LOWER(correo) = LOWER(%s)",
                 (correo,)
             )
             row = await cur.fetchone()

@@ -73,12 +73,17 @@ class DianEventListener:
                 return True
 
             # Es un evento válido (030, 032, 033)
-            parsed = self.parser.parsear(subject)
-            num_factura = parsed.get("num_factura")
+            # Intentar extraer número de factura del formato CEN
+            parts = subject.split(";")
+            num_factura = None
             
-            if not num_factura:
-                parts = subject.split(";")
-                if len(parts) >= 3:
+            if subject.lower().startswith("evento;") and len(parts) >= 2:
+                num_factura = parts[1].strip()
+                logger.info(f"Formato CEN detectado. Factura a buscar: {num_factura}")
+            else:
+                parsed = self.parser.parsear(subject)
+                num_factura = parsed.get("num_factura")
+                if not num_factura and len(parts) >= 3:
                     num_factura = parts[2].strip()
 
             if not num_factura:
@@ -88,18 +93,30 @@ class DianEventListener:
 
             # 2. Buscar la factura en la BD para obtener su ID
             pool = get_pool()
+            logger.info(f"Buscando factura {num_factura} en base de datos...")
             async with pool.connection() as db_conn:
                 async with db_conn.cursor() as cur:
+                    # Búsqueda flexible por número exacto o prefijo-número
                     await cur.execute(
-                        "SELECT id_factura FROM facturacion.factura WHERE numero_factura = %s OR prefijo_facturacion || '-' || numero_factura = %s LIMIT 1",
-                        (num_factura, num_factura)
+                        """
+                        SELECT id_factura 
+                        FROM facturacion.factura 
+                        WHERE numero_factura = %s 
+                           OR prefijo_facturacion || '-' || numero_factura = %s 
+                           OR prefijo_facturacion || numero_factura = %s
+                        LIMIT 1
+                        """,
+                        (num_factura, num_factura, num_factura)
                     )
                     res = await cur.fetchone()
+                    
                     if not res:
-                        logger.warning(f"Factura {num_factura} no encontrada en BD. No se puede registrar evento {result.event_code}")
+                        logger.warning(f"Factura [{num_factura}] NO encontrada en la tabla facturacion.factura. Saltando evento.")
+                        conn.uid("store", uid, "+FLAGS", "\\Seen")
                         return False
                     
                     id_factura = res[0]
+                    logger.info(f"Factura encontrada (ID: {id_factura}). Registrando evento {result.event_code}...")
                     
                     await cur.execute(
                         """
@@ -109,7 +126,7 @@ class DianEventListener:
                         (id_factura, result.event_code, f"Evento recibido vía email CEN: {subject}")
                     )
                     await db_conn.commit()
-                    logger.info(f"Evento {result.event_code} registrado para factura ID {id_factura} (Num: {num_factura})")
+                    logger.info(f"Evento {result.event_code} registrado exitosamente para factura ID {id_factura}")
                     
             conn.uid("store", uid, "+FLAGS", "\\Seen")
             return True

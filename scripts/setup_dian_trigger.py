@@ -5,6 +5,16 @@ def create_trigger():
     CREATE OR REPLACE FUNCTION facturacion.fn_sincronizar_evento_dian_control()
     RETURNS TRIGGER AS $$
     BEGIN
+        -- Verificar si la factura es de CONTADO (código '1')
+        -- Si es contado, no se sincronizan los eventos en la tabla de control (se mantienen vacíos)
+        IF EXISTS (
+            SELECT 1 FROM facturacion.pago_factura 
+            WHERE id_factura = NEW.id_factura 
+              AND codigo_forma_pago = '1'
+        ) THEN
+            RETURN NEW;
+        END IF;
+
         -- Solo actuar si el evento es uno de los requeridos (030, 032, 033)
         IF NEW.codigo_evento IN ('030', '032', '033') THEN
             -- Actualizar el campo eventos_dian_notif concatenando los códigos de eventos permitidos

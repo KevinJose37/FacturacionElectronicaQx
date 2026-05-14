@@ -109,9 +109,13 @@ class ExcelExporter:
                 field = col["db_field"]
                 value = row_data.get(field)
 
-                # Transform boolean to 'X'
+                # Transform boolean to 'X' or '***' for Contado
                 if field in ["acuso_recibido", "recibido_bien_servicio", "aceptacion_empresa", "recibido"]:
-                    value = "X" if value is True else ""
+                    forma_pago = str(row_data.get("forma_pago", "")).upper()
+                    if "CONTADO" in forma_pago:
+                        value = "***" if field == "acuso_recibido" else ""
+                    else:
+                        value = "X" if value is True else ""
                 
                 # Format dates
                 if isinstance(value, datetime):

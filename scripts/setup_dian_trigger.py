@@ -1,6 +1,8 @@
 import psycopg2
 
-def create_trigger():
+
+def create_trigger() -> None:
+    """Crea la función y el trigger en PostgreSQL para sincronizar eventos DIAN."""
     sql = """
     CREATE OR REPLACE FUNCTION facturacion.fn_sincronizar_evento_dian_control()
     RETURNS TRIGGER AS $$
@@ -35,9 +37,9 @@ def create_trigger():
                     WHEN NEW.codigo_evento = '032' THEN TRUE 
                     ELSE recibido_bien_servicio 
                 END,
-                aceptacion_empresa = CASE 
+                aceptacion_expresa = CASE 
                     WHEN NEW.codigo_evento = '033' THEN TRUE 
-                    ELSE aceptacion_empresa 
+                    ELSE aceptacion_expresa 
                 END,
                 fecha_actualizacion = NOW()
             WHERE id_factura = NEW.id_factura;
@@ -53,23 +55,24 @@ def create_trigger():
     FOR EACH ROW
     EXECUTE FUNCTION facturacion.fn_sincronizar_evento_dian_control();
     """
-    
+
     try:
         conn = psycopg2.connect(
-            host='217.216.85.110', 
-            port=5433, 
-            dbname='facturacion', 
-            user='admin', 
-            password='mysecretpassword'
+            host='217.216.85.110',
+            port=5433,
+            dbname='facturacion',
+            user='admin',
+            password='mysecretpassword',
         )
         cur = conn.cursor()
         cur.execute(sql)
         conn.commit()
-        print("Trigger y función creados exitosamente en la base de datos.")
+        print('Trigger y función creados exitosamente en la base de datos.')
         cur.close()
         conn.close()
     except Exception as e:
-        print(f"Error: {e}")
+        print(f'Error: {e}')
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     create_trigger()

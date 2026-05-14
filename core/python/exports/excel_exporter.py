@@ -6,32 +6,35 @@ encabezados combinados, bordes y formatos de fuente específicos.
 """
 
 import os
-import yaml
 from datetime import datetime
+
+import yaml
 from openpyxl import Workbook
-from openpyxl.styles import Font, Fill, PatternFill, Alignment, Border, Side
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from metadata.columnas_excel import MetadatosReporte
 from metadata.estilos_excel import EstilosExcel
+
 
 class ExcelExporter:
     """Clase encargada de la generación de archivos Excel para reportes de control.
-    
+
     Carga la configuración de columnas y estilos desde un archivo de metadatos
     y aplica el formato requerido a las hojas de cálculo.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Inicializa el exportador cargando la configuración desde excel_config.yml."""
-        config_path = os.path.join("metadata", "excel_config.yml")
-        with open(config_path, "r", encoding="utf-8") as f:
+        config_path = os.path.join('metadata', 'excel_config.yml')
+        with open(config_path, 'r', encoding='utf-8') as f:
             self.config = yaml.safe_load(f)
-        
-        self.columns = self.config["columns"]
+
+        self.columns = self.config['columns']
 
     def generate_excel(
         self,
-        data: list[dict],
+        data: list,
         month_name: str,
         year: str | int,
     ) -> Workbook:
@@ -44,21 +47,24 @@ class ExcelExporter:
 
         Returns:
             Workbook listo para ser guardado o transmitido.
-
         """
         wb = Workbook()
         ws = wb.active
-        ws.title = self.config.get("sheet_name", "Facturas")
+        ws.title = self.config.get('sheet_name', 'Facturas')
 
         # Styles
-        header_fill = PatternFill(start_color=EstilosExcel.header_bg_color, 
-                                  end_color=EstilosExcel.header_bg_color, 
-                                  fill_type="solid")
-        header_font = Font(name=EstilosExcel.font_name, 
-                           size=EstilosExcel.font_size, 
-                           bold=True, 
-                           color=EstilosExcel.header_font_color)
-        
+        header_fill = PatternFill(
+            start_color=EstilosExcel.header_bg_color,
+            end_color=EstilosExcel.header_bg_color,
+            fill_type='solid',
+        )
+        header_font = Font(
+            name=EstilosExcel.font_name,
+            size=EstilosExcel.font_size,
+            bold=True,
+            color=EstilosExcel.header_font_color,
+        )
+
         # Border styles
         medium_side = Side(style='medium', color='000000')
         thin_side = Side(style='thin', color='000000')
@@ -67,11 +73,11 @@ class ExcelExporter:
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(self.columns))
         cell_1 = ws.cell(row=1, column=1, value=EstilosExcel.nombre_empresa.upper())
         cell_1.font = Font(name=EstilosExcel.font_name, size=EstilosExcel.font_size, bold=True)
-        cell_1.alignment = Alignment(horizontal="center", vertical="center")
+        cell_1.alignment = Alignment(horizontal='center', vertical='center')
+
         # Apply borders to Row 1
         for i in range(1, len(self.columns) + 1):
             cell = ws.cell(row=1, column=i)
-            # Only the last column in the header row should have a medium right border
             right_s = medium_side if i == len(self.columns) else thin_side
             cell.border = Border(left=thin_side, right=right_s, top=thin_side, bottom=thin_side)
 
@@ -80,7 +86,8 @@ class ExcelExporter:
         title = EstilosExcel.titulo_reporte_base.format(MONTH=month_name.upper(), YEAR=year).upper()
         cell_2 = ws.cell(row=2, column=1, value=title)
         cell_2.font = Font(name=EstilosExcel.font_name, size=EstilosExcel.font_size, bold=True)
-        cell_2.alignment = Alignment(horizontal="center", vertical="center")
+        cell_2.alignment = Alignment(horizontal='center', vertical='center')
+
         for i in range(1, len(self.columns) + 1):
             cell = ws.cell(row=2, column=i)
             right_s = medium_side if i == len(self.columns) else thin_side
@@ -88,61 +95,55 @@ class ExcelExporter:
 
         # 3. Table Headers
         for i, col in enumerate(self.columns, 1):
-            cell = ws.cell(row=3, column=i, value=str(col["label"]).upper())
+            cell = ws.cell(row=3, column=i, value=str(col['label']).upper())
             cell.fill = header_fill
             cell.font = header_font
-            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            # Only the last column should have a medium right border
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
             right_s = medium_side if i == len(self.columns) else thin_side
             cell.border = Border(left=thin_side, right=right_s, top=thin_side, bottom=thin_side)
 
         # Configure fixed column widths
         for i, col in enumerate(self.columns, 1):
-            label_upper = str(col["label"]).upper()
+            label_upper = str(col['label']).upper()
             width = EstilosExcel.anchos_fijos.get(label_upper, 15)
             ws.column_dimensions[get_column_letter(i)].width = width
 
         # 4. Data Rows
         num_rows = len(data)
         for r_idx, row_data in enumerate(data, 4):
-            is_last_row = (r_idx == num_rows + 3)
+            is_last_row = r_idx == num_rows + 3
             for c_idx, col in enumerate(self.columns, 1):
-                field = col["db_field"]
+                field = col['db_field']
                 value = row_data.get(field)
 
                 # Transform boolean to 'X' or '***' for Contado
-                if field in ["acuso_recibido", "recibido_bien_servicio", "aceptacion_empresa", "recibido"]:
-                    forma_pago = str(row_data.get("forma_pago", "")).upper()
-                    if "CONTADO" in forma_pago:
-                        value = "***" if field == "acuso_recibido" else ""
+                if field in ['acuso_recibido', 'recibido_bien_servicio', 'aceptacion_empresa', 'recibido']:
+                    forma_pago = str(row_data.get('forma_pago', '')).upper()
+                    if 'CONTADO' in forma_pago:
+                        value = '***' if field == 'acuso_recibido' else ''
                     else:
-                        value = "X" if value is True else ""
-                
+                        value = 'X' if value is True else ''
+
                 # Format dates
                 if isinstance(value, datetime):
-                    value = value.strftime("%d/%m/%Y")
+                    value = value.strftime('%d/%m/%Y')
                 elif value is None:
-                    value = ""
-                
+                    value = ''
+
                 # Convert to uppercase string
                 value = str(value).upper()
-                
+
                 cell = ws.cell(row=r_idx, column=c_idx, value=value)
                 cell.font = Font(name=EstilosExcel.font_name, size=EstilosExcel.font_size)
-                
-                # Borders: Only the last column has medium right border. Last row has medium bottom border.
+
+                # Borders
                 right_s = medium_side if c_idx == len(self.columns) else thin_side
                 bottom_s = medium_side if is_last_row else thin_side
                 cell.border = Border(left=thin_side, right=right_s, top=thin_side, bottom=bottom_s)
-                
+
                 # Alignment
-                h_align = "left"
-                # Check for fields that should be right aligned in data
-                if field in MetadatosReporte.alineacion_derecha:
-                    h_align = "right"
-                
-                cell.alignment = Alignment(horizontal=h_align, vertical="center", wrap_text=True)
+                h_align = 'right' if field in MetadatosReporte.alineacion_derecha else 'left'
+                cell.alignment = Alignment(horizontal=h_align, vertical='center', wrap_text=True)
 
-        return wb
-
-        return wb
+        resultado = wb
+        return resultado

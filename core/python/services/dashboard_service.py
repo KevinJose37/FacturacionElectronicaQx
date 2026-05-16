@@ -33,8 +33,8 @@ async def obtener_kpis() -> list:
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
             ahora = datetime.now(tz=timezone.utc)
-            inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
-            inicio_ayer = inicio_hoy - timedelta(days=1)
+            inicio_hoy = ahora - timedelta(days=30)
+            inicio_ayer = inicio_hoy - timedelta(days=30)
 
             await cur.execute(_QUERIES['kpis'], (inicio_hoy, inicio_ayer))
             row = await cur.fetchone()

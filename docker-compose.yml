@@ -62,9 +62,12 @@ services:
       - CLAMAV_PORT=3310
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - PYTHONUNBUFFERED=1
+    tmpfs:
+      - /tmp:size=1G,uid=1000
+    secrets:
+      - s3_connection_secret
     volumes:
-      - ./input/credentials:/app/input/credentials:ro
-      - ./input/credentials/s3_connection.yml:/app/input/credentials/s3_connection.yml:ro
+      - ./input/credentials/ca_bundle.pem:/app/input/credentials/ca_bundle.pem:ro
 
   # ── Worker de Cola ──
   worker:
@@ -91,9 +94,12 @@ services:
       - CLAMAV_PORT=3310
       - LOG_LEVEL=INFO
       - PYTHONUNBUFFERED=1
+    tmpfs:
+      - /tmp:size=1G,uid=1000
+    secrets:
+      - s3_connection_secret
     volumes:
-      - ./input/credentials:/app/input/credentials:ro
-      - ./input/credentials/s3_connection.yml:/app/input/credentials/s3_connection.yml:ro
+      - ./input/credentials/ca_bundle.pem:/app/input/credentials/ca_bundle.pem:ro
     command: [ "python", "-m", "core.python.ingesta.queue_worker" ]
 
   # ── Listener de Eventos DIAN ──
@@ -150,3 +156,7 @@ networks:
   nginx-proxy:
     external: true
     name: ${PROXY_NETWORK:-nginx-proxy_default}
+
+secrets:
+  s3_connection_secret:
+    file: ./input/credentials/s3_connection.yml

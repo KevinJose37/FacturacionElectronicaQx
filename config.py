@@ -92,8 +92,12 @@ def get_aws_config() -> dict:
     Returns:
         Diccionario con las credenciales (access_key, secret_key, bucket_name).
     """
-    ruta_yml = Path("input/credentials/s3_connection.yml")
+    # Intentar leer desde Docker Secret primero, luego hacer fallback al archivo local
+    ruta_secret = Path("/run/secrets/s3_connection_secret")
+    ruta_local = Path("input/credentials/s3_connection.yml")
     config_yaml = {}
+
+    ruta_yml = ruta_secret if ruta_secret.exists() else ruta_local
 
     if ruta_yml.exists():
         try:
@@ -104,7 +108,7 @@ def get_aws_config() -> dict:
             logging.getLogger(__name__).error(f"Error leyendo {ruta_yml}: {e}")
     else:
         import logging
-        logging.getLogger(__name__).warning(f"Archivo de credenciales S3 no encontrado en {ruta_yml.absolute()}")
+        logging.getLogger(__name__).warning(f"Archivo de credenciales S3 no encontrado en secret ni en {ruta_local.absolute()}")
 
     return {
         'access_key': config_yaml.get('access_key'),

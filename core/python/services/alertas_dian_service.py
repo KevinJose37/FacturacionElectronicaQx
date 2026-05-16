@@ -13,23 +13,12 @@ from datetime import datetime, timezone
 
 from config import load_yaml_queries
 from core.python.db import get_pool
+from metadata.alertas import EtiquetasAlerta
+from metadata.fechas_metadata import MesesEspanol
 
 logger = logging.getLogger(__name__)
 
 _QUERIES = load_yaml_queries('alertas/eventos.yml').get('alertas_dian', {})
-
-_NOMBRES_MES = {
-    1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril',
-    5: 'Mayo', 6: 'Junio', 7: 'Julio', 8: 'Agosto',
-    9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre',
-}
-
-_ETIQUETAS_ALERTA = {
-    'sin_evento_030': 'Facturas sin evento DIAN 030 (Acuse de recibo)',
-    'sin_evento_032': 'Facturas sin evento DIAN 032 (Recibo del bien)',
-    'sin_evento_033': 'Facturas sin evento DIAN 033 (Aceptación expresa)',
-    'con_evento_rechazo': 'Facturas con evento DIAN de rechazo (031 Reclamo)',
-}
 
 
 def _agrupar_por_anio_mes(filas: list) -> dict:
@@ -44,7 +33,10 @@ def _agrupar_por_anio_mes(filas: list) -> dict:
     resultado = {}
     for anio, mes, cantidad in filas:
         anio_str = str(anio)
-        mes_nombre = _NOMBRES_MES.get(mes, f'Mes {mes}')
+        # Obtener nombre del mes desde metadata y capitalizar
+        mes_raw = MesesEspanol.mapa.get(mes, f'Mes {mes}')
+        mes_nombre = mes_raw.capitalize()
+
         if anio_str not in resultado:
             resultado[anio_str] = {}
         resultado[anio_str][mes_nombre] = cantidad
@@ -106,7 +98,7 @@ async def obtener_alertas_dian(fecha_corte: datetime | None = None) -> dict:
                 detalle = _agrupar_por_anio_mes(filas)
 
                 alertas[clave] = {
-                    'label': _ETIQUETAS_ALERTA.get(clave, clave),
+                    'label': EtiquetasAlerta.mapa.get(clave, clave),
                     'total': totales.get(clave, 0),
                     'detalle': detalle,
                 }

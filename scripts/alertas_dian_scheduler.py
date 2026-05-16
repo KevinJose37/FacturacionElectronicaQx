@@ -1,20 +1,7 @@
 """Scheduler de alertas DIAN — se ejecuta diariamente a las 12:00 PM.
 
-Este script realiza un conteo de todas las facturas en factura_control
-que no han recibido los eventos DIAN requeridos (030, 032, 033) y
-aquellas que recibieron evento de rechazo (031), para facturas con
-forma_pago diferente a Contado.
-
-Uso:
-    python scripts/alertas_dian_scheduler.py
-
-El script se ejecuta en un bucle infinito, verificando cada minuto
-si es mediodía (12:00 PM hora local). Cuando lo detecta, ejecuta
-las consultas y registra los resultados en el log.
-
-Para producción, se recomienda configurar como tarea programada
-del SO (cron en Linux, Task Scheduler en Windows) ejecutando:
-    python scripts/alertas_dian_scheduler.py --once
+Realiza un conteo de las facturas que no han recibido los eventos DIAN
+requeridos (030, 032, 033) y aquellas que recibieron evento de rechazo (031).
 """
 
 import argparse
@@ -24,17 +11,18 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 # Agregar raíz del proyecto al path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
-from core.python.db import init_pool, close_pool
+from core.python.db import close_pool, init_pool
 from core.python.services.alertas_dian_service import obtener_alertas_dian
+from metadata.alertas import ConfigScheduler
+
+load_dotenv()
 
 # Configuración de logging
 logging.basicConfig(
@@ -43,15 +31,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger('alertas_dian_scheduler')
 
-HORA_EJECUCION = 12  # 12:00 PM hora local
-MINUTO_EJECUCION = 0
-
 
 def _formatear_reporte(resultado: dict) -> str:
     """Formatea el resultado de alertas DIAN para logging legible.
 
     Args:
-        resultado: Diccionario retornado por obtener_alertas_dian().
+        resultado: Diccionario retornado por obtener_alertas_dian.
 
     Returns:
         Cadena formateada con el reporte completo.
@@ -87,9 +72,6 @@ def _formatear_reporte(resultado: dict) -> str:
 async def ejecutar_alertas() -> dict:
     """Ejecuta el ciclo completo de alertas DIAN.
 
-    Inicializa el pool de conexiones, ejecuta las consultas,
-    loguea el reporte y cierra el pool.
-
     Returns:
         Diccionario con el resultado de las alertas.
     """
@@ -102,39 +84,40 @@ async def ejecutar_alertas() -> dict:
         reporte = _formatear_reporte(resultado)
         logger.info(reporte)
 
-        # Guardar resultado en archivo JSON para consulta posterior
-        ruta_salida = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            'temp',
-            'alertas_dian_ultimo.json',
-        )
+        # Guardar resultado en archivo JSON
+        raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        ruta_salida = os.path.join(raiz, 'temp', 'alertas_dian_ultimo.json')
         os.makedirs(os.path.dirname(ruta_salida), exist_ok=True)
+
         with open(ruta_salida, 'w', encoding='utf-8') as f:
             json.dump(resultado, f, ensure_ascii=False, indent=2)
-        logger.info('Resultado guardado en %s', ruta_salida)
 
-        return resultado
+        logger.info('Resultado guardado en %s', ruta_salida)
+        respuesta = resultado
     finally:
         await close_pool()
 
+    return respuesta
+
 
 def _ya_ejecuto_hoy(ultima_ejecucion: str | None) -> bool:
-    """Verifica si ya se ejecutó hoy.
+    """Verifica si ya se ejecutó el proceso en el día actual.
 
     Args:
         ultima_ejecucion: Fecha ISO de la última ejecución.
 
     Returns:
-        True si ya se ejecutó hoy.
+        True si la fecha coincide con el día de hoy.
     """
-    if not ultima_ejecucion:
-        return False
-    try:
-        fecha = datetime.fromisoformat(ultima_ejecucion)
-        hoy = datetime.now().date()
-        ya_ejecuto = fecha.date() == hoy
-    except ValueError:
-        ya_ejecuto = False
+    ya_ejecuto = False
+    if ultima_ejecucion:
+        try:
+            fecha = datetime.fromisoformat(ultima_ejecucion)
+            hoy = datetime.now().date()
+            ya_ejecuto = fecha.date() == hoy
+        except ValueError:
+            ya_ejecuto = False
+
     return ya_ejecuto
 
 
@@ -144,7 +127,7 @@ def main() -> None:
     parser.add_argument(
         '--once',
         action='store_true',
-        help='Ejecutar una sola vez y salir (para cron/task scheduler)',
+        help='Ejecutar una sola vez y salir',
     )
     args = parser.parse_args()
 
@@ -155,15 +138,18 @@ def main() -> None:
 
     logger.info(
         'Scheduler iniciado — esperando ejecución diaria a las %02d:%02d',
-        HORA_EJECUCION,
-        MINUTO_EJECUCION,
+        ConfigScheduler.hora_ejecucion,
+        ConfigScheduler.minuto_ejecucion,
     )
 
     ultima_fecha_ejecucion = None
 
     while True:
         ahora = datetime.now()
-        es_hora = ahora.hour == HORA_EJECUCION and ahora.minute == MINUTO_EJECUCION
+        es_hora = (
+            ahora.hour == ConfigScheduler.hora_ejecucion
+            and ahora.minute == ConfigScheduler.minuto_ejecucion
+        )
         ya_ejecuto = _ya_ejecuto_hoy(ultima_fecha_ejecucion)
 
         if es_hora and not ya_ejecuto:
@@ -174,16 +160,20 @@ def main() -> None:
             except Exception:
                 logger.exception('Error durante la ejecución de alertas DIAN')
         else:
-            proxima = ahora.replace(hour=HORA_EJECUCION, minute=MINUTO_EJECUCION, second=0)
+            proxima = ahora.replace(
+                hour=ConfigScheduler.hora_ejecucion,
+                minute=ConfigScheduler.minuto_ejecucion,
+                second=0,
+                microsecond=0
+            )
             if ahora >= proxima:
-                from datetime import timedelta
                 proxima += timedelta(days=1)
+
             delta = (proxima - ahora).total_seconds()
             if delta > 3600:
                 logger.debug('Próxima ejecución en %.0f horas.', delta / 3600)
 
-        # Esperar 30 segundos antes de volver a verificar
-        time.sleep(30)
+        time.sleep(ConfigScheduler.segundos_espera)
 
 
 if __name__ == '__main__':

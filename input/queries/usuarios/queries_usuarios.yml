@@ -39,3 +39,12 @@ usuarios:
     FROM facturacion.usuario 
     WHERE activo = TRUE 
     ORDER BY nombre_completo ASC
+
+  actualizar_self: >
+    UPDATE facturacion.usuario
+    SET 
+        correo = COALESCE(%s, correo),
+        nombre_completo = COALESCE(%s, nombre_completo),
+        hash_contrasena = COALESCE(%s, hash_contrasena)
+    WHERE id_usuario = %s
+    RETURNING id_usuario, correo, nombre_completo, rol, activo, fecha_creacion

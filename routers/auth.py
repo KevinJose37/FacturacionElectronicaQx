@@ -34,9 +34,22 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
+from core.python.schemas.usuarios_schemas import UsuarioSelfUpdate
+from core.python.services import usuario_service
+
 @router.get("/me", response_model=UserInDB)
 async def read_users_me(current_user: UserInDB = Depends(get_current_active_user)):
     """
     Endpoint para obtener los datos del usuario autenticado actualmente.
     """
     return current_user
+
+@router.patch("/me")
+async def update_users_me(
+    data: UsuarioSelfUpdate,
+    current_user: UserInDB = Depends(get_current_active_user)
+):
+    """
+    Actualiza los datos del propio usuario (correo, nombre, contraseña).
+    """
+    return await usuario_service.update_self_usuario(current_user["id_usuario"], data)

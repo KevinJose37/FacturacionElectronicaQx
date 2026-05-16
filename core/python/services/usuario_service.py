@@ -8,7 +8,8 @@ from core.python.schemas.usuarios_schemas import (
     UsuarioCreate,
     UsuarioUpdate,
     UsuarioResponse,
-    UsuarioCreateResponse
+    UsuarioCreateResponse,
+    UsuarioSelfUpdate
 )
 from config import get_queries_usuarios
 
@@ -120,3 +121,32 @@ async def delete_usuario(id_usuario: int) -> dict:
                 raise HTTPException(status_code=404, detail="Usuario no encontrado")
                 
             return {"detail": "Usuario desactivado exitosamente"}
+
+async def update_self_usuario(id_usuario: int, data: UsuarioSelfUpdate) -> dict:
+    pool = get_pool()
+    queries = get_queries_usuarios()
+    
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            if data.correo:
+                await cur.execute("SELECT id_usuario FROM facturacion.usuario WHERE correo = %s", (data.correo,))
+                existing = await cur.fetchone()
+                if existing and existing[0] != id_usuario:
+                    raise HTTPException(status_code=400, detail="El correo ya está en uso por otro usuario.")
+                
+            hashed_pw = get_password_hash(data.contrasena) if data.contrasena else None
+            
+            await cur.execute(
+                queries['actualizar_self'],
+                (data.correo, data.nombre_completo, hashed_pw, id_usuario)
+            )
+            row = await cur.fetchone()
+            
+            if not row:
+                raise HTTPException(status_code=404, detail="Usuario no encontrado")
+                
+            return {
+                "detail": "Datos actualizados exitosamente",
+                "correo_cambiado": data.correo is not None,
+                "password_cambiado": data.contrasena is not None
+            }

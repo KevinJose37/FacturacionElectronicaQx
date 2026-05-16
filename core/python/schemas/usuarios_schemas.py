@@ -25,3 +25,8 @@ class UsuarioResponse(UsuarioBase):
 
 class UsuarioCreateResponse(UsuarioResponse):
     contrasena_generada: str  # Solo se retorna una vez al crear
+
+class UsuarioSelfUpdate(BaseModel):
+    correo: Optional[str] = None
+    nombre_completo: Optional[str] = None
+    contrasena: Optional[str] = None

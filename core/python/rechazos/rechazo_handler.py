@@ -5,13 +5,14 @@ import logging
 import os
 from datetime import datetime
  
-from config import get_queries_email
+from config import load_yaml_queries
 from core.python.db import get_pool
 from core.python.rechazos.email_sender import EmailSender
  
 logger = logging.getLogger(__name__)
- 
-_QUERIES = get_queries_email().get('rechazos', {})
+
+_QUERIES = load_yaml_queries('email/queries_email.yml').get('rechazos', {})
+
  
  
 class RechazoHandler:

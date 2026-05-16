@@ -39,6 +39,22 @@ class EmailSender:
         Returns:
             bool: True si se envió exitosamente, False de lo contrario.
         """
+        AVISO_HABEAS_DATA = """
+
+--------------------------------------------------
+Tratamiento de información proveniente de facturación electrónica DIAN
+
+La información procesada por la plataforma puede provenir de documentos electrónicos validados por la Dirección de Impuestos y Aduanas Nacionales (DIAN), incluyendo facturas electrónicas, notas crédito/débito, documentos soporte y eventos asociados.
+
+El tratamiento de dicha información se realiza exclusivamente para fines tributarios, contables, administrativos, operativos y comerciales autorizados por el titular de los datos o habilitados por la normativa aplicable.
+
+La plataforma actúa como Encargado del Tratamiento respecto de la información administrada por sus clientes, quienes ostentan la calidad de Responsables del Tratamiento conforme a la Ley 1581 de 2012.
+
+La información es almacenada bajo controles de seguridad técnicos y organizacionales adecuados, incluyendo mecanismos de cifrado, control de acceso y trazabilidad de operaciones.
+
+Los datos personales serán conservados únicamente durante el tiempo necesario para cumplir las finalidades autorizadas y las obligaciones legales aplicables, tras lo cual serán eliminados o anonimizados de manera segura.
+"""
+        cuerpo_con_aviso = cuerpo + AVISO_HABEAS_DATA
         exito = False
         if not self.user or not self.password:
             logger.error(
@@ -53,7 +69,7 @@ class EmailSender:
                 msg['From'] = self.user
                 msg['To'] = destinatario
                 msg['Subject'] = asunto
-                msg.attach(MIMEText(cuerpo, 'plain'))
+                msg.attach(MIMEText(cuerpo_con_aviso, 'plain'))
 
                 server = smtplib.SMTP(self.smtp_server, self.smtp_port)
                 server.starttls()

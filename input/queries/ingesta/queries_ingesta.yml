@@ -1,0 +1,13 @@
+# ──────────────────────────────────────────────
+# Queries SQL para el módulo de Ingesta
+# ──────────────────────────────────────────────
+
+ingesta:
+  estado_cola: >
+    SELECT 
+        COUNT(*) FILTER (WHERE ID_ESTADO = %s) as pendientes,
+        COUNT(*) FILTER (WHERE ID_ESTADO = %s) as en_proceso,
+        COUNT(*) FILTER (WHERE ID_ESTADO = %s AND FECHA_ACTUALIZACION > NOW() - INTERVAL '1 hour') as procesados_ultima_hora,
+        COUNT(*) FILTER (WHERE ID_ESTADO = %s) as fallidos,
+        ARRAY_AGG(DISTINCT WORKER_ID) FILTER (WHERE WORKER_ID IS NOT NULL AND ID_ESTADO = %s) as workers_activos
+    FROM FACTURACION.EVENTO_INGESTA

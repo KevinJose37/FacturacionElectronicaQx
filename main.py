@@ -31,6 +31,7 @@ from routers import (
     exports,
     auth,
     usuarios,
+    health,
 )
 
 # Configuración de logging base
@@ -86,6 +87,7 @@ api_router.include_router(chat.router)
 api_router.include_router(exports.router)
 api_router.include_router(auth.router)
 api_router.include_router(usuarios.router)
+api_router.include_router(health.router)
 
 app.include_router(api_router)
 

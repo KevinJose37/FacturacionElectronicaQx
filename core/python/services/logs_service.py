@@ -2,7 +2,7 @@
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from config import get_queries_services
 from core.python.db import get_pool
@@ -98,7 +98,7 @@ async def obtener_conteos() -> dict:
         Diccionario con total_24h, info, warn, error.
     """
     pool = get_pool()
-    inicio = datetime.now(tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    inicio = datetime.now(tz=timezone.utc) - timedelta(days=30)
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(_QUERIES['conteos'], (inicio,))

@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from config import get_queries_services, load_yaml_config
+from config import load_yaml_config, load_yaml_queries
 from core.python.db import get_pool
 from metadata.common_metadata import DefaultTextos
 from metadata.dashboard_metadata import (
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 _settings = load_yaml_config('settings.yaml')
 _dashboard_cfg = _settings.get('dashboard', {})
 
-_QUERIES = get_queries_services().get('dashboard', {})
+_QUERIES = load_yaml_queries('services/queries_services.yml').get('dashboard', {})
 
 
 async def obtener_kpis() -> list:
@@ -33,8 +33,8 @@ async def obtener_kpis() -> list:
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
             ahora = datetime.now(tz=timezone.utc)
-            inicio_hoy = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
-            inicio_ayer = inicio_hoy - timedelta(days=1)
+            inicio_hoy = ahora - timedelta(days=30)
+            inicio_ayer = inicio_hoy - timedelta(days=30)
 
             await cur.execute(_QUERIES['kpis'], (inicio_hoy, inicio_ayer))
             row = await cur.fetchone()
@@ -334,23 +334,7 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                """
-                SELECT a.id_alerta, a.codigo_tipo_alerta, a.codigo_prioridad, 
-                       a.titulo, a.mensaje, a.fecha_creacion, c.remitente, c.asunto
-                FROM facturacion.alerta a
-                LEFT JOIN facturacion.correo_entrante c ON a.correo_id = c.correo_id
-                WHERE a.resuelta = FALSE
-                ORDER BY
-                  CASE a.codigo_prioridad
-                    WHEN 'CRITICA' THEN 1
-                    WHEN 'ALTA' THEN 2
-                    WHEN 'MEDIA' THEN 3
-                    WHEN 'BAJA' THEN 4
-                    ELSE 5
-                  END,
-                  a.fecha_creacion DESC
-                LIMIT %s
-                """,
+                _QUERIES['alertas_activas'],
                 (limite,)
             )
             filas = await cur.fetchall()

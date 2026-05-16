@@ -9,7 +9,7 @@ from core.python.db import get_pool
 
 logger = logging.getLogger(__name__)
 
-_QUERIES = get_queries_control().get('control', {})
+_QUERIES = get_queries_control()
 
 
 async def listar_control(

@@ -32,6 +32,7 @@ from routers import (
     exports,
     auth,
     usuarios,
+    health,
 )
 
 # Configuración de logging base
@@ -72,6 +73,7 @@ app.add_middleware(
 # Rutas públicas o con validación propia
 app.include_router(auth.router)
 app.include_router(ingesta.router)
+app.include_router(health.router)
 
 # Rutas protegidas globalmente con JWT
 api_router = APIRouter(dependencies=[Depends(get_current_active_user)])

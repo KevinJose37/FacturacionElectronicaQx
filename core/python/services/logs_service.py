@@ -2,17 +2,17 @@
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
-from config import get_queries_services
+from config import load_yaml_queries
 from core.python.db import get_pool
 from metadata.common_metadata import DefaultTextos
 from metadata.log_service_metadata import MensajesLog
 
 logger = logging.getLogger(__name__)
 
-_QUERIES = get_queries_services().get('logs', {})
-_FILTROS = get_queries_services().get('logs_filtros', {})
+_QUERIES = load_yaml_queries('services/queries_services.yml').get('logs', {})
+_FILTROS = load_yaml_queries('services/queries_services.yml').get('logs_filtros', {})
 
 
 async def listar_logs(
@@ -98,7 +98,7 @@ async def obtener_conteos() -> dict:
         Diccionario con total_24h, info, warn, error.
     """
     pool = get_pool()
-    inicio = datetime.now(tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    inicio = datetime.now(tz=timezone.utc) - timedelta(days=30)
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(_QUERIES['conteos'], (inicio,))

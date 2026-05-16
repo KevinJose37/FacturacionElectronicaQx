@@ -1,0 +1,8 @@
+# ──────────────────────────────────────────────
+# Queries SQL para el módulo de Autenticación
+# ──────────────────────────────────────────────
+
+auth:
+  buscar_por_correo: >
+    SELECT id_usuario, correo, nombre_completo, rol, activo, hash_contrasena
+    FROM facturacion.usuario WHERE LOWER(correo) = LOWER(%s)

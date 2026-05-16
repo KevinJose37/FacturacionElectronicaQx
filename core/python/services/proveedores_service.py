@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime, timezone
 
-from config import get_queries_services, load_yaml_config
+from config import load_yaml_config, load_yaml_queries
 from core.python.db import get_pool
 from metadata.common_metadata import DefaultTextos
 from metadata.dashboard_metadata import FormatoTiempo
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 _settings = load_yaml_config('settings.yaml')
 _proveedores_cfg = _settings.get('proveedores', {})
 
-_QUERIES = get_queries_services().get('proveedores', {})
+_QUERIES = load_yaml_queries('services/queries_services.yml').get('proveedores', {})
 
 
 async def listar_proveedores() -> list:

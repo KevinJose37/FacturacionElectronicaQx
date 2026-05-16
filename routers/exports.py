@@ -7,7 +7,7 @@ from datetime import date
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
  
-from config import get_queries_excel
+from config import load_yaml_queries
 from core.python.db import get_pool
 from core.python.services.exports_service import generar_reporte_excel
 from core.python.services.facturas_service import (
@@ -21,7 +21,7 @@ from fastapi import Depends
  
 router = APIRouter(prefix='/api/exports', tags=['Exports'])
 
-_QUERIES = get_queries_excel().get('exportacion', {})
+_QUERIES = load_yaml_queries('excel/queries_excel.yml').get('exportacion', {})
 
 @router.get('/excel')
 async def export_excel(

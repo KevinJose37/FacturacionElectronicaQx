@@ -4,7 +4,7 @@ import logging
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Depends
 
-from config import get_config
+from config import get_config, get_queries_ingesta
 from core import EmailListener
 from core.python.db.connection import get_pool
 from metadata.db_metadata import IdEstadoProceso
@@ -57,18 +57,11 @@ async def gmail_webhook(
 async def queue_status(current_user: dict = Depends(get_current_active_user)) -> dict:
     """Retorna el estado actual de la cola de trabajo."""
     pool = get_pool()
+    queries = get_queries_ingesta()
     try:
         async with pool.connection() as conn:
             async with conn.cursor() as cur:
-                await cur.execute('''
-                    SELECT 
-                        COUNT(*) FILTER (WHERE ID_ESTADO = %s) as pendientes,
-                        COUNT(*) FILTER (WHERE ID_ESTADO = %s) as en_proceso,
-                        COUNT(*) FILTER (WHERE ID_ESTADO = %s AND FECHA_ACTUALIZACION > NOW() - INTERVAL '1 hour') as procesados_ultima_hora,
-                        COUNT(*) FILTER (WHERE ID_ESTADO = %s) as fallidos,
-                        ARRAY_AGG(DISTINCT WORKER_ID) FILTER (WHERE WORKER_ID IS NOT NULL AND ID_ESTADO = %s) as workers_activos
-                    FROM FACTURACION.EVENTO_INGESTA
-                ''', (IdEstadoProceso.pendiente, IdEstadoProceso.en_proceso, IdEstadoProceso.procesado, IdEstadoProceso.fallido, IdEstadoProceso.en_proceso))
+                await cur.execute(queries['estado_cola'], (IdEstadoProceso.pendiente, IdEstadoProceso.en_proceso, IdEstadoProceso.procesado, IdEstadoProceso.fallido, IdEstadoProceso.en_proceso))
                 row = await cur.fetchone()
                 
         return {

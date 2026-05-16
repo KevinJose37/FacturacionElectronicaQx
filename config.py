@@ -158,6 +158,7 @@ def get_tool_definitions() -> list:
 def load_yaml_queries(ruta_relativa: str) -> dict:
     """Carga un archivo YAML de queries desde la carpeta input/queries.
 
+
     Args:
         ruta_relativa:
             Ruta relativa dentro de input/queries (ej: 'chat/queries_chat.yml').
@@ -179,42 +180,6 @@ def load_yaml_queries(ruta_relativa: str) -> dict:
     return resultado
 
 
-def get_queries_chat() -> dict:
-    """Obtiene las consultas SQL del chatbot desde el archivo YAML.
-
-    Carga queries desde ``input/queries/chat/queries_chat.yml``.
-
-    Returns:
-        Diccionario con las queries SQL y fragmentos de filtros.
-    """
-    queries = load_yaml_queries('chat/queries_chat.yml')
-    return queries
-
-
-def get_queries_services() -> dict:
-    """Obtiene las consultas SQL de los servicios del frontend.
- 
-    Carga queries desde ``input/queries/services/queries_services.yml``.
- 
-    Returns:
-        Diccionario con las queries SQL organizadas por servicio.
-    """
-    queries = load_yaml_queries('services/queries_services.yml')
-    return queries
- 
- 
-def get_queries_excel() -> dict:
-    """Obtiene las consultas SQL para exportación de Excel y consultas de tabla.
- 
-    Carga queries desde ``input/queries/excel/queries_excel.yml``.
- 
-    Returns:
-        Diccionario con las queries SQL para reportes Excel y paginación.
-    """
-    queries = load_yaml_queries('excel/queries_excel.yml')
-    return queries
-
-
 @lru_cache(maxsize=1)
 def get_queries_control() -> dict:
     """Carga y cachea las queries de control desde YAML."""
@@ -227,26 +192,15 @@ def get_queries_usuarios() -> dict:
     path = Path("input/queries/usuarios/queries_usuarios.yml")
     return yaml.safe_load(path.read_text(encoding='utf-8')).get('usuarios', {})
 
+@lru_cache(maxsize=1)
+def get_queries_auth() -> dict:
+    """Carga y cachea las queries de auth desde YAML."""
+    path = Path("input/queries/auth/queries_auth.yml")
+    return yaml.safe_load(path.read_text(encoding='utf-8')).get('auth', {})
 
-def get_queries_email() -> dict:
-    """Obtiene las consultas SQL para notificaciones de email.
- 
-    Carga queries desde ``input/queries/email/queries_email.yml``.
- 
-    Returns:
-        Diccionario con las queries SQL para rechazos y notificaciones.
-    """
-    queries = load_yaml_queries('email/queries_email.yml')
-    return queries
+@lru_cache(maxsize=1)
+def get_queries_ingesta() -> dict:
+    """Carga y cachea las queries de ingesta desde YAML."""
+    path = Path("input/queries/ingesta/queries_ingesta.yml")
+    return yaml.safe_load(path.read_text(encoding='utf-8')).get('ingesta', {})
 
-
-def get_queries_alertas() -> dict:
-    """Obtiene las consultas SQL para alertas de eventos DIAN.
-
-    Carga queries desde ``input/queries/alertas/eventos.yml``.
-
-    Returns:
-        Diccionario con las queries SQL para alertas DIAN.
-    """
-    queries = load_yaml_queries('alertas/eventos.yml')
-    return queries

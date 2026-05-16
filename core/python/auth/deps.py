@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from core.python.db import get_pool
 from core.python.auth.security import SECRET_KEY, ALGORITHM
 from core.python.schemas.auth_schemas import TokenData, UserInDB
+from config import get_queries_auth
 
 # URL a la que el frontend o swagger debe enviar las credenciales
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/token")
@@ -15,11 +16,11 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/token")
 async def get_user_by_email(correo: str) -> dict | None:
     """Busca un usuario por su correo electrónico en la BD."""
     pool = get_pool()
+    queries = get_queries_auth()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                "SELECT id_usuario, correo, nombre_completo, rol, activo, hash_contrasena "
-                "FROM facturacion.usuario WHERE LOWER(correo) = LOWER(%s)",
+                queries['buscar_por_correo'],
                 (correo,)
             )
             row = await cur.fetchone()

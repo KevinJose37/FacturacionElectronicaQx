@@ -5,14 +5,14 @@ from datetime import date
 
 from openpyxl import Workbook
 
-from config import get_queries_excel
+from config import load_yaml_queries
 from core.python.db import get_pool
 from core.python.exports.excel_exporter import ExcelExporter
 from metadata.fechas_metadata import MesesEspanol
 
 logger = logging.getLogger(__name__)
 
-_QUERIES = get_queries_excel().get('exportacion', {})
+_QUERIES = load_yaml_queries('excel/queries_excel.yml').get('exportacion', {})
 
 
 async def generar_reporte_excel(

@@ -2,13 +2,13 @@
 
 import logging
 
-from config import get_queries_services
+from config import load_yaml_queries
 from core.python.db import get_pool
 from metadata.validacion_metadata import ReglasValidacion
 
 logger = logging.getLogger(__name__)
 
-_QUERIES = get_queries_services().get('validaciones', {})
+_QUERIES = load_yaml_queries('services/queries_services.yml').get('validaciones', {})
 
 
 async def obtener_reglas_validacion() -> list:

@@ -3,13 +3,13 @@
 import logging
 from datetime import datetime, timezone
 
-from config import get_queries_services
+from config import load_yaml_queries
 from core.python.db import get_pool
 from metadata.common_metadata import DefaultTextos
 
 logger = logging.getLogger(__name__)
 
-_QUERIES = get_queries_services().get('rechazos', {})
+_QUERIES = load_yaml_queries('services/queries_services.yml').get('rechazos', {})
 
 
 async def listar_rechazos() -> list:

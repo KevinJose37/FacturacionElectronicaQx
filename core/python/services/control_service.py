@@ -4,12 +4,13 @@ import calendar
 import logging
 from datetime import date
 
-from config import get_queries_control
+from config import load_yaml_queries
 from core.python.db import get_pool
+from utils.s3_utils import obtener_xml_s3
 
 logger = logging.getLogger(__name__)
 
-_QUERIES = get_queries_control()
+_QUERIES = load_yaml_queries('control/queries_control.yml')
 
 
 async def listar_control(
@@ -69,6 +70,7 @@ async def listar_control(
             'aceptacion_empresa': bool(r[11]),
             'observaciones_entrega': r[12] or '',
             'eventos_dian_notif': r[13] or '',
+            's3_key': r[14] or '',
         })
 
     resultado = {
@@ -114,4 +116,39 @@ async def actualizar_control(id_control: int, datos: dict) -> bool:
         await conn.commit()
 
     resultado = filas_afectadas > 0
+    return resultado
+
+
+async def obtener_xml_factura(s3_key: str) -> bytes | None:
+    """Descarga el contenido de un archivo XML desde S3.
+
+    Args:
+        s3_key: Ruta del archivo en el bucket S3.
+
+    Returns:
+        Contenido en bytes del archivo o None si falla.
+    """
+    import boto3
+    from botocore.exceptions import BotoCoreError, ClientError
+
+    from config import get_aws_config
+
+    aws_cfg = get_aws_config()
+    resultado = None
+
+    try:
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=aws_cfg.get('access_key'),
+            aws_secret_access_key=aws_cfg.get('secret_key'),
+            region_name=aws_cfg.get('region_name'),
+        )
+        response = s3_client.get_object(
+            Bucket=aws_cfg.get('bucket_name'),
+            Key=s3_key,
+        )
+        resultado = response['Body'].read()
+    except (BotoCoreError, ClientError) as e:
+        logger.error('Error descargando XML desde S3 (%s): %s', s3_key, e)
+
     return resultado

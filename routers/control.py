@@ -2,10 +2,10 @@
 
 from datetime import date
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel
 
-from core import control_service
+from core.python.services import control_service
 
 router = APIRouter(prefix='/api/control', tags=['control'])
 
@@ -73,3 +73,41 @@ async def actualizar_control(
 
     resultado = {'ok': True, 'message': 'Registro actualizado correctamente'}
     return resultado
+
+
+@router.get('/descargar-xml')
+async def descargar_xml_factura(
+    s3_key: str = Query(..., description='Ruta del archivo en S3'),
+) -> Response:
+    """Endpoint para descargar el XML de una factura desde S3.
+
+    Args:
+        s3_key: Llave del objeto en el bucket S3.
+
+    Returns:
+        Respuesta con el contenido del XML y headers de descarga.
+
+    Raises:
+        HTTPException: Si el archivo no se pudo obtener.
+    """
+    contenido = await control_service.obtener_xml_factura(s3_key)
+
+    if not contenido:
+        raise HTTPException(
+            status_code=404,
+            detail='No se pudo recuperar el archivo XML desde el almacenamiento',
+        )
+
+    # Extraer nombre de archivo de la ruta
+    filename = s3_key.split('/')[-1]
+
+    headers = {
+        'Content-Disposition': f'attachment; filename="{filename}"',
+        'Access-Control-Expose-Headers': 'Content-Disposition',
+    }
+
+    return Response(
+        content=contenido,
+        media_type='application/xml',
+        headers=headers,
+    )

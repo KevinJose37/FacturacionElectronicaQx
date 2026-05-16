@@ -4,15 +4,15 @@ import logging
 import re
 from datetime import datetime, timezone
 
-from config import get_queries_services
+from config import load_yaml_queries
 from core.python.db import get_pool
 from metadata.common_metadata import DefaultTextos
 from metadata.log_service_metadata import MensajesLog
 
 logger = logging.getLogger(__name__)
 
-_QUERIES = get_queries_services().get('logs', {})
-_FILTROS = get_queries_services().get('logs_filtros', {})
+_QUERIES = load_yaml_queries('services/queries_services.yml').get('logs', {})
+_FILTROS = load_yaml_queries('services/queries_services.yml').get('logs_filtros', {})
 
 
 async def listar_logs(

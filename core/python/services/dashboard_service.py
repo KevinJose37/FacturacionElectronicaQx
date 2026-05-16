@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from config import get_queries_services, load_yaml_config
+from config import load_yaml_config, load_yaml_queries
 from core.python.db import get_pool
 from metadata.common_metadata import DefaultTextos
 from metadata.dashboard_metadata import (
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 _settings = load_yaml_config('settings.yaml')
 _dashboard_cfg = _settings.get('dashboard', {})
 
-_QUERIES = get_queries_services().get('dashboard', {})
+_QUERIES = load_yaml_queries('services/queries_services.yml').get('dashboard', {})
 
 
 async def obtener_kpis() -> list:

@@ -7,7 +7,7 @@ buscar datos específicos en la base de datos del sistema de facturación.
 import logging
 import sys
 
-from config import get_queries_chat, get_tool_definitions
+from config import get_tool_definitions, load_yaml_queries
 from core.python.db import get_pool
 from metadata.chat_metadata import MensajesRespuesta
 from metadata.common_metadata import DefaultTextos
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 TOOL_DEFINITIONS = get_tool_definitions()
 
-_QUERIES = get_queries_chat()
+_QUERIES = load_yaml_queries('chat/queries_chat.yml')
 _FILTROS = _QUERIES.get('filtros', {})
 
 

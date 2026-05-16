@@ -2,15 +2,15 @@
 
 import logging
 
-from config import get_queries_services
+from config import load_yaml_queries
 from core.python.db import get_pool
 from metadata.common_metadata import DefaultTextos
 from metadata.factura_metadata import EstadosFactura
 
 logger = logging.getLogger(__name__)
 
-_QUERIES = get_queries_services().get('facturas', {})
-_FILTROS = get_queries_services().get('facturas_filtros', {})
+_QUERIES = load_yaml_queries('services/queries_services.yml').get('facturas', {})
+_FILTROS = load_yaml_queries('services/queries_services.yml').get('facturas_filtros', {})
 
 
 async def listar_facturas(

@@ -237,3 +237,15 @@ def get_queries_email() -> dict:
     """
     queries = load_yaml_queries('email/queries_email.yml')
     return queries
+
+
+def get_queries_alertas() -> dict:
+    """Obtiene las consultas SQL para alertas de eventos DIAN.
+
+    Carga queries desde ``input/queries/alertas/eventos.yml``.
+
+    Returns:
+        Diccionario con las queries SQL para alertas DIAN.
+    """
+    queries = load_yaml_queries('alertas/eventos.yml')
+    return queries

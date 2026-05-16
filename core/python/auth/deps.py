@@ -63,3 +63,12 @@ async def get_current_active_user(current_user: UserInDB = Depends(get_current_u
     if not current_user.activo:
         raise HTTPException(status_code=400, detail="Usuario inactivo")
     return current_user
+
+async def get_current_admin_user(current_user: UserInDB = Depends(get_current_active_user)) -> UserInDB:
+    """Dependencia que asegura que el usuario tiene rol de administrador."""
+    if current_user.rol != 'admin':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tiene los permisos suficientes (requiere rol admin)"
+        )
+    return current_user

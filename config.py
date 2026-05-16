@@ -215,16 +215,17 @@ def get_queries_excel() -> dict:
     return queries
 
 
+@lru_cache(maxsize=1)
 def get_queries_control() -> dict:
-    """Obtiene las consultas SQL para el módulo de control de facturas.
- 
-    Carga queries desde ``input/queries/control/queries_control.yml``.
- 
-    Returns:
-        Diccionario con las queries SQL para listar, contar y actualizar control.
-    """
-    queries = load_yaml_queries('control/queries_control.yml')
-    return queries
+    """Carga y cachea las queries de control desde YAML."""
+    path = Path("input/queries/control/queries_control.yml")
+    return yaml.safe_load(path.read_text(encoding='utf-8')).get('control', {})
+
+@lru_cache(maxsize=1)
+def get_queries_usuarios() -> dict:
+    """Carga y cachea las queries de usuarios desde YAML."""
+    path = Path("input/queries/usuarios/queries_usuarios.yml")
+    return yaml.safe_load(path.read_text(encoding='utf-8')).get('usuarios', {})
 
 
 def get_queries_email() -> dict:
@@ -236,4 +237,16 @@ def get_queries_email() -> dict:
         Diccionario con las queries SQL para rechazos y notificaciones.
     """
     queries = load_yaml_queries('email/queries_email.yml')
+    return queries
+
+
+def get_queries_alertas() -> dict:
+    """Obtiene las consultas SQL para alertas de eventos DIAN.
+
+    Carga queries desde ``input/queries/alertas/eventos.yml``.
+
+    Returns:
+        Diccionario con las queries SQL para alertas DIAN.
+    """
+    queries = load_yaml_queries('alertas/eventos.yml')
     return queries

@@ -22,7 +22,9 @@ from core.python.db import (                    # noqa: F401
 
 # ── Servicios de consulta ──────────────────────────────────────────
 from core.python.services import (              # noqa: F401
+    alertas_dian_service,
     control_service,
+    usuario_service,
     dashboard_service,
     facturas_service,
     logs_service,

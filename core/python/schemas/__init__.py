@@ -10,6 +10,7 @@ from core.python.schemas.models import (
     ValidacionesPageResponse, RechazosPageResponse, LogsPageResponse,
     ControlRegistro, ControlUpdateRequest, ControlPageResponse,
 )
+from core.python.schemas.usuarios_schemas import UsuarioCreate, UsuarioUpdate, UsuarioResponse, UsuarioCreateResponse
 
 __all__ = [
     'KpiResponse', 'FlowStageResponse', 'FacturaResumen', 'ProveedorResumen',
@@ -20,5 +21,5 @@ __all__ = [
     'DashboardResponse', 'FacturasPageResponse', 'ProveedoresPageResponse',
     'ValidacionesPageResponse', 'RechazosPageResponse', 'LogsPageResponse',
     'ControlRegistro', 'ControlUpdateRequest', 'ControlPageResponse',
+    'UsuarioCreate', 'UsuarioUpdate', 'UsuarioResponse', 'UsuarioCreateResponse',
 ]
-

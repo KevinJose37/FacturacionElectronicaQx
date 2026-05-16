@@ -1,0 +1,35 @@
+usuarios:
+  listar: >
+    SELECT
+        id_usuario,
+        correo,
+        nombre_completo,
+        rol,
+        activo,
+        fecha_creacion
+    FROM facturacion.usuario
+    ORDER BY fecha_creacion DESC
+
+  insertar: >
+    INSERT INTO facturacion.usuario (correo, hash_contrasena, nombre_completo, rol, activo)
+    VALUES (%s, %s, %s, %s, %s)
+    RETURNING id_usuario, correo, nombre_completo, rol, activo, fecha_creacion
+
+  actualizar: >
+    UPDATE facturacion.usuario
+    SET 
+        correo = COALESCE(%s, correo),
+        nombre_completo = COALESCE(%s, nombre_completo),
+        rol = COALESCE(%s, rol),
+        activo = COALESCE(%s, activo)
+    WHERE id_usuario = %s
+    RETURNING id_usuario, correo, nombre_completo, rol, activo, fecha_creacion
+
+  eliminar: >
+    UPDATE facturacion.usuario
+    SET activo = FALSE
+    WHERE id_usuario = %s
+    RETURNING id_usuario
+
+  verificar_correo_existe: >
+    SELECT 1 FROM facturacion.usuario WHERE correo = %s

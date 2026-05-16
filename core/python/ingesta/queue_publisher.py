@@ -130,6 +130,8 @@ def get_publisher(config: dict) -> QueuePublisher:
     backend = queue_cfg['backend'].strip().lower()
 
     if backend == 'local':
+        if os.environ.get('ENVIRONMENT') == 'production':
+            raise ValueError("LocalQueuePublisher no permitido en producción por requerimientos de cifrado AES-256.")
         publisher = LocalQueuePublisher(queue_cfg['local_path'])
     elif backend == 'postgres':
         publisher = PostgresQueuePublisher({

@@ -62,9 +62,12 @@ services:
       - CLAMAV_PORT=3310
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - PYTHONUNBUFFERED=1
+    tmpfs:
+      - /tmp:size=1G,uid=1000
+    secrets:
+      - s3_connection_secret
     volumes:
-      - ./input/credentials:/app/input/credentials:ro
-      - ./input/credentials/s3_connection.yml:/app/input/credentials/s3_connection.yml:ro
+      - ./input/credentials/ca_bundle.pem:/app/input/credentials/ca_bundle.pem:ro
 
   # ── Worker de Cola ──
   worker:
@@ -91,9 +94,12 @@ services:
       - CLAMAV_PORT=3310
       - LOG_LEVEL=INFO
       - PYTHONUNBUFFERED=1
+    tmpfs:
+      - /tmp:size=1G,uid=1000
+    secrets:
+      - s3_connection_secret
     volumes:
-      - ./input/credentials:/app/input/credentials:ro
-      - ./input/credentials/s3_connection.yml:/app/input/credentials/s3_connection.yml:ro
+      - ./input/credentials/ca_bundle.pem:/app/input/credentials/ca_bundle.pem:ro
     command: [ "python", "-m", "core.python.ingesta.queue_worker" ]
 
   # ── Listener de Eventos DIAN ──
@@ -120,6 +126,7 @@ services:
       - PYTHONUNBUFFERED=1
     command: [ "python", "-m", "core.python.ingesta.dian_events.listener" ]
 
+
   # ── Frontend ──
   frontend:
     build:
@@ -141,8 +148,29 @@ services:
       - VIRTUAL_PORT=3000
       - LETSENCRYPT_HOST=${DOMAIN}
 
+  # ── Gateway / Proxy (Caddy) ── [DESHABILITADO TEMPORALMENTE]
+  # Conflicto con nginx-proxy existente en el VPS (puerto 80 ocupado).
+  # Ver TODO.md para pasos de migración a producción.
+  # gateway:
+  #   image: caddy:2-alpine
+  #   container_name: facturacion_gateway
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile
+  #     - caddy_data:/data
+  #     - caddy_config:/config
+  #   networks:
+  #     - backend_net
+  #   depends_on:
+  #     - frontend
+
 volumes:
   postgres_data:
+  # caddy_data:
+  # caddy_config:
 
 networks:
   backend_net:
@@ -150,3 +178,7 @@ networks:
   nginx-proxy:
     external: true
     name: ${PROXY_NETWORK:-nginx-proxy_default}
+
+secrets:
+  s3_connection_secret:
+    file: ./input/credentials/s3_connection.yml

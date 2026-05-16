@@ -20,6 +20,7 @@ load_dotenv()
 from core import close_pool, init_pool
 from routers import (
     chat,
+    control,
     dashboard,
     facturas,
     ingesta,
@@ -73,6 +74,7 @@ api_router = APIRouter()
 # Registramos el webhook directamente en la app para que la ruta sea /webhook/gmail y no /api/webhook/gmail
 app.include_router(ingesta.router)
 
+api_router.include_router(control.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(facturas.router)
 api_router.include_router(proveedores.router)

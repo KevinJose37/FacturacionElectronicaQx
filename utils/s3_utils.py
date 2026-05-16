@@ -48,7 +48,12 @@ def subir_archivo_s3(
                 aws_secret_access_key=aws_cfg.get('secret_key'),
                 region_name=aws_cfg.get('region_name')
             )
-            s3_client.upload_file(str(ruta), target_bucket, destino_s3)
+            s3_client.upload_file(
+                str(ruta), 
+                target_bucket, 
+                destino_s3,
+                ExtraArgs={'ServerSideEncryption': 'AES256'}
+            )
             es_exitoso = True
         except (BotoCoreError, ClientError) as error:
             logger.error(f'Error de AWS al subir el archivo {ruta_local} a S3: {error}')
@@ -102,6 +107,7 @@ def copiar_archivo_s3(
             Bucket=target_bucket,
             Key=destino_key,
             CopySource={'Bucket': source_bucket, 'Key': origen_key},
+            ServerSideEncryption='AES256'
         )
         es_exitoso = True
     except (BotoCoreError, ClientError) as error:

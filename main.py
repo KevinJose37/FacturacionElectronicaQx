@@ -73,6 +73,7 @@ app.add_middleware(
 # Rutas públicas o con validación propia
 app.include_router(auth.router)
 app.include_router(ingesta.router)
+app.include_router(health.router)
 
 # Rutas protegidas globalmente con JWT
 api_router = APIRouter(dependencies=[Depends(get_current_active_user)])
@@ -87,7 +88,6 @@ api_router.include_router(logs_router.router)
 api_router.include_router(chat.router)
 api_router.include_router(exports.router)
 api_router.include_router(usuarios.router)
-api_router.include_router(health.router)
 
 app.include_router(api_router)
 

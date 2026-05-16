@@ -64,10 +64,12 @@ dashboard:
   actividad_reciente: >
     SELECT tp.descripcion as etapa,
     te.descripcion as detalle_error,
-    pi.fecha_inicio
+    pi.fecha_inicio,
+    f.numero_factura
     FROM facturacion.proceso_ingesta pi
     JOIN facturacion.tipo_proceso tp ON pi.id_proceso = tp.id_tipo_proceso
     LEFT JOIN facturacion.tipo_error te ON pi.id_error = te.id_tipo_error
+    LEFT JOIN facturacion.factura f ON pi.adjunto_id = f.adjunto_id
     ORDER BY pi.fecha_inicio DESC LIMIT %s
 
   tipos_documento: >
@@ -141,10 +143,15 @@ logs:
     SELECT pi.fecha_inicio,
     tp.descripcion as etapa,
     te.descripcion as detalle_error,
-    pi.observacion
+    pi.observacion,
+    f.numero_factura,
+    c.remitente,
+    c.asunto
     FROM facturacion.proceso_ingesta pi
     JOIN facturacion.tipo_proceso tp ON pi.id_proceso = tp.id_tipo_proceso
     LEFT JOIN facturacion.tipo_error te ON pi.id_error = te.id_tipo_error
+    LEFT JOIN facturacion.factura f ON pi.adjunto_id = f.adjunto_id
+    LEFT JOIN facturacion.correo_entrante c ON pi.correo_id = c.correo_id
     {where}
     ORDER BY pi.fecha_inicio DESC LIMIT %s
 

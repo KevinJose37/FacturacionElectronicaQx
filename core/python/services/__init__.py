@@ -5,6 +5,7 @@ para una sección específica de la aplicación.
 """
 
 from core.python.services import (
+    alertas_dian_service,
     control_service,
     usuario_service,
     dashboard_service,
@@ -16,6 +17,7 @@ from core.python.services import (
 )
 
 __all__ = [
+    'alertas_dian_service',
     'control_service',
     'usuario_service',
     'dashboard_service',

@@ -4,7 +4,7 @@ import asyncio
 
 from fastapi import APIRouter
 
-from core import dashboard_service
+from core import alertas_dian_service, dashboard_service
 
 router = APIRouter(prefix='/api/dashboard', tags=['dashboard'])
 
@@ -17,7 +17,8 @@ async def obtener_dashboard() -> dict:
     """
     (
         kpis, flow, proveedores, tendencia, facturas,
-        actividad, tipos_doc, heatmap, indicadores, eventos_min, alertas
+        actividad, tipos_doc, heatmap, indicadores, eventos_min, alertas,
+        alertas_dian
     ) = await asyncio.gather(
         dashboard_service.obtener_kpis(),
         dashboard_service.obtener_etapas_flujo(),
@@ -30,6 +31,7 @@ async def obtener_dashboard() -> dict:
         dashboard_service.obtener_indicadores_pipeline(),
         dashboard_service.obtener_eventos_por_minuto(),
         dashboard_service.obtener_alertas_activas(),
+        alertas_dian_service.obtener_alertas_dian(),
     )
 
     respuesta = {
@@ -44,6 +46,7 @@ async def obtener_dashboard() -> dict:
         'activity': actividad,
         'events_per_min': eventos_min,
         'alerts': alertas,
+        'alertas_dian': alertas_dian,
     }
     return respuesta
 
@@ -59,4 +62,16 @@ async def obtener_kpis() -> list:
 async def obtener_flujo() -> list:
     """Obtiene las etapas del pipeline."""
     resultado = await dashboard_service.obtener_etapas_flujo()
+    return resultado
+
+
+@router.get('/alertas-dian')
+async def obtener_alertas_dian() -> dict:
+    """Obtiene el reporte de alertas de eventos DIAN.
+
+    Retorna facturas sin eventos 030, 032, 033 y
+    facturas con evento de rechazo 031, agrupadas por año y mes.
+    Solo para facturas con forma_pago diferente a Contado.
+    """
+    resultado = await alertas_dian_service.obtener_alertas_dian()
     return resultado

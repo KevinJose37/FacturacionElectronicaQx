@@ -182,7 +182,7 @@ async def procesar_chat(mensajes_usuario: list) -> str:
             message = data['choices'][0]['message']
 
             if not message.get('tool_calls'):
-                answer = message.get('content', '')
+                answer = message.get('content') or ''
                 return answer
 
             logger.info(
@@ -205,6 +205,6 @@ async def procesar_chat(mensajes_usuario: list) -> str:
         }
         response = await client.post(url, headers=headers, json=payload_final)
         data = response.json()
-        answer = data['choices'][0]['message'].get('content', ErroresChat.fallback_sin_respuesta)
+        answer = data['choices'][0]['message'].get('content') or ErroresChat.fallback_sin_respuesta
 
     return answer

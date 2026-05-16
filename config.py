@@ -192,3 +192,15 @@ def get_queries_usuarios() -> dict:
     path = Path("input/queries/usuarios/queries_usuarios.yml")
     return yaml.safe_load(path.read_text(encoding='utf-8')).get('usuarios', {})
 
+@lru_cache(maxsize=1)
+def get_queries_auth() -> dict:
+    """Carga y cachea las queries de auth desde YAML."""
+    path = Path("input/queries/auth/queries_auth.yml")
+    return yaml.safe_load(path.read_text(encoding='utf-8')).get('auth', {})
+
+@lru_cache(maxsize=1)
+def get_queries_ingesta() -> dict:
+    """Carga y cachea las queries de ingesta desde YAML."""
+    path = Path("input/queries/ingesta/queries_ingesta.yml")
+    return yaml.safe_load(path.read_text(encoding='utf-8')).get('ingesta', {})
+

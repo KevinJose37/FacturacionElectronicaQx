@@ -334,23 +334,7 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                """
-                SELECT a.id_alerta, a.codigo_tipo_alerta, a.codigo_prioridad, 
-                       a.titulo, a.mensaje, a.fecha_creacion, c.remitente, c.asunto
-                FROM facturacion.alerta a
-                LEFT JOIN facturacion.correo_entrante c ON a.correo_id = c.correo_id
-                WHERE a.resuelta = FALSE
-                ORDER BY
-                  CASE a.codigo_prioridad
-                    WHEN 'CRITICA' THEN 1
-                    WHEN 'ALTA' THEN 2
-                    WHEN 'MEDIA' THEN 3
-                    WHEN 'BAJA' THEN 4
-                    ELSE 5
-                  END,
-                  a.fecha_creacion DESC
-                LIMIT %s
-                """,
+                _QUERIES['alertas_activas'],
                 (limite,)
             )
             filas = await cur.fetchall()

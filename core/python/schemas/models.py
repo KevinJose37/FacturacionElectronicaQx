@@ -219,3 +219,42 @@ class LogsPageResponse(BaseModel):
 
     stats: ConteoLogs
     logs: list
+
+
+class ControlRegistro(BaseModel):
+    """Registro individual de control de factura."""
+
+    id_control: int
+    fecha_admision_proveedor: str
+    medio_recepcion: str
+    fecha_entrega_contabilidad: str
+    nombre_recibe_contabilidad: str
+    nit_proveedor: str
+    nombre_proveedor: str
+    numero_factura: str
+    forma_pago: str
+    acuso_recibido: bool
+    recibido_bien_servicio: bool
+    aceptacion_empresa: bool
+    observaciones_entrega: str
+    eventos_dian_notif: str
+
+
+class ControlUpdateRequest(BaseModel):
+    """Petición de actualización de un registro de control."""
+
+    fecha_entrega_contabilidad: str | None = None
+    nombre_recibe_contabilidad: str | None = None
+    forma_pago: str | None = None
+    acuso_recibido: bool = False
+    recibido_bien_servicio: bool = False
+    aceptacion_empresa: bool = False
+    observaciones_entrega: str | None = None
+    eventos_dian_notif: str | None = None
+
+
+class ControlPageResponse(BaseModel):
+    """Respuesta paginada de la página de control."""
+
+    items: list
+    pagination: dict

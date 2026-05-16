@@ -120,6 +120,7 @@ services:
       - PYTHONUNBUFFERED=1
     command: [ "python", "-m", "core.python.ingesta.dian_events.listener" ]
 
+
   # ── Frontend ──
   frontend:
     build:

@@ -8,6 +8,7 @@ from core.python.schemas.models import (
     EstadisticasRechazos, CausaFrecuente, ConteoLogs,
     DashboardResponse, FacturasPageResponse, ProveedoresPageResponse,
     ValidacionesPageResponse, RechazosPageResponse, LogsPageResponse,
+    ControlRegistro, ControlUpdateRequest, ControlPageResponse,
 )
 
 __all__ = [
@@ -18,4 +19,6 @@ __all__ = [
     'EstadisticasRechazos', 'CausaFrecuente', 'ConteoLogs',
     'DashboardResponse', 'FacturasPageResponse', 'ProveedoresPageResponse',
     'ValidacionesPageResponse', 'RechazosPageResponse', 'LogsPageResponse',
+    'ControlRegistro', 'ControlUpdateRequest', 'ControlPageResponse',
 ]
+

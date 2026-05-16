@@ -218,13 +218,17 @@ class EmailListener:
                     logger.critical("ZIP infectado: %s", adj_zip.nombre_original)
                     # Registrar ZIP infectado en BD para trazabilidad
                     id_zip_infectado, _ = self._repository.guardar_adjunto_correo(
-                        conn=conn_db, id_correo=id_correo, ruta_archivo=adj_zip.ruta,
-                        id_tipo_archivo=IdTipoArchivo.zip, archivo_seguro=False,
+                        conn=conn_db, 
+                        id_correo=id_correo, 
+                        ruta_archivo=adj_zip.ruta,
+                        id_tipo_archivo=IdTipoArchivo.zip, 
+                        archivo_seguro=False,
                         fecha_envio=fecha_envio,
                     )
                     if id_zip_infectado != -1:
                         self._repository.crear_proceso_ingesta(
-                            conn=conn_db, adjunto_id=id_zip_infectado,
+                            conn=conn_db, 
+                            adjunto_id=id_zip_infectado,
                             id_proceso=IdTipoProceso.escaneo_malware,
                             observacion=f"ZIP rechazado: {scan_zip.detalle}",
                             id_estado=IdEstadoProceso.procesado,
@@ -262,7 +266,8 @@ class EmailListener:
             # Subir a S3
             if not subir_archivo_s3(adj_zip.ruta, uri_zip):
                 self._repository.crear_proceso_ingesta(
-                    conn=conn_db, adjunto_id=id_adjunto_zip,
+                    conn=conn_db, 
+                    adjunto_id=id_adjunto_zip,
                     id_proceso=IdTipoProceso.descarga_almacenamiento,
                     observacion="Error al subir ZIP a S3.",
                     id_estado=IdEstadoProceso.error,
@@ -281,7 +286,8 @@ class EmailListener:
                     adj_zip.nombre_original, validacion.motivo_error,
                 )
                 self._repository.crear_proceso_ingesta(
-                    conn=conn_db, adjunto_id=id_adjunto_zip,
+                    conn=conn_db, 
+                    adjunto_id=id_adjunto_zip,
                     id_proceso=IdTipoProceso.validacion_contenido_zip,
                     observacion=f"ZIP rechazado: {validacion.motivo_error}",
                     id_estado=IdEstadoProceso.error,
@@ -310,7 +316,8 @@ class EmailListener:
                                     zips_anidados_ids[sub_zip_key] = id_sub_zip
                                 else:
                                     self._repository.crear_proceso_ingesta(
-                                        conn=conn_db, adjunto_id=id_sub_zip,
+                                        conn=conn_db, 
+                                        adjunto_id=id_sub_zip,
                                         id_proceso=IdTipoProceso.descarga_almacenamiento,
                                         observacion="Error al subir sub-ZIP a S3.",
                                         id_estado=IdEstadoProceso.error,
@@ -415,13 +422,18 @@ class EmailListener:
         scan_pdf = self._escanear_archivo(pdf_path)
         if not scan_pdf.seguro:
             id_pdf_infectado, _ = self._repository.guardar_adjunto_correo(
-                conn=conn_db, id_correo=id_correo, ruta_archivo=pdf_path,
-                id_tipo_archivo=IdTipoArchivo.pdf, adjunto_padre_id=id_adjunto_padre,
-                archivo_seguro=False, fecha_envio=fecha_envio,
+                conn=conn_db, 
+                id_correo=id_correo, 
+                ruta_archivo=pdf_path,
+                id_tipo_archivo=IdTipoArchivo.pdf, 
+                adjunto_padre_id=id_adjunto_padre,
+                archivo_seguro=False, 
+                fecha_envio=fecha_envio,
             )
             if id_pdf_infectado != -1:
                 self._repository.crear_proceso_ingesta(
-                    conn=conn_db, adjunto_id=id_pdf_infectado,
+                    conn=conn_db, 
+                    adjunto_id=id_pdf_infectado,
                     id_proceso=IdTipoProceso.escaneo_malware,
                     observacion=f"PDF huérfano rechazado: {scan_pdf.detalle}",
                     id_estado=IdEstadoProceso.procesado,
@@ -431,9 +443,13 @@ class EmailListener:
 
         # 2. Registrar en BD
         id_adjunto_pdf, uri_pdf = self._repository.guardar_adjunto_correo(
-            conn=conn_db, id_correo=id_correo, ruta_archivo=pdf_path,
-            id_tipo_archivo=IdTipoArchivo.pdf, adjunto_padre_id=id_adjunto_padre,
-            archivo_seguro=True, fecha_envio=fecha_envio,
+            conn=conn_db, 
+            id_correo=id_correo, 
+            ruta_archivo=pdf_path,
+            id_tipo_archivo=IdTipoArchivo.pdf, 
+            adjunto_padre_id=id_adjunto_padre,
+            archivo_seguro=True, 
+            fecha_envio=fecha_envio,
         )
         if id_adjunto_pdf == -1:
             logger.error("Error registrando PDF huérfano en BD para correo %s", id_mensaje)
@@ -443,7 +459,8 @@ class EmailListener:
         exito_s3 = subir_archivo_s3(pdf_path, uri_pdf)
         if not exito_s3:
             self._repository.crear_proceso_ingesta(
-                conn=conn_db, adjunto_id=id_adjunto_pdf,
+                conn=conn_db, 
+                adjunto_id=id_adjunto_pdf,
                 id_proceso=IdTipoProceso.descarga_almacenamiento,
                 observacion="Error al subir PDF huérfano a S3.",
                 id_estado=IdEstadoProceso.error,
@@ -455,14 +472,16 @@ class EmailListener:
         self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_adjunto_pdf)
 
         self._repository.crear_proceso_ingesta(
-            conn=conn_db, adjunto_id=id_adjunto_pdf,
+            conn=conn_db, 
+            adjunto_id=id_adjunto_pdf,
             id_proceso=IdTipoProceso.escaneo_malware,
             observacion="Escaneo malware exitoso.",
             id_estado=IdEstadoProceso.procesado,
         )
 
         self._repository.crear_proceso_ingesta(
-            conn=conn_db, adjunto_id=id_adjunto_pdf,
+            conn=conn_db, 
+            adjunto_id=id_adjunto_pdf,
             id_proceso=IdTipoProceso.descarga_almacenamiento,
             observacion="PDF huérfano subido correctamente a S3.",
             id_estado=IdEstadoProceso.procesado,
@@ -505,13 +524,18 @@ class EmailListener:
                 raise ConnectionError(f"Servicio de seguridad no disponible durante escaneo de XML: {scan_xml.detalle}")
             
             id_xml_infectado, _ = self._repository.guardar_adjunto_correo(
-                conn=conn_db, id_correo=id_correo, ruta_archivo=par.xml_path,
-                id_tipo_archivo=IdTipoArchivo.xml, adjunto_padre_id=id_adjunto_padre,
-                archivo_seguro=False, fecha_envio=fecha_envio,
+                conn=conn_db, 
+                id_correo=id_correo, 
+                ruta_archivo=par.xml_path,
+                id_tipo_archivo=IdTipoArchivo.xml, 
+                adjunto_padre_id=id_adjunto_padre,
+                archivo_seguro=False, 
+                fecha_envio=fecha_envio,
             )
             if id_xml_infectado != -1:
                 self._repository.crear_proceso_ingesta(
-                    conn=conn_db, adjunto_id=id_xml_infectado,
+                    conn=conn_db, 
+                    adjunto_id=id_xml_infectado,
                     id_proceso=IdTipoProceso.escaneo_malware,
                     observacion=f"XML rechazado: {scan_xml.detalle}",
                     id_estado=IdEstadoProceso.procesado,
@@ -526,13 +550,18 @@ class EmailListener:
                     raise ConnectionError(f"Servicio de seguridad no disponible durante escaneo de PDF: {scan_pdf.detalle}")
                 
                 id_pdf_infectado, _ = self._repository.guardar_adjunto_correo(
-                    conn=conn_db, id_correo=id_correo, ruta_archivo=par.pdf_path,
-                    id_tipo_archivo=IdTipoArchivo.pdf, adjunto_padre_id=id_adjunto_padre,
-                    archivo_seguro=False, fecha_envio=fecha_envio,
+                    conn=conn_db, 
+                    id_correo=id_correo, 
+                    ruta_archivo=par.pdf_path,
+                    id_tipo_archivo=IdTipoArchivo.pdf, 
+                    adjunto_padre_id=id_adjunto_padre,
+                    archivo_seguro=False, 
+                    fecha_envio=fecha_envio,
                 )
                 if id_pdf_infectado != -1:
                     self._repository.crear_proceso_ingesta(
-                        conn=conn_db, adjunto_id=id_pdf_infectado,
+                        conn=conn_db, 
+                        adjunto_id=id_pdf_infectado,
                         id_proceso=IdTipoProceso.escaneo_malware,
                         observacion=f"PDF rechazado: {scan_pdf.detalle}",
                         id_estado=IdEstadoProceso.procesado,
@@ -544,9 +573,13 @@ class EmailListener:
 
         # 3. Registrar adjuntos en BD y S3 (XML Padre y PDF)
         id_adjunto_xml, uri_xml = self._repository.guardar_adjunto_correo(
-            conn=conn_db, id_correo=id_correo, ruta_archivo=par.xml_path,
-            id_tipo_archivo=IdTipoArchivo.xml, adjunto_padre_id=id_adjunto_padre,
-            archivo_seguro=True, fecha_envio=fecha_envio,
+            conn=conn_db, 
+            id_correo=id_correo, 
+            ruta_archivo=par.xml_path,
+            id_tipo_archivo=IdTipoArchivo.xml, 
+            adjunto_padre_id=id_adjunto_padre,
+            archivo_seguro=True, 
+            fecha_envio=fecha_envio,
         )
         if id_adjunto_xml == -1:
             logger.error("Error registrando XML en BD para correo %s", id_mensaje)
@@ -557,7 +590,8 @@ class EmailListener:
         
         if not exito_xml:
             self._repository.crear_proceso_ingesta(
-                conn=conn_db, adjunto_id=id_adjunto_xml,
+                conn=conn_db, 
+                adjunto_id=id_adjunto_xml,
                 id_proceso=IdTipoProceso.descarga_almacenamiento,
                 observacion="Error al subir XML a S3.",
                 id_estado=IdEstadoProceso.error,
@@ -569,9 +603,13 @@ class EmailListener:
         uri_pdf = None
         if par.pdf_path:
             id_adjunto_pdf, uri_pdf = self._repository.guardar_adjunto_correo(
-                conn=conn_db, id_correo=id_correo, ruta_archivo=par.pdf_path,
-                id_tipo_archivo=IdTipoArchivo.pdf, adjunto_padre_id=id_adjunto_padre,
-                archivo_seguro=True, fecha_envio=fecha_envio,
+                conn=conn_db, 
+                id_correo=id_correo, 
+                ruta_archivo=par.pdf_path,
+                id_tipo_archivo=IdTipoArchivo.pdf, 
+                adjunto_padre_id=id_adjunto_padre,
+                archivo_seguro=True, 
+                fecha_envio=fecha_envio,
             )
             if id_adjunto_pdf != -1:
                 exito_pdf = subir_archivo_s3(par.pdf_path, uri_pdf)
@@ -581,7 +619,8 @@ class EmailListener:
                     self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_adjunto_pdf)
                 else:
                     self._repository.crear_proceso_ingesta(
-                        conn=conn_db, adjunto_id=id_adjunto_pdf,
+                        conn=conn_db, 
+                        adjunto_id=id_adjunto_pdf,
                         id_proceso=IdTipoProceso.descarga_almacenamiento,
                         observacion="Error al subir PDF a S3.",
                         id_estado=IdEstadoProceso.error,
@@ -604,16 +643,21 @@ class EmailListener:
                     tmp_path.write_bytes(contenido)
                     
                     id_embebido, uri_embebido = self._repository.guardar_adjunto_correo(
-                        conn=conn_db, id_correo=id_correo, ruta_archivo=tmp_path,
-                        id_tipo_archivo=IdTipoArchivo.xml, adjunto_padre_id=id_adjunto_xml,
-                        archivo_seguro=True, fecha_envio=fecha_envio,
+                        conn=conn_db, 
+                        id_correo=id_correo, 
+                        ruta_archivo=tmp_path,
+                        id_tipo_archivo=IdTipoArchivo.xml, 
+                        adjunto_padre_id=id_adjunto_xml,
+                        archivo_seguro=True, 
+                        fecha_envio=fecha_envio,
                     )
                     if id_embebido != -1:
                         if subir_archivo_s3(tmp_path, uri_embebido):
                             self._repository.crear_evento_ingesta(conn=conn_db, adjunto_id=id_embebido)
                         else:
                             self._repository.crear_proceso_ingesta(
-                                conn=conn_db, adjunto_id=id_embebido,
+                                conn=conn_db, 
+                                adjunto_id=id_embebido,
                                 id_proceso=IdTipoProceso.descarga_almacenamiento,
                                 observacion=f"Error al subir XML embebido ({tipo}) a S3.",
                                 id_estado=IdEstadoProceso.error,
@@ -628,7 +672,8 @@ class EmailListener:
             obs_malware += " (PDF faltante)"
 
         self._repository.crear_proceso_ingesta(
-            conn=conn_db, adjunto_id=id_adjunto_xml,
+            conn=conn_db, 
+            adjunto_id=id_adjunto_xml,
             id_proceso=IdTipoProceso.escaneo_malware,
             observacion=obs_malware,
             id_estado=IdEstadoProceso.procesado,
@@ -639,7 +684,8 @@ class EmailListener:
             obs_descarga += " (PDF faltante)"
 
         self._repository.crear_proceso_ingesta(
-            conn=conn_db, adjunto_id=id_adjunto_xml,
+            conn=conn_db, 
+            adjunto_id=id_adjunto_xml,
             id_proceso=IdTipoProceso.descarga_almacenamiento,
             observacion=obs_descarga,
             id_estado=IdEstadoProceso.procesado,
@@ -648,7 +694,8 @@ class EmailListener:
         if par.zip_origen:
             obs_zip = "ZIP validado exitosamente."
             self._repository.crear_proceso_ingesta(
-                conn=conn_db, adjunto_id=id_adjunto_xml,
+                conn=conn_db, 
+                adjunto_id=id_adjunto_xml,
                 id_proceso=IdTipoProceso.validacion_contenido_zip,
                 observacion=obs_zip,
                 id_estado=IdEstadoProceso.procesado,
@@ -854,17 +901,25 @@ class EmailListener:
                         # 5e. Procesar ZIPs (si los hay)
                         if zips:
                             resultados_zip = self._procesar_zips(
-                                zips=zips, conn_db=conn_db, id_correo=id_correo,
-                                id_mensaje=id_mensaje, fecha_envio=fecha_envio, parsed=parsed,
+                                zips=zips, 
+                                conn_db=conn_db, 
+                                id_correo=id_correo,
+                                id_mensaje=id_mensaje, 
+                                fecha_envio=fecha_envio, 
+                                parsed=parsed,
                             )
                             todos_resultados.extend(resultados_zip)
 
                         # 5f. Procesar XMLs sueltos (con o sin PDFs correspondientes)
                         if xmls:
                             resultados_sueltos = self._procesar_sueltos(
-                                xmls=xmls, pdfs=pdfs, conn_db=conn_db,
-                                id_correo=id_correo, id_mensaje=id_mensaje,
-                                fecha_envio=fecha_envio, parsed=parsed,
+                                xmls=xmls, 
+                                pdfs=pdfs, 
+                                conn_db=conn_db,
+                                id_correo=id_correo, 
+                                id_mensaje=id_mensaje,
+                                fecha_envio=fecha_envio, 
+                                parsed=parsed,
                             )
                             todos_resultados.extend(resultados_sueltos)
 

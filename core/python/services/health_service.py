@@ -41,8 +41,8 @@ async def get_health_status() -> dict:
                 base_url = f'{base_url}/v1'
             
             # Intentar un GET rápido a /models (estándar OpenAI)
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                headers = {'Authorization': f'Bearer {chat_service._LLM_API_KEY}'}
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                headers = chat_service._construir_headers()
                 res = await client.get(f'{base_url}/models', headers=headers)
                 if res.status_code == 200:
                     llm_status = "up"

@@ -25,10 +25,12 @@ class ChatMessage(BaseModel):
     content: str
 
 
+from typing import List
+
 class ChatRequest(BaseModel):
     """Request con el historial de mensajes del usuario."""
 
-    messages: list
+    messages: List[ChatMessage]
 
 
 class ChatResponse(BaseModel):

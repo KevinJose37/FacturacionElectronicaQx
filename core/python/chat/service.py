@@ -25,7 +25,7 @@ _LLM_BASE_URL = get_config('LLM_BASE_URL', '')
 _LLM_API_KEY = get_config('LLM_API_KEY', '')
 _LLM_MODEL = get_config('LLM_MODEL', _llm_cfg.get('default_model', 'gpt-4o-mini'))
 _LLM_USER_EMAIL = get_config('LLM_USER_EMAIL', '')
-_LLM_TIMEOUT = int(get_config('LLM_TIMEOUT', _llm_cfg.get('timeout_seconds', 45)))
+_LLM_TIMEOUT = int(get_config('LLM_TIMEOUT', _llm_cfg.get('timeout_seconds', 90)))
 _MAX_ITERATIONS = int(_llm_cfg.get('max_tool_iterations', 3))
 _TEMPERATURE = float(_llm_cfg.get('temperature', 0.4))
 _MAX_TOKENS = int(_llm_cfg.get('max_tokens', 1024))
@@ -182,7 +182,7 @@ async def procesar_chat(mensajes_usuario: list) -> str:
             message = data['choices'][0]['message']
 
             if not message.get('tool_calls'):
-                answer = message.get('content', '')
+                answer = message.get('content') or ''
                 return answer
 
             logger.info(
@@ -205,6 +205,6 @@ async def procesar_chat(mensajes_usuario: list) -> str:
         }
         response = await client.post(url, headers=headers, json=payload_final)
         data = response.json()
-        answer = data['choices'][0]['message'].get('content', ErroresChat.fallback_sin_respuesta)
+        answer = data['choices'][0]['message'].get('content') or ErroresChat.fallback_sin_respuesta
 
     return answer

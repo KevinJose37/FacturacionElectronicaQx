@@ -14,6 +14,10 @@ from core.python.services.facturas_service import (
     listar_facturas,
     obtener_estadisticas,
 )
+from core.python.services.audit_service import registrar_auditoria
+from core.python.auth.deps import get_current_active_user
+from core.python.schemas.auth_schemas import UserInDB
+from fastapi import Depends
  
 router = APIRouter(prefix='/api/exports', tags=['Exports'])
 
@@ -23,6 +27,7 @@ _QUERIES = get_queries_excel().get('exportacion', {})
 async def export_excel(
     fecha_inicio: date = Query(None),
     fecha_fin: date = Query(None),
+    current_user: UserInDB = Depends(get_current_active_user),
 ) -> StreamingResponse:
     """Endpoint para descargar el reporte de control en formato Excel.
 
@@ -34,6 +39,13 @@ async def export_excel(
         Respuesta de streaming con el contenido del archivo .xlsx.
 
     """
+    await registrar_auditoria(
+        user_id=current_user.id_usuario if hasattr(current_user, 'id_usuario') else 0, # asumiendo id_usuario o 0 si falla
+        tipo_acceso='EXPORT_EXCEL',
+        tabla_afectada='FACTURAS_CONTROL',
+        query_params={'fecha_inicio': fecha_inicio, 'fecha_fin': fecha_fin}
+    )
+
     wb, filename = await generar_reporte_excel(fecha_inicio, fecha_fin)
 
     # Guardar en un buffer de memoria
@@ -56,6 +68,7 @@ async def query_facturas(
     fecha_fin: date = Query(None),
     page: int = Query(1, alias='page', ge=1),
     size: int = Query(10, alias='size', ge=1),
+    current_user: UserInDB = Depends(get_current_active_user),
 ) -> dict:
     """Endpoint para consultar la tabla de facturas con paginación y filtros de fecha.
 
@@ -78,6 +91,13 @@ async def query_facturas(
 
     offset = (page - 1) * size
     
+    await registrar_auditoria(
+        user_id=current_user.id_usuario if hasattr(current_user, 'id_usuario') else 0,
+        tipo_acceso='QUERY_FACTURAS',
+        tabla_afectada='FACTURAS',
+        query_params={'fecha_inicio': fecha_inicio, 'fecha_fin': fecha_fin, 'page': page, 'size': size}
+    )
+
     # Queries centralizadas
     count_query = _QUERIES['contar_facturas_rango']
     data_query = _QUERIES['listar_facturas_paginado']

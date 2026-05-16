@@ -1,11 +1,11 @@
 """Esquemas Pydantic para la gestión de usuarios."""
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 
 class UsuarioBase(BaseModel):
-    correo: EmailStr
+    correo: str
     nombre_completo: str
     rol: str = "usuario"
 
@@ -13,7 +13,7 @@ class UsuarioCreate(UsuarioBase):
     pass
 
 class UsuarioUpdate(BaseModel):
-    correo: Optional[EmailStr] = None
+    correo: Optional[str] = None
     nombre_completo: Optional[str] = None
     rol: Optional[str] = None
     activo: Optional[bool] = None

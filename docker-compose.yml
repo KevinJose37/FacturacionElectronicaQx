@@ -142,27 +142,29 @@ services:
       - VIRTUAL_PORT=3000
       - LETSENCRYPT_HOST=${DOMAIN}
 
-  # ── Gateway / Proxy (Caddy) ──
-  gateway:
-    image: caddy:2-alpine
-    container_name: facturacion_gateway
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - backend_net
-    depends_on:
-      - frontend
+  # ── Gateway / Proxy (Caddy) ── [DESHABILITADO TEMPORALMENTE]
+  # Conflicto con nginx-proxy existente en el VPS (puerto 80 ocupado).
+  # Ver TODO.md para pasos de migración a producción.
+  # gateway:
+  #   image: caddy:2-alpine
+  #   container_name: facturacion_gateway
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile
+  #     - caddy_data:/data
+  #     - caddy_config:/config
+  #   networks:
+  #     - backend_net
+  #   depends_on:
+  #     - frontend
 
 volumes:
   postgres_data:
-  caddy_data:
-  caddy_config:
+  # caddy_data:
+  # caddy_config:
 
 networks:
   backend_net:

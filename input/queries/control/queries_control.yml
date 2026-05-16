@@ -1,0 +1,45 @@
+# ──────────────────────────────────────────────
+# Queries SQL para el módulo de Control de Facturas
+# ──────────────────────────────────────────────
+
+control:
+  listar: >
+    SELECT
+        fc.id_control,
+        fc.fecha_admision_proveedor,
+        fc.medio_recepcion,
+        fc.fecha_entrega_contabilidad,
+        fc.nombre_recibe_contabilidad,
+        fc.nit_proveedor,
+        fc.nombre_proveedor,
+        fc.numero_factura,
+        fc.forma_pago,
+        fc.acuso_recibido,
+        fc.recibido_bien_servicio,
+        fc.aceptacion_empresa,
+        fc.observaciones_entrega,
+        fc.eventos_dian_notif
+    FROM facturacion.factura f
+    JOIN facturacion.factura_control fc ON f.id_factura = fc.id_factura
+    WHERE f.fecha_generacion::date BETWEEN %s AND %s
+    ORDER BY f.fecha_creacion DESC
+    LIMIT %s OFFSET %s
+
+  contar: >
+    SELECT COUNT(*)
+    FROM facturacion.factura f
+    JOIN facturacion.factura_control fc ON f.id_factura = fc.id_factura
+    WHERE f.fecha_generacion::date BETWEEN %s AND %s
+
+  actualizar: >
+    UPDATE facturacion.factura_control
+    SET fecha_entrega_contabilidad = %s,
+        nombre_recibe_contabilidad = %s,
+        forma_pago = %s,
+        acuso_recibido = %s,
+        recibido_bien_servicio = %s,
+        aceptacion_empresa = %s,
+        observaciones_entrega = %s,
+        eventos_dian_notif = %s,
+        fecha_actualizacion = NOW()
+    WHERE id_control = %s

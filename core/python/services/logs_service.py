@@ -70,8 +70,13 @@ async def listar_logs(
 
         # Lógica de construcción del mensaje final
         msg_final = msg_base
+        fuente = MensajesLog.fuente_default
+        
         if num_factura:
-            msg_final = f'{num_factura}: {msg_base}'
+            if r[2]:  # Es un error
+                fuente = ""
+            else:     # No es error
+                fuente = num_factura
         elif remitente and 'Evaluación de correo' in msg_base:
             # Limpiar remitente
             match_email = re.search(r'[\w\.-]+@[\w\.-]+', remitente)
@@ -79,7 +84,6 @@ async def listar_logs(
             asunto_txt = asunto or 'Sin Asunto'
             msg_final = f'Asunto: "{asunto_txt}" de {email_limpio} · {msg_base}'
 
-        fuente = MensajesLog.fuente_default
         resultado.append({'ts': ts, 'level': nivel_log, 'source': fuente, 'msg': msg_final})
 
     return resultado

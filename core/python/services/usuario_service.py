@@ -32,6 +32,21 @@ async def get_all_usuarios() -> List[UsuarioResponse]:
                 ) for row in rows
             ]
 
+async def get_usuarios_basico() -> List[dict]:
+    pool = get_pool()
+    queries = get_queries_usuarios()
+    
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(queries['listar_basico'])
+            rows = await cur.fetchall()
+            return [
+                {
+                    "id_usuario": row[0],
+                    "nombre_completo": row[1]
+                } for row in rows
+            ]
+
 async def create_usuario(usuario: UsuarioCreate) -> UsuarioCreateResponse:
     pool = get_pool()
     queries = get_queries_usuarios()

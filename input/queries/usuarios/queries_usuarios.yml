@@ -33,3 +33,9 @@ usuarios:
 
   verificar_correo_existe: >
     SELECT 1 FROM facturacion.usuario WHERE correo = %s
+
+  listar_basico: >
+    SELECT id_usuario, nombre_completo 
+    FROM facturacion.usuario 
+    WHERE activo = TRUE 
+    ORDER BY nombre_completo ASC

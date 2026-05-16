@@ -70,7 +70,6 @@ async def listar_logs(
 
         # Lógica de construcción del mensaje final
         msg_final = msg_base
-        fuente = MensajesLog.fuente_default
         
         if num_factura:
             if r[2]:  # Es un error
@@ -83,6 +82,9 @@ async def listar_logs(
             email_limpio = match_email.group(0) if match_email else remitente
             asunto_txt = asunto or 'Sin Asunto'
             msg_final = f'Asunto: "{asunto_txt}" de {email_limpio} · {msg_base}'
+            fuente = "" if r[2] else MensajesLog.fuente_default
+        else:
+            fuente = "" if r[2] else MensajesLog.fuente_default
 
         resultado.append({'ts': ts, 'level': nivel_log, 'source': fuente, 'msg': msg_final})
 

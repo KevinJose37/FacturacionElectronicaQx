@@ -215,6 +215,18 @@ def get_queries_excel() -> dict:
     return queries
 
 
+def get_queries_control() -> dict:
+    """Obtiene las consultas SQL para el módulo de control de facturas.
+ 
+    Carga queries desde ``input/queries/control/queries_control.yml``.
+ 
+    Returns:
+        Diccionario con las queries SQL para listar, contar y actualizar control.
+    """
+    queries = load_yaml_queries('control/queries_control.yml')
+    return queries
+
+
 def get_queries_email() -> dict:
     """Obtiene las consultas SQL para notificaciones de email.
  

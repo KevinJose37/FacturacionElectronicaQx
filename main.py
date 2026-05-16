@@ -12,12 +12,13 @@ if sys.platform == 'win32':
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
 from core import close_pool, init_pool
+from core.python.auth.deps import get_current_active_user
 from routers import (
     chat,
     control,
@@ -68,12 +69,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Orquestación de Rutas ---
-# Los routers individuales ya incluyen el prefijo /api
-api_router = APIRouter()
-
-# Registramos el webhook directamente en la app para que la ruta sea /webhook/gmail y no /api/webhook/gmail
+# Rutas públicas o con validación propia
+app.include_router(auth.router)
 app.include_router(ingesta.router)
+
+# Rutas protegidas globalmente con JWT
+api_router = APIRouter(dependencies=[Depends(get_current_active_user)])
 
 api_router.include_router(control.router)
 api_router.include_router(dashboard.router)
@@ -84,7 +85,6 @@ api_router.include_router(rechazos.router)
 api_router.include_router(logs_router.router)
 api_router.include_router(chat.router)
 api_router.include_router(exports.router)
-api_router.include_router(auth.router)
 api_router.include_router(usuarios.router)
 
 app.include_router(api_router)

@@ -2,12 +2,13 @@
 
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Depends
 
 from config import get_config
 from core import EmailListener
 from core.python.db.connection import get_pool
 from metadata.db_metadata import IdEstadoProceso
+from core.python.auth.deps import get_current_active_user
 
 router = APIRouter(tags=['webhook'])
 
@@ -53,7 +54,7 @@ async def gmail_webhook(
 
 
 @router.get('/webhook/queue/status')
-async def queue_status() -> dict:
+async def queue_status(current_user: dict = Depends(get_current_active_user)) -> dict:
     """Retorna el estado actual de la cola de trabajo."""
     pool = get_pool()
     try:

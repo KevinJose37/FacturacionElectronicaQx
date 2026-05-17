@@ -71,6 +71,7 @@ async def listar_control(
             'observaciones_entrega': r[12] or '',
             'eventos_dian_notif': r[13] or '',
             's3_key': r[14] or '',
+            'id_factura': r[15],
         })
 
     resultado = {
@@ -117,6 +118,88 @@ async def actualizar_control(id_control: int, datos: dict) -> bool:
 
     resultado = filas_afectadas > 0
     return resultado
+
+
+async def obtener_paquete_factura(id_factura: int) -> tuple[bytes, str] | None:
+    """Obtiene los archivos de la factura comprimidos en un ZIP.
+
+    Busca el ZIP original en S3. Si no existe, descarga los archivos PDF y XML
+    asociados y los comprime en un nuevo archivo ZIP.
+
+    Args:
+        id_factura: Identificador de la factura en la base de datos.
+
+    Returns:
+        Tupla con (contenido_zip_bytes, nombre_archivo) o None si falla.
+    """
+    import io
+    import zipfile
+
+    import boto3
+    from botocore.exceptions import BotoCoreError, ClientError
+
+    from config import get_aws_config
+
+    pool = get_pool()
+    aws_cfg = get_aws_config()
+    bucket = aws_cfg.get('bucket_name')
+
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            # 1. Obtener número de factura y lista de adjuntos de la familia
+            await cur.execute(
+                'SELECT numero_factura FROM facturacion.factura WHERE id_factura = %s',
+                (id_factura,),
+            )
+            row_factura = await cur.fetchone()
+            if not row_factura:
+                return None
+            nombre_factura = row_factura[0]
+
+            await cur.execute(_QUERIES['obtener_adjuntos'], (id_factura,))
+            adjuntos = await cur.fetchall()
+
+    if not adjuntos:
+        return None
+
+    s3_client = boto3.client(
+        's3',
+        aws_access_key_id=aws_cfg.get('access_key'),
+        aws_secret_access_key=aws_cfg.get('secret_key'),
+        region_name=aws_cfg.get('region_name'),
+    )
+
+    # Identificar el ZIP original si existe
+    zip_original = next((a for a in adjuntos if a[1] == 1), None)
+
+    if zip_original:
+        try:
+            response = s3_client.get_object(Bucket=bucket, Key=zip_original[0])
+            contenido = response['Body'].read()
+            return contenido, f'{nombre_factura}.zip'
+        except (BotoCoreError, ClientError) as e:
+            logger.warning('ZIP original no accesible en S3 (%s): %s', zip_original[0], e)
+
+    # Si no hay ZIP o falló su descarga, comprimir PDF y XML
+    buffer = io.BytesIO()
+    con_archivos = False
+
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for uri, tipo, nombre in adjuntos:
+            if tipo not in (2, 3):  # Solo XML (2) y PDF (3)
+                continue
+            try:
+                response = s3_client.get_object(Bucket=bucket, Key=uri)
+                zf.writestr(nombre, response['Body'].read())
+                con_archivos = True
+            except (BotoCoreError, ClientError) as e:
+                logger.error('Error descargando archivo %s de S3: %s', uri, e)
+
+    if not con_archivos:
+        return None
+
+    buffer.seek(0)
+    return buffer.getvalue(), f'{nombre_factura}.zip'
 
 
 async def obtener_xml_factura(s3_key: str) -> bytes | None:

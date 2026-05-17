@@ -20,7 +20,6 @@ class ControlUpdateBody(BaseModel):
     recibido_bien_servicio: bool = False
     aceptacion_expresa: bool = False
     observaciones_entrega: str | None = None
-    eventos_dian_notif: str | None = None
 
 
 @router.get('')

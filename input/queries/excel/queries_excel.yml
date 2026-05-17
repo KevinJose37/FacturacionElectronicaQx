@@ -17,17 +17,9 @@ exportacion:
         fc.recibido_bien_servicio,
         fc.aceptacion_expresa,
         fc.recibido,
-        fc.observaciones_entrega,
-        COALESCE(
-            (
-                SELECT string_agg(edf.codigo_evento, ', ' ORDER BY edf.fecha_evento)
-                FROM facturacion.evento_dian_factura edf
-                WHERE edf.id_factura = f.id_factura
-                  AND edf.codigo_evento IN ('030', '032', '033')
-            ),
-            fc.eventos_dian_notif
-        ) as eventos_dian_notif
+        fc.observaciones_entrega
     FROM facturacion.factura f
+
     JOIN facturacion.factura_control fc ON f.id_factura = fc.id_factura
     WHERE f.fecha_generacion::date BETWEEN %s AND %s
     ORDER BY f.fecha_creacion DESC

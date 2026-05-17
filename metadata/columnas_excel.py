@@ -37,7 +37,7 @@ class ColumnasExcel:
     recibido_bien_servicio = 'recibo de bien y/o servicio'
     """Indicador booleano de recibo de bienes o servicios."""
 
-    aceptacion_empresa = 'aceptacion expresa'
+    aceptacion_expresa = 'aceptacion expresa'
     """Indicador booleano de aceptación por parte de la empresa."""
 
     recibido = 'recibido'
@@ -45,9 +45,6 @@ class ColumnasExcel:
 
     observaciones_entrega = 'observaciones'
     """Comentarios sobre la oportunidad de la entrega."""
-
-    eventos_dian_notif = 'evento dian'
-    """Notificaciones y eventos registrados ante la DIAN."""
 
     mapa = {
         'fecha_admision_proveedor': fecha_admision_proveedor,
@@ -63,8 +60,8 @@ class ColumnasExcel:
         'aceptacion_expresa': aceptacion_expresa,
         'recibido': recibido,
         'observaciones_entrega': observaciones_entrega,
-        'eventos_dian_notif': eventos_dian_notif,
     }
+
     """Diccionario snake_case -> Etiqueta amigable."""
 
 
@@ -76,18 +73,10 @@ class MetadatosReporte:
         'recibido_bien_servicio',
         'aceptacion_expresa',
         'recibido',
-    ]
-    """Columnas que deben representarse con una 'X' si son True en el reporte."""
-
-    editables = [
-        'fecha_entrega_contabilidad',
-        'eventos_dian_notif',
         'observaciones_entrega',
         'nombre_recibe_contabilidad',
-        'acuso_recibido',
-        'recibido_bien_servicio',
-        'aceptacion_empresa',
     ]
+
     """Columnas habilitadas para edición desde el Frontend."""
 
     alineacion_derecha = [

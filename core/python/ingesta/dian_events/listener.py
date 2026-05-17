@@ -97,10 +97,29 @@ class DianEventListener:
                                     exito = True
                                 else:
                                     id_fac = row[0]
-                                    ins = "INSERT INTO facturacion.evento_dian_factura (id_factura, codigo_evento, descripcion, fecha_evento) VALUES (%s, %s, %s, NOW())"
-                                    await cur.execute(ins, (id_fac, res_filtro.event_code, f'Evento email: {subject}'))
+                                    
+                                    # 1. Registrar el evento en la tabla de trazabilidad
+                                    ins_ev = "INSERT INTO facturacion.evento_dian_factura (id_factura, codigo_evento, descripcion, fecha_evento) VALUES (%s, %s, %s, NOW())"
+                                    await cur.execute(ins_ev, (id_fac, res_filtro.event_code, f'Evento email: {subject}'))
+                                    
+                                    # 2. Actualizar directamente el check correspondiente en factura_control
+                                    # Solo para facturas que NO sean de CONTADO (codigo_forma_pago != '1')
+                                    update_sql = """
+                                        UPDATE facturacion.factura_control fc
+                                        SET 
+                                            acuso_recibido = CASE WHEN %s = '030' THEN TRUE ELSE acuso_recibido END,
+                                            recibido_bien_servicio = CASE WHEN %s = '032' THEN TRUE ELSE recibido_bien_servicio END,
+                                            aceptacion_expresa = CASE WHEN %s = '033' THEN TRUE ELSE aceptacion_expresa END,
+                                            fecha_actualizacion = NOW()
+                                        FROM facturacion.pago_factura pf
+                                        WHERE fc.id_factura = %s 
+                                          AND fc.id_factura = pf.id_factura
+                                          AND pf.codigo_forma_pago != '1'
+                                    """
+                                    await cur.execute(update_sql, (res_filtro.event_code, res_filtro.event_code, res_filtro.event_code, id_fac))
+                                    
                                     await db_conn.commit()
-                                    logger.info(f'Evento {res_filtro.event_code} registrado para factura {id_fac}')
+                                    logger.info(f'Evento {res_filtro.event_code} procesado y checks actualizados para factura {id_fac}')
                                     conn.uid('store', uid, '+FLAGS', '\\Seen')
                                     exito = True
         except Exception as e:

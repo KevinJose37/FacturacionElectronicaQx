@@ -75,9 +75,8 @@ async def listar_control(
             'recibido_bien_servicio': bool(r[10]),
             'aceptacion_expresa': bool(r[11]),
             'observaciones_entrega': r[12] or '',
-            'eventos_dian_notif': r[13] or '',
-            's3_key': r[14] or '',
-            'id_factura': r[15],
+            's3_key': r[13] or '',
+            'id_factura': r[14],
         })
 
     resultado = {
@@ -112,7 +111,6 @@ async def actualizar_control(id_control: int, datos: dict) -> bool:
         datos.get('recibido_bien_servicio', False),
         datos.get('aceptacion_expresa', False),
         datos.get('observaciones_entrega'),
-        datos.get('eventos_dian_notif'),
         id_control,
     ]
 

@@ -1,6 +1,6 @@
 Estimado Proveedor,
 
-Se ha recibido una comunicación desde su dirección de correo electrónico ({remitente}) con el asunto: "{asunto}".
+Se ha recibido una comunicación desde su dirección de correo electrónico {remitente} con el asunto: "{asunto}".
 
 Sin embargo, el proceso de recepción automática de facturación electrónica ha detectado las siguientes inconsistencias que impiden el registro de la(s) factura(s):
 
@@ -11,3 +11,15 @@ Por favor, valide la información y reenvíe los documentos correctamente (forma
 Atentamente,
 
 Equipo de Facturación Electrónica - QUIPUX SAS
+
+---
+<small>
+AVISO DE PRIVACIDAD: En cumplimiento de la Ley 1581 de 2012 y normas 
+concordantes, le informamos que los datos personales (incluyendo su 
+correo electrónico) recopilados a través de este medio serán tratados 
+por QUIPUX SAS con la finalidad exclusiva de gestionar la recepción, 
+validación y procesamiento de su facturación electrónica. Usted tiene 
+derecho a conocer, actualizar, rectificar y solicitar la supresión de 
+sus datos, así como revocar la autorización otorgada, enviando un 
+correo a habeasdata@quipux.com.
+</small>

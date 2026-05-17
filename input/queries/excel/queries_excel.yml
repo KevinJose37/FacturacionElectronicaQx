@@ -15,7 +15,7 @@ exportacion:
         fc.forma_pago,
         fc.acuso_recibido,
         fc.recibido_bien_servicio,
-        fc.aceptacion_empresa,
+        fc.aceptacion_expresa,
         fc.recibido,
         fc.observaciones_entrega,
         COALESCE(

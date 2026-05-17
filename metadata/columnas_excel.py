@@ -60,7 +60,7 @@ class ColumnasExcel:
         'forma_pago': forma_pago,
         'acuso_recibido': acuso_recibido,
         'recibido_bien_servicio': recibido_bien_servicio,
-        'aceptacion_empresa': aceptacion_empresa,
+        'aceptacion_expresa': aceptacion_expresa,
         'recibido': recibido,
         'observaciones_entrega': observaciones_entrega,
         'eventos_dian_notif': eventos_dian_notif,
@@ -74,7 +74,7 @@ class MetadatosReporte:
     booleanas = [
         'acuso_recibido',
         'recibido_bien_servicio',
-        'aceptacion_empresa',
+        'aceptacion_expresa',
         'recibido',
     ]
     """Columnas que deben representarse con una 'X' si son True en el reporte."""

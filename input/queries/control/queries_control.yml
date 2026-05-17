@@ -16,7 +16,7 @@ control:
         fc.forma_pago,
         fc.acuso_recibido,
         fc.recibido_bien_servicio,
-        fc.aceptacion_empresa,
+        fc.aceptacion_expresa,
         fc.observaciones_entrega,
         fc.eventos_dian_notif,
         ac.uri_almacenamiento as s3_key,
@@ -58,7 +58,7 @@ control:
         forma_pago = %s,
         acuso_recibido = %s,
         recibido_bien_servicio = %s,
-        aceptacion_empresa = %s,
+        aceptacion_expresa = %s,
         observaciones_entrega = %s,
         eventos_dian_notif = %s,
         fecha_actualizacion = NOW()

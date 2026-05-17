@@ -117,7 +117,7 @@ class ExcelExporter:
                 value = row_data.get(field)
 
                 # Transform boolean to 'X' or '***' for Contado
-                if field in ['acuso_recibido', 'recibido_bien_servicio', 'aceptacion_empresa', 'recibido']:
+                if field in ['acuso_recibido', 'recibido_bien_servicio', 'aceptacion_expresa', 'recibido']:
                     forma_pago = str(row_data.get('forma_pago', '')).upper()
                     if 'CONTADO' in forma_pago:
                         value = '***' if field == 'acuso_recibido' else ''

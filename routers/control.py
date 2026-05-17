@@ -85,7 +85,7 @@ async def descargar_paquete_factura(
     genera un ZIP con el XML y el PDF.
 
     Args:
-        id_factura: Identificador único de la factura.
+        id_factura: Identificador único o número de la factura.
 
     Returns:
         Respuesta con el contenido del ZIP y headers de descarga.
@@ -93,26 +93,28 @@ async def descargar_paquete_factura(
     Raises:
         HTTPException: Si los archivos no se pudieron obtener.
     """
-    resultado = await control_service.obtener_paquete_factura(id_factura)
+    paquete_raw = await control_service.obtener_paquete_factura(id_factura)
 
-    if not resultado:
+    if not paquete_raw:
         raise HTTPException(
             status_code=404,
             detail='No se pudieron recuperar los archivos de la factura',
         )
 
-    contenido, filename = resultado
+    contenido, filename = paquete_raw
 
     headers = {
         'Content-Disposition': f'attachment; filename="{filename}"',
         'Access-Control-Expose-Headers': 'Content-Disposition',
     }
 
-    return Response(
+    respuesta = Response(
         content=contenido,
         media_type='application/zip',
         headers=headers,
     )
+
+    return respuesta
 
 
 @router.get('/descargar-xml')

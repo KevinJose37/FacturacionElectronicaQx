@@ -102,6 +102,40 @@ services:
       - ./input/credentials/ca_bundle.pem:/app/input/credentials/ca_bundle.pem:ro
     command: [ "python", "-m", "core.python.ingesta.queue_worker" ]
 
+  # ── Listener de Facturas (Polling IMAP) ──
+  email_listener:
+    build: .
+    container_name: facturacion_email_listener
+    restart: unless-stopped
+    networks:
+      - backend_net
+    depends_on:
+      database:
+        condition: service_started
+      clamav:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_HOST=database
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - EMAIL_USER=${EMAIL_USER}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - CLAMAV_HOST=clamav
+      - CLAMAV_PORT=3310
+      - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1
+    tmpfs:
+      - /tmp:size=1G,uid=1000
+    secrets:
+      - s3_connection_secret
+    volumes:
+      - ./input/credentials/ca_bundle.pem:/app/input/credentials/ca_bundle.pem:ro
+    command: [ "python", "-m", "core.python.ingesta.email_listener" ]
+
   # ── Listener de Eventos DIAN ──
   dian_events_listener:
     build: .

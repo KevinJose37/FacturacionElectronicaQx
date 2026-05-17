@@ -7,6 +7,7 @@ import email as _email
 import imaplib
 import logging
 import os
+import random
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -82,8 +83,11 @@ class EmailListener:
         self.carpeta = email_cfg["carpeta"]
         self.max_attempts = int(retry_cfg.get("max_attempts", 3))
         self.backoff_base = float(retry_cfg.get("backoff_base_seconds", 2))
-        self.poll_interval = int(_CONFIG.get("poll_interval_seconds", 60))
-        self.id_origen = int(_CONFIG.get("id_origen", 1))
+        listener_cfg = _CONFIG.get('email_listener', {})
+        self.poll_interval = int(listener_cfg.get('poll_interval_seconds', 60))
+        self._max_backoff = int(listener_cfg.get('max_backoff_seconds', 300))
+        self._jitter_max = int(listener_cfg.get('jitter_max_seconds', 5))
+        self.id_origen = int(_CONFIG.get('id_origen', 1))
 
         self._password = os.environ["EMAIL_PASSWORD"]
         self._parser = EmailParser()
@@ -1012,48 +1016,93 @@ class EmailListener:
                 pass
             return False
 
-    def run(self):
-        """Ejecuta un ciclo de ingesta."""
+    def run(self) -> bool:
+        """Ejecuta un ciclo de ingesta.
+
+        Returns:
+            True si el ciclo fue exitoso, False si ocurrió un error.
+        """
+        exito = False
         try:
             with self._conectar() as conn:
                 uids = self._obtener_uids(conn)
                 if not uids:
                     logger.info("No hay correos nuevos para procesar")
-                    return
+                    exito = True
+                else:
+                    procesados = 0
+                    for uid in uids:
+                        try:
+                            if self._procesar_correo(conn, uid):
+                                procesados += 1
+                        except Exception as exc:
+                            # Si es un error de conexión (infraestructura), abortamos todo el ciclo
+                            # para no intentar procesar el resto de correos sin sentido.
+                            if "Abortando procesamiento: ClamAV no disponible" in str(exc) or isinstance(exc, ConnectionError):
+                                logger.critical("Abortando ciclo de ingesta: Infraestructura crítica no disponible.")
+                                break
 
-                procesados = 0
-                for uid in uids:
-                    try:
-                        if self._procesar_correo(conn, uid):
-                            procesados += 1
-                    except Exception as exc:
-                        # Si es un error de conexión (infraestructura), abortamos todo el ciclo
-                        # para no intentar procesar el resto de correos sin sentido.
-                        if "Abortando procesamiento: ClamAV no disponible" in str(exc) or isinstance(exc, ConnectionError):
-                            logger.critical("Abortando ciclo de ingesta: Infraestructura crítica no disponible.")
-                            break
-                        
-                        logger.error("Error no crítico en correo UID=%s: %s", uid, exc)
-                        continue
+                            logger.error("Error no crítico en correo UID=%s: %s", uid, exc)
+                            continue
 
-                logger.info("Ciclo completado: %d/%d procesados", procesados, len(uids))
+                    logger.info("Ciclo completado: %d/%d procesados", procesados, len(uids))
+                    exito = True
         except Exception as exc:
             logger.error("Error en ciclo de ingesta: %s", exc)
+        return exito
 
-    def run_forever(self):
-        """Ejecuta el listener en bucle continuo."""
-        logger.info("Iniciando listener continuo (poll_interval=%ds)", self.poll_interval)
+    def _calcular_espera(self, fallos_consecutivos: int) -> float:
+        """Calcula el tiempo de espera con backoff exponencial + jitter.
+
+        Fórmula: min(max_backoff, base × 2^(fallos-1)) + random(0, jitter_max).
+        El jitter previene el efecto thundering herd cuando múltiples instancias
+        reintentan simultáneamente tras una caída compartida.
+
+        Args:
+            fallos_consecutivos: Cantidad de fallos consecutivos acumulados.
+
+        Returns:
+            Tiempo de espera en segundos.
+        """
+        if fallos_consecutivos == 0:
+            base = self.poll_interval
+        else:
+            base = min(
+                self._max_backoff,
+                self.poll_interval * (2 ** (fallos_consecutivos - 1)),
+            )
+        jitter = random.uniform(0, self._jitter_max)
+        espera = base + jitter
+        return espera
+
+    def run_forever(self) -> None:
+        """Ejecuta el listener en bucle continuo con backoff exponencial + jitter."""
+        logger.info('Iniciando listener continuo de facturas (poll_interval=%ds)', self.poll_interval)
+
+        fallos_consecutivos = 0
+
         while True:
             try:
-                self.run()
+                exito = self.run()
+
+                if exito:
+                    fallos_consecutivos = 0
+                else:
+                    fallos_consecutivos += 1
+
+                tiempo_espera = self._calcular_espera(fallos_consecutivos)
+
+                if fallos_consecutivos > 0:
+                    logger.warning(
+                        'Fallo consecutivo #%d. Esperando %.1fs antes de reintentar...',
+                        fallos_consecutivos, tiempo_espera,
+                    )
+
+                time.sleep(tiempo_espera)
             except KeyboardInterrupt:
-                logger.info("Listener detenido por usuario")
+                logger.info('Listener detenido por usuario')
                 break
-            except Exception as exc:
-                logger.exception("Error inesperado en ciclo principal: %s", exc)
-
-            time.sleep(self.poll_interval)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     EmailListener().run_forever()

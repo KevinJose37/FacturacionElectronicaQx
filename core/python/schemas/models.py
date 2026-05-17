@@ -235,9 +235,8 @@ class ControlRegistro(BaseModel):
     forma_pago: str
     acuso_recibido: bool
     recibido_bien_servicio: bool
-    aceptacion_empresa: bool
+    aceptacion_expresa: bool
     observaciones_entrega: str
-    eventos_dian_notif: str
 
 
 class ControlUpdateRequest(BaseModel):
@@ -248,9 +247,8 @@ class ControlUpdateRequest(BaseModel):
     forma_pago: str | None = None
     acuso_recibido: bool = False
     recibido_bien_servicio: bool = False
-    aceptacion_empresa: bool = False
+    aceptacion_expresa: bool = False
     observaciones_entrega: str | None = None
-    eventos_dian_notif: str | None = None
 
 
 class ControlPageResponse(BaseModel):

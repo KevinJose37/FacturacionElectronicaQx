@@ -18,9 +18,8 @@ class ControlUpdateBody(BaseModel):
     forma_pago: str | None = None
     acuso_recibido: bool = False
     recibido_bien_servicio: bool = False
-    aceptacion_empresa: bool = False
+    aceptacion_expresa: bool = False
     observaciones_entrega: str | None = None
-    eventos_dian_notif: str | None = None
 
 
 @router.get('')
@@ -73,6 +72,48 @@ async def actualizar_control(
 
     resultado = {'ok': True, 'message': 'Registro actualizado correctamente'}
     return resultado
+
+
+@router.get('/descargar-paquete')
+async def descargar_paquete_factura(
+    id_factura: str = Query(..., description='ID o Número de la factura'),
+) -> Response:
+    """Endpoint para descargar el paquete ZIP de una factura.
+
+    Si existe el ZIP original en S3 lo descarga. De lo contrario,
+    genera un ZIP con el XML y el PDF.
+
+    Args:
+        id_factura: Identificador único o número de la factura.
+
+    Returns:
+        Respuesta con el contenido del ZIP y headers de descarga.
+
+    Raises:
+        HTTPException: Si los archivos no se pudieron obtener.
+    """
+    paquete_raw = await control_service.obtener_paquete_factura(id_factura)
+
+    if not paquete_raw:
+        raise HTTPException(
+            status_code=404,
+            detail='No se pudieron recuperar los archivos de la factura',
+        )
+
+    contenido, filename = paquete_raw
+
+    headers = {
+        'Content-Disposition': f'attachment; filename="{filename}"',
+        'Access-Control-Expose-Headers': 'Content-Disposition',
+    }
+
+    respuesta = Response(
+        content=contenido,
+        media_type='application/zip',
+        headers=headers,
+    )
+
+    return respuesta
 
 
 @router.get('/descargar-xml')

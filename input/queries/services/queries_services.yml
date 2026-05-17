@@ -37,11 +37,11 @@ dashboard:
 
   kpis: >
     SELECT
-    COUNT(*) FILTER (WHERE fecha_creacion >= %s) as hoy,
-    COUNT(*) FILTER (WHERE fecha_creacion >= %s) as ayer,
-    COUNT(*) FILTER (WHERE id_estado_proceso = 3) as validadas,
-    COUNT(*) FILTER (WHERE id_estado_proceso IN (4, 5)) as rechazadas,
-    COUNT(DISTINCT id_tercero_emisor) as proveedores
+    COUNT(*) FILTER (WHERE fecha_creacion >= %s AND fecha_creacion <= %s) as actual,
+    COUNT(*) FILTER (WHERE fecha_creacion >= %s AND fecha_creacion < %s) as anterior,
+    COUNT(*) FILTER (WHERE id_estado_proceso = 3 AND fecha_creacion >= %s AND fecha_creacion <= %s) as validadas,
+    COUNT(*) FILTER (WHERE id_estado_proceso IN (4, 5) AND fecha_creacion >= %s AND fecha_creacion <= %s) as rechazadas,
+    COUNT(DISTINCT id_tercero_emisor) FILTER (WHERE fecha_creacion >= %s AND fecha_creacion <= %s) as proveedores
     FROM facturacion.factura
 
   etapas_flujo: >
@@ -52,20 +52,21 @@ dashboard:
     COUNT(*) FILTER (WHERE id_estado_proceso = 3) as erp,
     COUNT(*) FILTER (WHERE id_estado_proceso = 3) as finalizado
     FROM facturacion.factura
+    WHERE fecha_creacion >= %s AND fecha_creacion <= %s
 
   facturas_por_proveedor: >
     SELECT f.razon_social_emisor, COUNT(*) as total
     FROM facturacion.factura f
-    WHERE f.razon_social_emisor IS NOT NULL
+    WHERE f.razon_social_emisor IS NOT NULL AND f.fecha_creacion >= %s AND f.fecha_creacion <= %s
     GROUP BY f.razon_social_emisor
     ORDER BY total DESC LIMIT %s
 
   tendencia: >
-    SELECT fecha_expedicion::date as dia,
+    SELECT fecha_creacion::date as dia,
     COUNT(*) as procesadas,
     COUNT(*) FILTER (WHERE id_estado_proceso = 3) as validadas
     FROM facturacion.factura
-    WHERE fecha_expedicion >= NOW() - make_interval(days => %s)
+    WHERE fecha_creacion >= %s AND fecha_creacion <= %s
     GROUP BY dia ORDER BY dia
 
   ultimas_facturas: >
@@ -92,7 +93,7 @@ dashboard:
   tipos_documento: >
     SELECT f.codigo_tipo_documento_dian, COUNT(*)
     FROM facturacion.factura f
-    WHERE f.codigo_tipo_documento_dian IS NOT NULL
+    WHERE f.codigo_tipo_documento_dian IS NOT NULL AND f.fecha_creacion >= %s AND f.fecha_creacion <= %s
     GROUP BY f.codigo_tipo_documento_dian
     ORDER BY COUNT(*) DESC
 
@@ -102,7 +103,7 @@ dashboard:
     COUNT(*) as total
     FROM facturacion.proceso_ingesta
     WHERE id_error IS NOT NULL
-    AND fecha_inicio >= NOW() - make_interval(days => %s)
+    AND fecha_inicio >= %s AND fecha_inicio <= %s
     GROUP BY dia, hora
     ORDER BY dia, hora
 

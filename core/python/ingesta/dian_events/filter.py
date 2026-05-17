@@ -66,10 +66,10 @@ class DianEventFilter:
                 else:
                     event_code = parts[-1].strip()
 
-                    if event_code not in EventosDianMetadata.codigos_permitidos:
+                    if event_code not in EventosDianMetadata.codigos_nombres:
                         resultado = DianEventFilterResult(
                             False,
-                            reason=f'Código de evento no permitido: {event_code}',
+                            reason=f'Código de evento desconocido: {event_code}',
                         )
                     else:
                         resultado = DianEventFilterResult(True, event_code=event_code)

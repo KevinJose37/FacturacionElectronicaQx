@@ -16,16 +16,33 @@ control:
         fc.forma_pago,
         fc.acuso_recibido,
         fc.recibido_bien_servicio,
-        fc.aceptacion_empresa,
+        fc.aceptacion_expresa,
         fc.observaciones_entrega,
-        fc.eventos_dian_notif,
-        ac.uri_almacenamiento
+        ac.uri_almacenamiento as s3_key,
+        f.id_factura
     FROM facturacion.factura f
     JOIN facturacion.factura_control fc ON f.id_factura = fc.id_factura
     LEFT JOIN facturacion.adjuntos_correo ac ON f.adjunto_id = ac.adjunto_id
     WHERE f.fecha_generacion::date BETWEEN %s AND %s
     ORDER BY f.fecha_creacion DESC
     LIMIT %s OFFSET %s
+
+  obtener_adjuntos: >
+    SELECT 
+        ac.uri_almacenamiento,
+        ac.id_tipo_archivo,
+        ac.nombre_archivo
+    FROM facturacion.adjuntos_correo ac
+    WHERE ac.correo_id = (
+        SELECT correo_id 
+        FROM facturacion.adjuntos_correo 
+        WHERE adjunto_id = (
+            SELECT adjunto_id 
+            FROM facturacion.factura 
+            WHERE id_factura = %s
+        )
+    )
+    ORDER BY ac.id_tipo_archivo
 
   contar: >
     SELECT COUNT(*)
@@ -40,8 +57,7 @@ control:
         forma_pago = %s,
         acuso_recibido = %s,
         recibido_bien_servicio = %s,
-        aceptacion_empresa = %s,
+        aceptacion_expresa = %s,
         observaciones_entrega = %s,
-        eventos_dian_notif = %s,
         fecha_actualizacion = NOW()
     WHERE id_control = %s

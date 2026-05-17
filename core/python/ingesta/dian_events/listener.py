@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from core.python.db.connection import get_pool, init_pool
 from core.python.ingesta.dian_events.filter import DianEventFilter
 from core.python.facturas.invoice_repository import InvoiceRepository
+from config import load_yaml_queries
 from utils.email_parser import EmailParser
 
 load_dotenv()
@@ -31,6 +32,9 @@ def _load_config() -> dict:
     with _CONFIG_PATH.open('r', encoding='utf-8') as fh:
         config = yaml.safe_load(fh)
     return config
+
+
+_QUERIES = load_yaml_queries('eventos/queries_eventos.yml').get('eventos', {})
 
 
 class DianEventListener:
@@ -196,14 +200,7 @@ class DianEventListener:
         pool = get_pool()
         async with pool.connection() as db_conn:
             async with db_conn.cursor() as cur:
-                query = (
-                    'SELECT id_factura FROM facturacion.factura '
-                    'WHERE numero_factura = %s '
-                    "OR prefijo_facturacion || '-' || numero_factura = %s "
-                    'OR prefijo_facturacion || numero_factura = %s '
-                    'LIMIT 1'
-                )
-                await cur.execute(query, (num_factura, num_factura, num_factura))
+                await cur.execute(_QUERIES['buscar_factura'], (num_factura, num_factura, num_factura))
                 row = await cur.fetchone()
 
                 if not row:
@@ -213,17 +210,19 @@ class DianEventListener:
                     return exito
 
                 id_fac = row[0]
-                ins = (
-                    'INSERT INTO facturacion.evento_dian_factura '
-                    '(id_factura, codigo_evento, descripcion, fecha_evento) '
-                    'VALUES (%s, %s, %s, NOW())'
-                )
-                await cur.execute(ins, (id_fac, res_filtro.event_code, f'Evento email: {subject}'))
+                cod_ev = res_filtro.event_code
+
+                # 1. Registrar SIEMPRE el evento en la tabla de trazabilidad
+                await cur.execute(_QUERIES['insertar_evento'], (id_fac, cod_ev, f'Evento email: {subject}'))
+
+                # 2. Actualizar checks en factura_control SOLO si es un código de control (030, 032, 033)
+                from metadata.eventos_dian_metadata import EventosDianMetadata
+                if cod_ev in EventosDianMetadata.codigos_control:
+                    await cur.execute(_QUERIES['actualizar_control'], (cod_ev, cod_ev, cod_ev, id_fac))
+                    logger.info('Checks de factura_control actualizados para evento %s', cod_ev)
+
                 await db_conn.commit()
-                logger.info(
-                    'Evento %s registrado para factura %s',
-                    res_filtro.event_code, id_fac,
-                )
+                logger.info('Evento %s procesado exitosamente para factura %s', cod_ev, id_fac)
                 conn.uid('store', uid, '+FLAGS', '\\Seen')
                 exito = True
 

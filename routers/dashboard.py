@@ -10,7 +10,7 @@ router = APIRouter(prefix='/api/dashboard', tags=['dashboard'])
 
 
 @router.get('')
-async def obtener_dashboard() -> dict:
+async def obtener_dashboard(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> dict:
     """Obtiene todos los datos del dashboard en una sola llamada.
 
     Ejecuta todas las consultas en paralelo con asyncio.gather.
@@ -20,14 +20,14 @@ async def obtener_dashboard() -> dict:
         actividad, tipos_doc, heatmap, indicadores, eventos_min, alertas,
         alertas_dian
     ) = await asyncio.gather(
-        dashboard_service.obtener_kpis(),
-        dashboard_service.obtener_etapas_flujo(),
-        dashboard_service.obtener_facturas_por_proveedor(),
-        dashboard_service.obtener_tendencia(),
+        dashboard_service.obtener_kpis(fecha_inicio, fecha_fin),
+        dashboard_service.obtener_etapas_flujo(fecha_inicio, fecha_fin),
+        dashboard_service.obtener_facturas_por_proveedor(fecha_inicio, fecha_fin),
+        dashboard_service.obtener_tendencia(fecha_inicio, fecha_fin),
         dashboard_service.obtener_ultimas_facturas(),
         dashboard_service.obtener_actividad_reciente(),
-        dashboard_service.obtener_tipos_documento(),
-        dashboard_service.obtener_heatmap_errores(),
+        dashboard_service.obtener_tipos_documento(fecha_inicio, fecha_fin),
+        dashboard_service.obtener_heatmap_errores(fecha_inicio, fecha_fin),
         dashboard_service.obtener_indicadores_pipeline(),
         dashboard_service.obtener_eventos_por_minuto(),
         dashboard_service.obtener_alertas_activas(),

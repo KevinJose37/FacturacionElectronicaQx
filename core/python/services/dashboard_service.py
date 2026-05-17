@@ -23,20 +23,38 @@ _dashboard_cfg = _settings.get('dashboard', {})
 _QUERIES = load_yaml_queries('services/queries_services.yml').get('dashboard', {})
 
 
-async def obtener_kpis() -> list:
+def _parsear_fechas(fecha_inicio: str | None, fecha_fin: str | None) -> tuple[datetime, datetime]:
+    ahora = datetime.now(tz=timezone.utc)
+    if fecha_inicio and fecha_fin:
+        try:
+            dt_inicio = datetime.fromisoformat(fecha_inicio).replace(tzinfo=timezone.utc)
+            dt_fin = datetime.fromisoformat(fecha_fin).replace(tzinfo=timezone.utc, hour=23, minute=59, second=59)
+            return dt_inicio, dt_fin
+        except ValueError:
+            pass
+    
+    # Default: últimos 7 días
+    dt_inicio = ahora - timedelta(days=7)
+    return dt_inicio, ahora
+
+
+async def obtener_kpis(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
     """Calcula los KPIs principales del dashboard.
 
     Returns:
         Lista de diccionarios con los KPIs calculados.
     """
+    dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
+    delta_days = max((dt_fin - dt_inicio).days, 1)
+    inicio_ayer = dt_inicio - timedelta(days=delta_days)
+
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            ahora = datetime.now(tz=timezone.utc)
-            inicio_hoy = ahora - timedelta(days=30)
-            inicio_ayer = inicio_hoy - timedelta(days=30)
-
-            await cur.execute(_QUERIES['kpis'], (inicio_hoy, inicio_ayer))
+            await cur.execute(
+                _QUERIES['kpis'], 
+                (dt_inicio, dt_fin, inicio_ayer, dt_inicio, dt_inicio, dt_fin, dt_inicio, dt_fin, dt_inicio, dt_fin)
+            )
             row = await cur.fetchone()
             procesadas_hoy = row[0]
             procesadas_ayer = row[1] or 1
@@ -80,16 +98,18 @@ async def obtener_kpis() -> list:
     return kpis
 
 
-async def obtener_etapas_flujo() -> list:
+async def obtener_etapas_flujo(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
     """Obtiene las etapas del pipeline con conteos.
 
     Returns:
         Lista de etapas del flujo con conteo y estado.
     """
+    dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
+
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['etapas_flujo'])
+            await cur.execute(_QUERIES['etapas_flujo'], (dt_inicio, dt_fin))
             row = await cur.fetchone()
             total, validacion, procesamiento, erp, finalizado = row
 
@@ -104,7 +124,7 @@ async def obtener_etapas_flujo() -> list:
     return etapas
 
 
-async def obtener_facturas_por_proveedor(limite: int = 6) -> list:
+async def obtener_facturas_por_proveedor(fecha_inicio: str | None = None, fecha_fin: str | None = None, limite: int = 6) -> list:
     """Top proveedores por cantidad de facturas.
 
     Args:
@@ -113,10 +133,12 @@ async def obtener_facturas_por_proveedor(limite: int = 6) -> list:
     Returns:
         Lista de proveedores con conteo de facturas.
     """
+    dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
+
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['facturas_por_proveedor'], (limite,))
+            await cur.execute(_QUERIES['facturas_por_proveedor'], (dt_inicio, dt_fin, limite))
             filas = await cur.fetchall()
 
     resultado = [
@@ -126,19 +148,18 @@ async def obtener_facturas_por_proveedor(limite: int = 6) -> list:
     return resultado
 
 
-async def obtener_tendencia(dias: int = 14) -> list:
+async def obtener_tendencia(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
     """Tendencia de procesamiento de facturas por día.
-
-    Args:
-        dias: Cantidad de días hacia atrás.
 
     Returns:
         Lista de datos de tendencia por día.
     """
+    dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
+
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['tendencia'], (dias,))
+            await cur.execute(_QUERIES['tendencia'], (dt_inicio, dt_fin))
             filas = await cur.fetchall()
 
     resultado = [
@@ -220,7 +241,7 @@ async def obtener_actividad_reciente(limite: int = 8) -> list:
     return resultado
 
 
-async def obtener_tipos_documento() -> list:
+async def obtener_tipos_documento(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
     """Conteo de documentos agrupados por tipo_documento.
 
     Usa la columna tipo_documento de la tabla factura para generar
@@ -229,10 +250,12 @@ async def obtener_tipos_documento() -> list:
     Returns:
         Lista de diccionarios con nombre del tipo y conteo.
     """
+    dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
+
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['tipos_documento'])
+            await cur.execute(_QUERIES['tipos_documento'], (dt_inicio, dt_fin))
             filas = await cur.fetchall()
 
     resultado = [
@@ -242,22 +265,21 @@ async def obtener_tipos_documento() -> list:
     return resultado
 
 
-async def obtener_heatmap_errores(dias: int = 7) -> list:
+async def obtener_heatmap_errores(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
     """Genera datos para el heatmap de errores por día de la semana y hora.
 
     Cuenta registros en proceso_ingesta donde id_error IS NOT NULL,
     agrupados por día de la semana (0=Lun..6=Dom) y hora del día.
 
-    Args:
-        dias: Cantidad de días hacia atrás a considerar.
-
     Returns:
         Lista de celdas con day (str), hour (int) y value (int).
     """
+    dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
+
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['heatmap_errores'], (dias,))
+            await cur.execute(_QUERIES['heatmap_errores'], (dt_inicio, dt_fin))
             filas = await cur.fetchall()
 
     resultado = [

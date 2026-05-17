@@ -1,16 +1,22 @@
 """Servicio de consultas y actualización para la página de control de facturas."""
 
 import calendar
+import io
 import logging
+import zipfile
 from datetime import date
+from typing import Any
 
-from config import load_yaml_queries
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+
+from config import get_aws_config, load_yaml_queries
 from core.python.db import get_pool
-from utils.s3_utils import obtener_xml_s3
 
 logger = logging.getLogger(__name__)
 
-_QUERIES = load_yaml_queries('control/queries_control.yml')
+_QUERIES = load_yaml_queries('control/queries_control.yml').get('control', {})
+
 
 
 async def listar_control(
@@ -67,10 +73,10 @@ async def listar_control(
             'forma_pago': r[8] or '',
             'acuso_recibido': bool(r[9]),
             'recibido_bien_servicio': bool(r[10]),
-            'aceptacion_empresa': bool(r[11]),
+            'aceptacion_expresa': bool(r[11]),
             'observaciones_entrega': r[12] or '',
-            'eventos_dian_notif': r[13] or '',
-            's3_key': r[14] or '',
+            's3_key': r[13] or '',
+            'id_factura': r[14],
         })
 
     resultado = {
@@ -103,9 +109,8 @@ async def actualizar_control(id_control: int, datos: dict) -> bool:
         datos.get('forma_pago'),
         datos.get('acuso_recibido', False),
         datos.get('recibido_bien_servicio', False),
-        datos.get('aceptacion_empresa', False),
+        datos.get('aceptacion_expresa', False),
         datos.get('observaciones_entrega'),
-        datos.get('eventos_dian_notif'),
         id_control,
     ]
 
@@ -117,6 +122,108 @@ async def actualizar_control(id_control: int, datos: dict) -> bool:
 
     resultado = filas_afectadas > 0
     return resultado
+
+
+async def obtener_paquete_factura(id_factura_o_referencia: Any) -> tuple | None:
+    """Obtiene los archivos de la factura comprimidos en un ZIP.
+
+    Busca la factura por su ID interno o por su número de factura.
+
+    Args:
+        id_factura_o_referencia: ID técnico o número alfanumérico de factura.
+
+    Returns:
+        Tupla con (contenido_bytes, nombre_archivo) o None si falla.
+    """
+    aws_cfg = get_aws_config()
+    bucket = aws_cfg.get('bucket_name')
+    pool = get_pool()
+    paquete = None
+
+    try:
+        # Limpiar y normalizar la referencia recibida
+        ref_str = str(id_factura_o_referencia).strip()
+
+        # Intentar convertir a int para búsqueda por ID técnico
+        try:
+            ref_int = int(ref_str)
+        except (ValueError, TypeError):
+            ref_int = -1
+
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                # 1. Validar existencia de la factura (ID, Número exacto o Prefijo+Número)
+                logger.info(f'Buscando factura con referencia: {ref_str}')
+                await cur.execute(
+                    '''
+                    SELECT id_factura, numero_factura
+                    FROM facturacion.factura
+                    WHERE id_factura = %s
+                       OR numero_factura = %s
+                       OR (prefijo_facturacion || numero_factura) = %s
+                    LIMIT 1
+                    ''',
+                    (ref_int, ref_str, ref_str),
+                )
+                row_factura = await cur.fetchone()
+
+                if not row_factura:
+                    logger.error(f'FACTURA NO ENCONTRADA: {ref_str}')
+                    return None
+
+                id_factura_real, nombre_factura = row_factura
+                logger.info(f'Factura identificada: {nombre_factura} (ID Interno: {id_factura_real})')
+
+                # 2. Obtener adjuntos usando el ID real
+                await cur.execute(_QUERIES['obtener_adjuntos'], (id_factura_real,))
+                adjuntos = await cur.fetchall()
+
+                if not adjuntos:
+                    logger.error(f'SIN ADJUNTOS EN BD PARA FACTURA: {nombre_factura} (ID: {id_factura_real})')
+                    return None
+
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=aws_cfg.get('access_key'),
+            aws_secret_access_key=aws_cfg.get('secret_key'),
+            region_name=aws_cfg.get('region_name'),
+        )
+
+        # 3. Buscar ZIP original (Tipo 1)
+        zip_original = next((a for a in adjuntos if a[1] == 1), None)
+        if zip_original:
+            try:
+                logger.info(f'Descargando ZIP original de S3: {zip_original[0]}')
+                response = s3_client.get_object(Bucket=bucket, Key=zip_original[0])
+                contenido_raw = response['Body'].read()
+                paquete = (contenido_raw, f'{nombre_factura}.zip')
+            except Exception as e:
+                logger.warning(f'Fallo al obtener ZIP original ({zip_original[0]}), intentando con archivos sueltos: {e}')
+
+        # 4. Comprimir XML (2) y PDF (3) si no se obtuvo el ZIP original
+        if not paquete:
+            buffer = io.BytesIO()
+            con_archivos = False
+
+            with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for uri, tipo, nombre in adjuntos:
+                    if tipo in (2, 3):
+                        try:
+                            logger.info(f'Comprimiendo archivo de S3: {uri}')
+                            response = s3_client.get_object(Bucket=bucket, Key=uri)
+                            zf.writestr(nombre, response['Body'].read())
+                            con_archivos = True
+                        except Exception as e:
+                            logger.error(f'Error descargando adjunto {uri}: {e}')
+
+            if con_archivos:
+                buffer.seek(0)
+                paquete = (buffer.getvalue(), f'{nombre_factura}.zip')
+
+    except Exception as e:
+        logger.exception(f'Error inesperado en obtener_paquete_factura: {e}')
+
+    return paquete
 
 
 async def obtener_xml_factura(s3_key: str) -> bytes | None:

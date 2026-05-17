@@ -14,6 +14,7 @@ from core.python.db import get_pool
 router = APIRouter(prefix='/api/proveedores', tags=['proveedores'])
 
 
+@router.get('')
 async def obtener_proveedores(
     current_user: UserInDB = Depends(get_current_active_user)
 ) -> dict:

@@ -99,16 +99,19 @@ class DianEventListener:
                                     exito = True
                                 else:
                                     id_fac = row[0]
+                                    cod_ev = res_filtro.event_code
                                     
-                                    # 1. Registrar el evento en la tabla de trazabilidad
-                                    await cur.execute(_QUERIES['insertar_evento'], (id_fac, res_filtro.event_code, f'Evento email: {subject}'))
+                                    # 1. Registrar SIEMPRE el evento en la tabla de trazabilidad
+                                    await cur.execute(_QUERIES['insertar_evento'], (id_fac, cod_ev, f'Evento email: {subject}'))
                                     
-                                    # 2. Actualizar directamente el check correspondiente en factura_control
-                                    # Solo para facturas que NO sean de CONTADO (codigo_forma_pago != '1')
-                                    await cur.execute(_QUERIES['actualizar_control'], (res_filtro.event_code, res_filtro.event_code, res_filtro.event_code, id_fac))
+                                    # 2. Actualizar checks en factura_control SOLO si es un código de control (030, 032, 033)
+                                    from metadata.eventos_dian_metadata import EventosDianMetadata
+                                    if cod_ev in EventosDianMetadata.codigos_control:
+                                        await cur.execute(_QUERIES['actualizar_control'], (cod_ev, cod_ev, cod_ev, id_fac))
+                                        logger.info(f'Checks de factura_control actualizados para evento {cod_ev}')
                                     
                                     await db_conn.commit()
-                                    logger.info(f'Evento {res_filtro.event_code} procesado y checks actualizados para factura {id_fac}')
+                                    logger.info(f'Evento {cod_ev} procesado exitosamente para factura {id_fac}')
                                     conn.uid('store', uid, '+FLAGS', '\\Seen')
                                     exito = True
         except Exception as e:

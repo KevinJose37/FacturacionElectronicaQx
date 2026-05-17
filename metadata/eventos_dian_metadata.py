@@ -10,12 +10,17 @@ class EventosDianMetadata:
     ]
     """Lista de correos autorizados para enviar notificaciones de eventos (CEN Financiero)."""
 
-    codigos_permitidos = {'030', '032', '033'}
+    codigos_control = {'030', '032', '033'}
     """Códigos de evento DIAN permitidos para sincronización con factura_control."""
 
-    nombres_eventos = {
-        '030': 'Acuse de recibo de Factura Electrónica de Venta',
-        '032': 'Recibo del bien o prestación del servicio',
+    codigos_nombres = {
+        '02': 'Documento validado por la DIAN',
+        '04': 'Documento rechazado por la DIAN',
+        '030': 'Acuse de recibo',
+        '031': 'Reclamo / Rechazo',
+        '032': 'Recibo del bien o servicio',
         '033': 'Aceptación expresa',
+        '034': 'Aceptación tácita',
     }
+
     """Mapeo de códigos a nombres amigables (informativo)."""

@@ -1079,13 +1079,6 @@ class EmailListener:
         """Ejecuta el listener en bucle continuo con backoff exponencial + jitter."""
         logger.info('Iniciando listener continuo de facturas (poll_interval=%ds)', self.poll_interval)
 
-        # Asegurar que el pool asíncrono esté inicializado para los handlers de rechazo
-        from core.python.db.connection import init_pool, close_pool
-        try:
-            asyncio.run(init_pool())
-        except Exception as e:
-            logger.error("Error inicializando pool asíncrono: %s", e)
-
         fallos_consecutivos = 0
 
         while True:
@@ -1109,12 +1102,6 @@ class EmailListener:
             except KeyboardInterrupt:
                 logger.info('Listener detenido por usuario')
                 break
-        
-        # Cerrar pool al finalizar
-        try:
-            asyncio.run(close_pool())
-        except Exception:
-            pass
 
 
 if __name__ == '__main__':

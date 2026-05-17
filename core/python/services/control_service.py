@@ -4,13 +4,13 @@ import calendar
 import logging
 from datetime import date
 
-from config import load_yaml_queries
+from config import get_queries_control
 from core.python.db import get_pool
 from utils.s3_utils import obtener_xml_s3
 
 logger = logging.getLogger(__name__)
 
-_QUERIES = load_yaml_queries('control/queries_control.yml')
+_QUERIES = get_queries_control()
 
 
 async def listar_control(

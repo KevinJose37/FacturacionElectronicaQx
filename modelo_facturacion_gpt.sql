@@ -339,6 +339,7 @@ INSERT INTO FACTURACION.TIPO_DOCUMENTO_DIAN (CODIGO_TIPO_DOCUMENTO, NOMBRE, DESC
 ('02', 'Factura electrónica de venta - exportación',                 NULL, TRUE),
 ('03', 'Instrumento electrónico de transmisión - tipo 03',           'Transcripción de la factura de talonario o papel', TRUE),
 ('04', 'Factura electrónica de Venta - tipo 04',                     NULL, TRUE),
+('20', 'Nota de Ajuste al Documento Soporte',                        NULL, TRUE),
 ('91', 'Nota Crédito',                                               'Exclusivo en referencias a documentos (elementos DocumentReference)', FALSE),
 ('92', 'Nota Débito',                                                NULL, FALSE),
 ('96', 'Eventos (ApplicationResponse)',                              NULL, FALSE)

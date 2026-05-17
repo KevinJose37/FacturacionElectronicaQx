@@ -717,6 +717,15 @@ class EmailListener:
     # Procesamiento principal
     # ------------------------------------------------------------------
 
+    def _get_async_loop(self):
+        """Obtiene o crea un event loop de asyncio."""
+        try:
+            return asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            return loop
+
     def _procesar_correo(self, conn: imaplib.IMAP4_SSL, uid: bytes) -> bool:
         """Procesa un correo individual con flujo completo."""
         try:
@@ -838,7 +847,8 @@ class EmailListener:
                                 )
                                 try:
                                     rechazo_handler = RechazoHandler()
-                                    asyncio.run(rechazo_handler.manejar_sin_adjuntos(id_correo))
+                                    loop = self._get_async_loop()
+                                    loop.run_until_complete(rechazo_handler.manejar_sin_adjuntos(id_correo))
                                 except Exception as e:
                                     logger.error(
                                         "Error al procesar rechazo sin adjuntos para ID_CORREO=%s: %s",
@@ -851,7 +861,8 @@ class EmailListener:
                                 )
                                 try:
                                     rechazo_handler = RechazoHandler()
-                                    asyncio.run(rechazo_handler.procesar_rechazo(
+                                    loop = self._get_async_loop()
+                                    loop.run_until_complete(rechazo_handler.procesar_rechazo(
                                         id_correo, obs_rechazo,
                                     ))
                                 except Exception as e:
@@ -884,7 +895,8 @@ class EmailListener:
                             logger.error("Falla al descargar adjuntos para correo %s", id_mensaje)
                             try:
                                 rechazo_handler = RechazoHandler()
-                                asyncio.run(rechazo_handler.procesar_rechazo(
+                                loop = self._get_async_loop()
+                                loop.run_until_complete(rechazo_handler.procesar_rechazo(
                                     id_correo, motivo_fallo,
                                 ))
                             except Exception as e:
@@ -948,7 +960,8 @@ class EmailListener:
                             )
                             try:
                                 rechazo_handler = RechazoHandler()
-                                asyncio.run(rechazo_handler.procesar_rechazo(
+                                loop = self._get_async_loop()
+                                loop.run_until_complete(rechazo_handler.procesar_rechazo(
                                     id_correo, motivo_sin_pares,
                                 ))
                             except Exception as e:
@@ -1079,6 +1092,14 @@ class EmailListener:
         """Ejecuta el listener en bucle continuo con backoff exponencial + jitter."""
         logger.info('Iniciando listener continuo de facturas (poll_interval=%ds)', self.poll_interval)
 
+        # Asegurar que el pool asíncrono esté inicializado para los handlers de rechazo
+        from core.python.db.connection import init_pool, close_pool
+        loop = self._get_async_loop()
+        try:
+            loop.run_until_complete(init_pool())
+        except Exception as e:
+            logger.error("Error inicializando pool asíncrono: %s", e)
+
         fallos_consecutivos = 0
 
         while True:
@@ -1102,6 +1123,12 @@ class EmailListener:
             except KeyboardInterrupt:
                 logger.info('Listener detenido por usuario')
                 break
+
+        # Cerrar pool al finalizar
+        try:
+            loop.run_until_complete(close_pool())
+        except Exception:
+            pass
 
 
 if __name__ == '__main__':

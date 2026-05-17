@@ -1,56 +1,17 @@
-"""Puntos de entrada de la API para disparar procesos de ingesta."""
+"""Puntos de entrada de la API para consultas de ingesta."""
 
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Depends
+from fastapi import APIRouter, Depends
 
-from config import get_config, get_queries_ingesta
-from core import EmailListener
+from config import get_queries_ingesta
 from core.python.db.connection import get_pool
 from metadata.db_metadata import IdEstadoProceso
 from core.python.auth.deps import get_current_active_user
 
-router = APIRouter(tags=['webhook'])
+router = APIRouter(tags=['ingesta'])
 
 logger = logging.getLogger(__name__)
-
-_WEBHOOK_SECRET = get_config('WEBHOOK_SECRET', '')
-
-
-def _run_ingesta() -> None:
-    """Ejecuta el listener de correos. Los workers procesan las facturas."""
-    try:
-        EmailListener().run()
-        logger.info('Ingesta completada. Workers procesarán los eventos pendientes.')
-    except Exception as e:
-        logger.exception('Falla crítica en background task de ingesta: %s', e)
-
-
-@router.post('/webhook/gmail')
-@router.post('/api/webhook/')
-async def gmail_webhook(
-    background_tasks: BackgroundTasks,
-    x_webhook_secret: str = Header(None),
-) -> dict:
-    """Recibe notificaciones de Gmail e inicia la ingesta.
-
-    Args:
-        background_tasks: Gestor de tareas en segundo plano.
-        x_webhook_secret: Token de validación (Header).
-
-    Raises:
-        HTTPException: Si el secreto es inválido o no está configurado.
-    """
-    logger.info('Webhook de Gmail invocado. Validando secreto...')
-    if not _WEBHOOK_SECRET or x_webhook_secret != _WEBHOOK_SECRET:
-        logger.warning('Webhook rechazado: Secreto inválido o no configurado.')
-        raise HTTPException(status_code=403, detail='Unauthorized')
-
-    logger.info('Secreto validado. Encolando _run_ingesta en BackgroundTasks...')
-    background_tasks.add_task(_run_ingesta)
-    logger.info('Tarea encolada. Retornando 200 OK.')
-    respuesta = {'status': 'accepted'}
-    return respuesta
 
 
 @router.get('/webhook/queue/status')
@@ -74,4 +35,3 @@ async def queue_status(current_user: dict = Depends(get_current_active_user)) ->
     except Exception as e:
         logger.error('Error consultando estado de la cola: %s', e)
         return {'status': 'error'}
-

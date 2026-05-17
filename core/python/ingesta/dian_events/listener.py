@@ -13,11 +13,14 @@ from dotenv import load_dotenv
 from core.python.db.connection import get_pool, init_pool
 from core.python.ingesta.dian_events.filter import DianEventFilter
 from core.python.facturas.invoice_repository import InvoiceRepository
+from config import load_yaml_queries
 from utils.email_parser import EmailParser
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+_QUERIES = load_yaml_queries('eventos/queries_eventos.yml').get('eventos', {})
 
 class DianEventListener:
     """Listener para el correo secundario que recibe solo eventos DIAN."""
@@ -88,8 +91,7 @@ class DianEventListener:
                         pool = get_pool()
                         async with pool.connection() as db_conn:
                             async with db_conn.cursor() as cur:
-                                query = "SELECT id_factura FROM facturacion.factura WHERE numero_factura = %s OR prefijo_facturacion || '-' || numero_factura = %s OR prefijo_facturacion || numero_factura = %s LIMIT 1"
-                                await cur.execute(query, (num_factura, num_factura, num_factura))
+                                await cur.execute(_QUERIES['buscar_factura'], (num_factura, num_factura, num_factura))
                                 row = await cur.fetchone()
                                 if not row:
                                     logger.warning(f'Factura [{num_factura}] no encontrada.')
@@ -99,24 +101,11 @@ class DianEventListener:
                                     id_fac = row[0]
                                     
                                     # 1. Registrar el evento en la tabla de trazabilidad
-                                    ins_ev = "INSERT INTO facturacion.evento_dian_factura (id_factura, codigo_evento, descripcion, fecha_evento) VALUES (%s, %s, %s, NOW())"
-                                    await cur.execute(ins_ev, (id_fac, res_filtro.event_code, f'Evento email: {subject}'))
+                                    await cur.execute(_QUERIES['insertar_evento'], (id_fac, res_filtro.event_code, f'Evento email: {subject}'))
                                     
                                     # 2. Actualizar directamente el check correspondiente en factura_control
                                     # Solo para facturas que NO sean de CONTADO (codigo_forma_pago != '1')
-                                    update_sql = """
-                                        UPDATE facturacion.factura_control fc
-                                        SET 
-                                            acuso_recibido = CASE WHEN %s = '030' THEN TRUE ELSE acuso_recibido END,
-                                            recibido_bien_servicio = CASE WHEN %s = '032' THEN TRUE ELSE recibido_bien_servicio END,
-                                            aceptacion_expresa = CASE WHEN %s = '033' THEN TRUE ELSE aceptacion_expresa END,
-                                            fecha_actualizacion = NOW()
-                                        FROM facturacion.pago_factura pf
-                                        WHERE fc.id_factura = %s 
-                                          AND fc.id_factura = pf.id_factura
-                                          AND pf.codigo_forma_pago != '1'
-                                    """
-                                    await cur.execute(update_sql, (res_filtro.event_code, res_filtro.event_code, res_filtro.event_code, id_fac))
+                                    await cur.execute(_QUERIES['actualizar_control'], (res_filtro.event_code, res_filtro.event_code, res_filtro.event_code, id_fac))
                                     
                                     await db_conn.commit()
                                     logger.info(f'Evento {res_filtro.event_code} procesado y checks actualizados para factura {id_fac}')

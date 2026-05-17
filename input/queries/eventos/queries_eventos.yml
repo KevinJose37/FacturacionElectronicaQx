@@ -1,0 +1,33 @@
+# ──────────────────────────────────────────────
+# Queries SQL para el módulo de Eventos DIAN
+# ──────────────────────────────────────────────
+
+eventos:
+  buscar_factura: >
+    SELECT id_factura
+    FROM facturacion.factura
+    WHERE numero_factura = %s
+       OR (prefijo_facturacion || '-' || numero_factura) = %s
+       OR (prefijo_facturacion || numero_factura) = %s
+    LIMIT 1
+
+  insertar_evento: >
+    INSERT INTO facturacion.evento_dian_factura (
+        id_factura,
+        codigo_evento,
+        descripcion,
+        fecha_evento
+    )
+    VALUES (%s, %s, %s, NOW())
+
+  actualizar_control: >
+    UPDATE facturacion.factura_control fc
+    SET 
+        acuso_recibido = CASE WHEN %s = '030' THEN TRUE ELSE acuso_recibido END,
+        recibido_bien_servicio = CASE WHEN %s = '032' THEN TRUE ELSE recibido_bien_servicio END,
+        aceptacion_expresa = CASE WHEN %s = '033' THEN TRUE ELSE aceptacion_expresa END,
+        fecha_actualizacion = NOW()
+    FROM facturacion.pago_factura pf
+    WHERE fc.id_factura = %s 
+      AND fc.id_factura = pf.id_factura
+      AND pf.codigo_forma_pago != '1'

@@ -77,7 +77,7 @@ async def actualizar_control(
 
 @router.get('/descargar-paquete')
 async def descargar_paquete_factura(
-    id_factura: int = Query(..., description='ID de la factura'),
+    id_factura: str = Query(..., description='ID o Número de la factura'),
 ) -> Response:
     """Endpoint para descargar el paquete ZIP de una factura.
 

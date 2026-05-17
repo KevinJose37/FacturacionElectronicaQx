@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import email.utils
 from datetime import datetime
  
 from config import load_yaml_queries
@@ -54,6 +55,10 @@ class RechazoHandler:
                     return
  
                 remitente, asunto = correo_data
+                
+                # Extraer solo el email (sin el nombre ni tags)
+                _, email_limpio = email.utils.parseaddr(remitente)
+                email_limpio = email_limpio if email_limpio else remitente
  
                 # 2. Registrar devolución inicial (PENDIENTE)
                 await cur.execute(
@@ -77,7 +82,7 @@ class RechazoHandler:
                 listado_str = f'- {motivo_principal}'
  
             cuerpo_final = cuerpo_plantilla.format(
-                remitente=remitente,
+                remitente=email_limpio,
                 asunto=asunto,
                 listado_inconsistencias=listado_str,
             )

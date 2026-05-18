@@ -998,6 +998,9 @@ class EmailListener:
                                 }
                             self._publisher.publish(evento, db_conn=conn_db)
 
+                        # Marcar el correo como procesado ya que los adjuntos se subieron a S3 raw
+                        self._repository.marcar_correo_procesado(conn_db, id_correo)
+
                         conn_db.commit()
                         conn.uid("store", uid, "+FLAGS", "\\Seen")
                         logger.debug(

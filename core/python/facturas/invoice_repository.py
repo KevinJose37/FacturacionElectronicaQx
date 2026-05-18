@@ -811,22 +811,6 @@ class InvoiceRepository:
                 (id_estado, adjunto_id),
             )
 
-    def marcar_correo_procesado(
-        self,
-        conn: Connection,
-        correo_id: int,
-    ) -> None:
-        """Marca el correo en CORREO_ENTRANTE como procesado."""
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE FACTURACION.CORREO_ENTRANTE
-                SET PROCESADO = TRUE
-                WHERE CORREO_ID = %s
-                """,
-                (correo_id,),
-            )
-
     # ------------------------------------------------------------------
     # Operaciones de SOFTWARE
     # ------------------------------------------------------------------

@@ -349,11 +349,6 @@ class InvoiceProcessor:
         if pdf_ev:
             self._ejecutar_verificacion_grafica(conn, cufe, pdf_ev)
 
-        # 10. Marcar correo como procesado
-        correo_id = invoice_ev.get('correo_id')
-        if correo_id:
-            self._repo.marcar_correo_procesado(conn, correo_id)
-
         logger.debug('Factura procesada exitosamente: CUFE=%s', cufe[:20])
         return True
 
@@ -413,12 +408,7 @@ class InvoiceProcessor:
                 # 4. Ejecutar Verificación Gráfica
                 self._ejecutar_verificacion_grafica(conn, cufe, pdf_ev, tmp_path)
                 
-                # 5. Marcar correo como procesado si existe
-                correo_id = pdf_ev.get('correo_id')
-                if correo_id:
-                    self._repo.marcar_correo_procesado(conn, correo_id)
-
-                # 6. Marcar evento como procesado
+                # 5. Marcar evento como procesado
                 self._repo.marcar_evento_procesado(conn, adjunto_id)
                 conn.commit()
                 os.unlink(tmp_path)

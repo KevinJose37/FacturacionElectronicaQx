@@ -9,11 +9,11 @@ class KpiDefiniciones:
     """Definiciones de los KPIs del dashboard principal."""
 
     items = (
-        {'key': 'processed', 'label': 'Facturas procesadas (30d)', 'color': 'turquoise'},
+        {'key': 'processed', 'label': 'Facturas procesadas', 'color': 'turquoise'},
         {'key': 'validated', 'label': 'Facturas validadas', 'color': 'turquoise'},
         {'key': 'rejected', 'label': 'Facturas rechazadas', 'color': 'orange'},
         {'key': 'time', 'label': 'Tiempo promedio', 'color': 'purple'},
-        {'key': 'auto', 'label': '% Automatización', 'color': 'lime'},
+        {'key': 'total_value', 'label': 'Valor total facturado', 'color': 'turquoise'},
         {'key': 'providers', 'label': 'Proveedores activos', 'color': 'turquoise'},
     )
     """Tupla de dicts con key, label y color de cada KPI."""
@@ -26,7 +26,6 @@ class EtapasFlujo:
         {'id': 'intake', 'label': 'Entrada'},
         {'id': 'validation', 'label': 'Validación'},
         {'id': 'processing', 'label': 'Procesamiento'},
-        {'id': 'erp', 'label': 'ERP'},
         {'id': 'done', 'label': 'Finalizado'},
     )
     """Tupla de dicts con id y label de cada etapa."""

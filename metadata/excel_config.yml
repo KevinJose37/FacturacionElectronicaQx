@@ -29,7 +29,7 @@ columns:
     label: "acuse de recibido"
   - db_field: "recibido_bien_servicio"
     label: "recibo de bien y/o servicio"
-  - db_field: "aceptacion_empresa"
+  - db_field: "aceptacion_expresa"
     label: "aceptacion expresa"
   - db_field: "observaciones_entrega"
     label: "observaciones"

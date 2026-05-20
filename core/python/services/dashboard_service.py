@@ -44,49 +44,39 @@ async def obtener_kpis(fecha_inicio: str | None = None, fecha_fin: str | None = 
     Returns:
         Lista de diccionarios con los KPIs calculados.
     """
-    dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
-    delta_days = max((dt_fin - dt_inicio).days, 1)
-    inicio_ayer = dt_inicio - timedelta(days=delta_days)
-
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(
-                _QUERIES['kpis'], 
-                (dt_inicio, dt_fin, inicio_ayer, dt_inicio, dt_inicio, dt_fin, dt_inicio, dt_fin, dt_inicio, dt_fin)
-            )
+            await cur.execute(_QUERIES['kpis'])
             row = await cur.fetchone()
-            procesadas_hoy = row[0]
-            procesadas_ayer = row[1] or 1
-            validadas = row[2]
-            rechazadas = row[3]
-            proveedores = row[4]
+            processed = row[0]
+            validated = row[1]
+            rejected = row[2]
+            providers = row[3]
+            total_value = float(row[4]) if row[4] else 0.0
+            avg_time = float(row[5]) if row[5] else 0.0
 
-            pct_auto = round((validadas / max(validadas + rechazadas, 1)) * 100, 1)
-            delta_proc = round(
-                ((procesadas_hoy - procesadas_ayer) / max(procesadas_ayer, 1)) * 100, 1
-            )
-
-    spark_base = [max(1, procesadas_hoy - i * 3) for i in range(12, 0, -1)]
+    avg_time_formatted = f"{avg_time:.1f}s"
+    total_value_formatted = f"$ {total_value:,.2f}"
 
     valores = {
-        'processed': {'value': str(procesadas_hoy), 'delta': delta_proc, 'spark': spark_base},
-        'validated': {'value': str(validadas), 'delta': 0.0, 'spark': [max(0, validadas - i) for i in range(12, 0, -1)]},
+        'processed': {'value': str(processed), 'delta': 0.0, 'spark': [max(0, processed - i) for i in range(12, 0, -1)]},
+        'validated': {'value': str(validated), 'delta': 0.0, 'spark': [max(0, validated - i) for i in range(12, 0, -1)]},
         'rejected': {
-            'value': str(rechazadas), 'delta': 0.0,
-            'spark': [max(0, rechazadas - i) for i in range(12, 0, -1)],
+            'value': str(rejected), 'delta': 0.0,
+            'spark': [max(0, rejected - i) for i in range(12, 0, -1)],
         },
         'time': {
-            'value': '0.0s', 'delta': 0.0,
+            'value': avg_time_formatted, 'delta': 0.0,
             'spark': [0.0] * 12,
         },
-        'auto': {
-            'value': f'{pct_auto}%', 'delta': 0.0,
-            'spark': [max(0, pct_auto - i * 0.5) for i in range(12, 0, -1)],
+        'total_value': {
+            'value': total_value_formatted, 'delta': 0.0,
+            'spark': [max(0.0, total_value - i * 1000) for i in range(12, 0, -1)],
         },
         'providers': {
-            'value': str(proveedores), 'delta': 0.0,
-            'spark': [max(0, proveedores - i) for i in range(12, 0, -1)],
+            'value': str(providers), 'delta': 0.0,
+            'spark': [max(0, providers - i) for i in range(12, 0, -1)],
         },
     }
 
@@ -114,8 +104,8 @@ async def obtener_etapas_flujo(fecha_inicio: str | None = None, fecha_fin: str |
             total, validacion, procesamiento, erp, finalizado = row
 
     factor_warn = float(_dashboard_cfg.get('factor_pipeline_warn', 0.9))
-    conteos = [total, validacion, procesamiento, erp, finalizado]
-    estados = ['ok', 'ok', 'warn' if procesamiento < validacion * factor_warn else 'ok', 'ok', 'ok']
+    conteos = [total, validacion, procesamiento, finalizado]
+    estados = ['ok', 'ok', 'warn' if procesamiento < validacion * factor_warn else 'ok', 'ok']
 
     etapas = []
     for i, item in enumerate(EtapasFlujo.items):
@@ -125,7 +115,7 @@ async def obtener_etapas_flujo(fecha_inicio: str | None = None, fecha_fin: str |
 
 
 async def obtener_facturas_por_proveedor(fecha_inicio: str | None = None, fecha_fin: str | None = None, limite: int = 6) -> list:
-    """Top proveedores por cantidad de facturas.
+    """Top proveedores por cantidad de facturas globales.
 
     Args:
         limite: Cantidad máxima de proveedores a retornar.
@@ -133,12 +123,10 @@ async def obtener_facturas_por_proveedor(fecha_inicio: str | None = None, fecha_
     Returns:
         Lista de proveedores con conteo de facturas.
     """
-    dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
-
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['facturas_por_proveedor'], (dt_inicio, dt_fin, limite))
+            await cur.execute(_QUERIES['facturas_por_proveedor'])
             filas = await cur.fetchall()
 
     resultado = [
@@ -155,15 +143,22 @@ async def obtener_tendencia(fecha_inicio: str | None = None, fecha_fin: str | No
         Lista de datos de tendencia por día.
     """
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
+    d_ini = dt_inicio.date()
+    d_fin = dt_fin.date()
 
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['tendencia'], (dt_inicio, dt_fin))
+            await cur.execute(_QUERIES['tendencia'], (d_ini, d_fin, d_ini, d_fin, d_ini, d_fin, d_ini, d_fin))
             filas = await cur.fetchall()
 
     resultado = [
-        {'day': r[0].strftime('D%d'), 'procesadas': r[1], 'validadas': r[2]}
+        {
+            'day': r[0].strftime('%Y-%m-%d') if r[0] else '',
+            'recibo': r[1],
+            'compra': r[2],
+            'procesamiento': r[3]
+        }
         for r in filas
     ]
     return resultado
@@ -192,7 +187,7 @@ async def obtener_ultimas_facturas(limite: int = 8) -> list:
             'provider': r[1] or DefaultTextos.sin_nombre,
             'type': DefaultTextos.factura_electronica,
             'status': estado,
-            'date': r[3].strftime(DefaultTextos.formato_fecha_corto) if r[3] else '',
+            'date': r[3].strftime('%d/%m/%Y %H:%M') if r[3] else '',
             'amount': float(r[4]) if r[4] else 0,
             'time': '1.2s',
         })
@@ -398,3 +393,54 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
             'date': r[5].isoformat() if r[5] else '',
         })
     return resultado
+
+
+async def obtener_valor_proveedor_stats() -> list:
+    """Obtiene los valores de facturación acumulados por proveedor."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(_QUERIES['valor_proveedor_stats'])
+            filas = await cur.fetchall()
+    return [{'name': r[0] or DefaultTextos.sin_nombre, 'value': float(r[1]) if r[1] else 0.0} for r in filas]
+
+
+async def obtener_forma_pago_stats() -> list:
+    """Obtiene conteo de facturas por forma de pago."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(_QUERIES['forma_pago_stats'])
+            filas = await cur.fetchall()
+    return [{'name': r[0], 'value': r[1]} for r in filas]
+
+
+async def obtener_medio_pago_stats() -> list:
+    """Obtiene conteo de facturas por medio de pago."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(_QUERIES['medio_pago_stats'])
+            filas = await cur.fetchall()
+    return [{'name': r[0], 'value': r[1]} for r in filas]
+
+
+async def obtener_eventos_dian_stats() -> list:
+    """Obtiene la cantidad de eventos DIAN por tipo de evento."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(_QUERIES['eventos_dian_stats'])
+            filas = await cur.fetchall()
+    return [{'name': r[0], 'value': r[1]} for r in filas]
+
+
+async def obtener_impuestos_stats() -> list:
+    """Obtiene la suma de valor por tipo de impuesto."""
+    pool = get_pool()
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(_QUERIES['impuestos_stats'])
+            filas = await cur.fetchall()
+    return [{'name': r[0], 'value': float(r[1]) if r[1] else 0.0} for r in filas]
+

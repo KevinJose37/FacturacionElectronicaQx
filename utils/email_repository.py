@@ -480,3 +480,12 @@ class EmailRepository:
                 """,
                 (id_proceso, secuencia, codigo_etapa, id_estado, detalle_json, error),
             )
+
+    def marcar_correo_procesado(self, conn: Connection, correo_id: int) -> None:
+        """Marca el correo en CORREO_ENTRANTE como procesado (PROCESADO = TRUE)."""
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE FACTURACION.CORREO_ENTRANTE SET PROCESADO = TRUE WHERE CORREO_ID = %s",
+                (correo_id,)
+            )
+            logger.debug("Correo ID=%s marcado como procesado", correo_id)

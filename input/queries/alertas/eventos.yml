@@ -5,8 +5,11 @@
 # y facturas que recibieron evento de rechazo (reclamo).
 #
 # Solo aplica para facturas con forma_pago diferente a 'Contado'.
-# El campo eventos_dian_notif contiene los códigos concatenados
-# (ej: "030, 032, 033") y se llena mediante trigger.
+#
+# Mapeo de columnas en factura_control:
+#   ACUSO_RECIBIDO          = Evento 030
+#   RECIBIDO_BIEN_SERVICIO  = Evento 032
+#   ACEPTACION_EXPRESA      = Evento 033
 #
 # Códigos de eventos DIAN:
 #   030 = Acuse de recibo de Factura Electrónica de Venta
@@ -29,7 +32,7 @@ alertas_dian:
     JOIN facturacion.pago_factura pf ON f.id_factura = pf.id_factura
     WHERE pf.codigo_forma_pago != '1'
       AND f.fecha_generacion < %s
-      AND (fc.eventos_dian_notif IS NULL OR fc.eventos_dian_notif NOT LIKE '%%030%%')
+      AND fc.acuso_recibido = FALSE
     GROUP BY anio, mes
     ORDER BY anio DESC, mes DESC
 
@@ -45,7 +48,7 @@ alertas_dian:
     JOIN facturacion.pago_factura pf ON f.id_factura = pf.id_factura
     WHERE pf.codigo_forma_pago != '1'
       AND f.fecha_generacion < %s
-      AND (fc.eventos_dian_notif IS NULL OR fc.eventos_dian_notif NOT LIKE '%%032%%')
+      AND fc.recibido_bien_servicio = FALSE
     GROUP BY anio, mes
     ORDER BY anio DESC, mes DESC
 
@@ -61,7 +64,7 @@ alertas_dian:
     JOIN facturacion.pago_factura pf ON f.id_factura = pf.id_factura
     WHERE pf.codigo_forma_pago != '1'
       AND f.fecha_generacion < %s
-      AND (fc.eventos_dian_notif IS NULL OR fc.eventos_dian_notif NOT LIKE '%%033%%')
+      AND fc.aceptacion_expresa = FALSE
     GROUP BY anio, mes
     ORDER BY anio DESC, mes DESC
 
@@ -77,24 +80,24 @@ alertas_dian:
     JOIN facturacion.pago_factura pf ON f.id_factura = pf.id_factura
     WHERE pf.codigo_forma_pago != '1'
       AND f.fecha_generacion < %s
-      AND fc.eventos_dian_notif LIKE '%%031%%'
+      AND EXISTS (
+        SELECT 1 FROM facturacion.evento_dian_factura ed
+        WHERE ed.id_factura = f.id_factura AND ed.codigo_evento = '031'
+      )
     GROUP BY anio, mes
     ORDER BY anio DESC, mes DESC
 
   # Total general por tipo de alerta (sin agrupar por fecha)
   resumen_totales: >
     SELECT
+      COUNT(*) FILTER (WHERE fc.acuso_recibido = FALSE) AS sin_030,
+      COUNT(*) FILTER (WHERE fc.recibido_bien_servicio = FALSE) AS sin_032,
+      COUNT(*) FILTER (WHERE fc.aceptacion_expresa = FALSE) AS sin_033,
       COUNT(*) FILTER (
-        WHERE fc.eventos_dian_notif IS NULL OR fc.eventos_dian_notif NOT LIKE '%%030%%'
-      ) AS sin_030,
-      COUNT(*) FILTER (
-        WHERE fc.eventos_dian_notif IS NULL OR fc.eventos_dian_notif NOT LIKE '%%032%%'
-      ) AS sin_032,
-      COUNT(*) FILTER (
-        WHERE fc.eventos_dian_notif IS NULL OR fc.eventos_dian_notif NOT LIKE '%%033%%'
-      ) AS sin_033,
-      COUNT(*) FILTER (
-        WHERE fc.eventos_dian_notif LIKE '%%031%%'
+        WHERE EXISTS (
+          SELECT 1 FROM facturacion.evento_dian_factura ed
+          WHERE ed.id_factura = f.id_factura AND ed.codigo_evento = '031'
+        )
       ) AS con_rechazo
     FROM facturacion.factura f
     JOIN facturacion.factura_control fc ON f.id_factura = fc.id_factura

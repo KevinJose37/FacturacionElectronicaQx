@@ -117,6 +117,25 @@ alerts:
 
 
 # ──────────────────────────────────────────────
+# Listener de Facturas (polling IMAP)
+# ──────────────────────────────────────────────
+email_listener:
+  poll_interval_seconds: 60       # Intervalo base entre ciclos exitosos
+  max_backoff_seconds: 300        # Techo del backoff exponencial (5 min)
+  jitter_max_seconds: 5           # Jitter aleatorio para evitar thundering herd
+
+# ──────────────────────────────────────────────
+# Listener de Eventos DIAN (polling IMAP)
+# ──────────────────────────────────────────────
+dian_events_listener:
+  poll_interval_seconds: 30       # Intervalo base entre ciclos exitosos
+  max_backoff_seconds: 300        # Techo del backoff exponencial (5 min)
+  jitter_max_seconds: 5           # Jitter aleatorio para evitar thundering herd
+  connection:
+    max_attempts: 3               # Reintentos de conexión IMAP por ciclo
+    backoff_base_seconds: 2       # Base exponencial para reintentos de conexión
+
+# ──────────────────────────────────────────────
 # Verificación Gráfica (PyMuPDF + IA)
 # ──────────────────────────────────────────────
 verificacion_grafica:

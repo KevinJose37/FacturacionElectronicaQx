@@ -28,11 +28,11 @@ async def obtener_dashboard(fecha_inicio: str | None = None, fecha_fin: str | No
         dashboard_service.obtener_actividad_reciente(),
         dashboard_service.obtener_alertas_activas(),
         alertas_dian_service.obtener_alertas_dian(),
-        dashboard_service.obtener_valor_proveedor_stats(),
-        dashboard_service.obtener_forma_pago_stats(),
-        dashboard_service.obtener_medio_pago_stats(),
-        dashboard_service.obtener_eventos_dian_stats(),
-        dashboard_service.obtener_impuestos_stats(),
+        dashboard_service.obtener_valor_proveedor_stats(fecha_inicio, fecha_fin),
+        dashboard_service.obtener_forma_pago_stats(fecha_inicio, fecha_fin),
+        dashboard_service.obtener_medio_pago_stats(fecha_inicio, fecha_fin),
+        dashboard_service.obtener_eventos_dian_stats(fecha_inicio, fecha_fin),
+        dashboard_service.obtener_impuestos_stats(fecha_inicio, fecha_fin),
         dashboard_service.obtener_eventos_por_minuto(),
     )
 

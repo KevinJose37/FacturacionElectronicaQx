@@ -44,10 +44,11 @@ async def obtener_kpis(fecha_inicio: str | None = None, fecha_fin: str | None = 
     Returns:
         Lista de diccionarios con los KPIs calculados.
     """
+    dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['kpis'])
+            await cur.execute(_QUERIES['kpis'], (dt_inicio, dt_fin, dt_inicio, dt_fin))
             row = await cur.fetchone()
             processed = row[0]
             validated = row[1]
@@ -123,10 +124,11 @@ async def obtener_facturas_por_proveedor(fecha_inicio: str | None = None, fecha_
     Returns:
         Lista de proveedores con conteo de facturas.
     """
+    dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['facturas_por_proveedor'])
+            await cur.execute(_QUERIES['facturas_por_proveedor'], (dt_inicio, dt_fin))
             filas = await cur.fetchall()
 
     resultado = [
@@ -395,52 +397,57 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
     return resultado
 
 
-async def obtener_valor_proveedor_stats() -> list:
+async def obtener_valor_proveedor_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
     """Obtiene los valores de facturación acumulados por proveedor."""
+    dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['valor_proveedor_stats'])
+            await cur.execute(_QUERIES['valor_proveedor_stats'], (dt_inicio, dt_fin))
             filas = await cur.fetchall()
     return [{'name': r[0] or DefaultTextos.sin_nombre, 'value': float(r[1]) if r[1] else 0.0} for r in filas]
 
 
-async def obtener_forma_pago_stats() -> list:
+async def obtener_forma_pago_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
     """Obtiene conteo de facturas por forma de pago."""
+    dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['forma_pago_stats'])
+            await cur.execute(_QUERIES['forma_pago_stats'], (dt_inicio, dt_fin))
             filas = await cur.fetchall()
     return [{'name': r[0], 'value': r[1]} for r in filas]
 
 
-async def obtener_medio_pago_stats() -> list:
+async def obtener_medio_pago_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
     """Obtiene conteo de facturas por medio de pago."""
+    dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['medio_pago_stats'])
+            await cur.execute(_QUERIES['medio_pago_stats'], (dt_inicio, dt_fin))
             filas = await cur.fetchall()
     return [{'name': r[0], 'value': r[1]} for r in filas]
 
 
-async def obtener_eventos_dian_stats() -> list:
+async def obtener_eventos_dian_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
     """Obtiene la cantidad de eventos DIAN por tipo de evento."""
+    dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['eventos_dian_stats'])
+            await cur.execute(_QUERIES['eventos_dian_stats'], (dt_inicio, dt_fin))
             filas = await cur.fetchall()
     return [{'name': r[0], 'value': r[1]} for r in filas]
 
 
-async def obtener_impuestos_stats() -> list:
+async def obtener_impuestos_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
     """Obtiene la suma de valor por tipo de impuesto."""
+    dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['impuestos_stats'])
+            await cur.execute(_QUERIES['impuestos_stats'], (dt_inicio, dt_fin))
             filas = await cur.fetchall()
     return [{'name': r[0], 'value': float(r[1]) if r[1] else 0.0} for r in filas]
 

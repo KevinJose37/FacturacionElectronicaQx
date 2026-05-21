@@ -42,8 +42,9 @@ dashboard:
     COUNT(*) FILTER (WHERE id_estado_proceso IN (4, 5)) as rejected,
     COUNT(DISTINCT id_tercero_emisor) as providers,
     COALESCE(SUM(valor_total), 0) as total_value,
-    COALESCE((SELECT AVG(EXTRACT(EPOCH FROM (fecha_fin - fecha_inicio))) FROM facturacion.proceso_ingesta WHERE fecha_fin IS NOT NULL), 0.0) as avg_time
+    COALESCE((SELECT AVG(EXTRACT(EPOCH FROM (fecha_fin - fecha_inicio))) FROM facturacion.proceso_ingesta WHERE fecha_fin IS NOT NULL AND fecha_inicio >= %s AND fecha_inicio <= %s), 0.0) as avg_time
     FROM facturacion.factura
+    WHERE fecha_creacion >= %s AND fecha_creacion <= %s
 
   etapas_flujo: >
     SELECT
@@ -58,7 +59,7 @@ dashboard:
   facturas_por_proveedor: >
     SELECT f.razon_social_emisor, COUNT(*) as total
     FROM facturacion.factura f
-    WHERE f.razon_social_emisor IS NOT NULL
+    WHERE f.razon_social_emisor IS NOT NULL AND f.fecha_creacion >= %s AND f.fecha_creacion <= %s
     GROUP BY f.razon_social_emisor
     ORDER BY total DESC
 
@@ -98,7 +99,7 @@ dashboard:
   valor_proveedor_stats: >
     SELECT f.razon_social_emisor AS name, SUM(f.valor_total) AS value
     FROM facturacion.factura f
-    WHERE f.razon_social_emisor IS NOT NULL
+    WHERE f.razon_social_emisor IS NOT NULL AND f.fecha_creacion >= %s AND f.fecha_creacion <= %s
     GROUP BY f.razon_social_emisor
     ORDER BY value DESC
 
@@ -107,6 +108,7 @@ dashboard:
     FROM facturacion.factura f
     LEFT JOIN facturacion.pago_factura pf ON f.id_factura = pf.id_factura
     LEFT JOIN facturacion.tipo_forma_pago tf ON pf.codigo_forma_pago = tf.codigo_forma_pago
+    WHERE f.fecha_creacion >= %s AND f.fecha_creacion <= %s
     GROUP BY name
     ORDER BY value DESC
 
@@ -115,20 +117,25 @@ dashboard:
     FROM facturacion.factura f
     LEFT JOIN facturacion.pago_factura pf ON f.id_factura = pf.id_factura
     LEFT JOIN facturacion.tipo_medio_pago tmp ON pf.codigo_medio_pago = tmp.codigo_medio_pago
+    WHERE f.fecha_creacion >= %s AND f.fecha_creacion <= %s
     GROUP BY name
     ORDER BY value DESC
 
   eventos_dian_stats: >
     SELECT COALESCE(ted.nombre_evento, edf.codigo_evento, 'No definido') AS name, COUNT(*) AS value
     FROM facturacion.evento_dian_factura edf
+    JOIN facturacion.factura f ON edf.id_factura = f.id_factura
     LEFT JOIN facturacion.tipo_evento_dian ted ON edf.codigo_evento = ted.codigo_evento
+    WHERE f.fecha_creacion >= %s AND f.fecha_creacion <= %s
     GROUP BY name
     ORDER BY value DESC
 
   impuestos_stats: >
     SELECT COALESCE(ti.nombre, ti.descripcion, im.codigo_impuesto, 'Otros') AS name, SUM(im.valor_impuesto) AS value
     FROM facturacion.impuesto_factura im
+    JOIN facturacion.factura f ON im.id_factura = f.id_factura
     LEFT JOIN facturacion.tipo_impuesto ti ON im.codigo_impuesto = ti.codigo_impuesto
+    WHERE f.fecha_creacion >= %s AND f.fecha_creacion <= %s
     GROUP BY name
     ORDER BY value DESC
 

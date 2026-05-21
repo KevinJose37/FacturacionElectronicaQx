@@ -24,14 +24,16 @@ async def listar_control(
     fecha_fin: date | None = None,
     page: int = 1,
     size: int = 20,
+    busqueda: str | None = None,
 ) -> dict:
-    """Lista registros de control de facturas con paginación y filtro de fechas.
+    """Lista registros de control de facturas con paginación y filtros.
 
     Args:
         fecha_inicio: Fecha inicial del rango de consulta.
         fecha_fin: Fecha final del rango de consulta.
         page: Número de página (1-indexed).
         size: Cantidad de registros por página.
+        busqueda: Filtro opcional por tipo de alerta/evento.
 
     Returns:
         Diccionario con items paginados y metadata de paginación.
@@ -39,21 +41,29 @@ async def listar_control(
     pool = get_pool()
 
     if not fecha_inicio or not fecha_fin:
-        hoy = date.today()
-        fecha_inicio = hoy.replace(day=1)
-        ultimo_dia = calendar.monthrange(hoy.year, hoy.month)[1]
-        fecha_fin = hoy.replace(day=ultimo_dia)
+        # Si hay búsqueda, ampliamos el rango de fechas para encontrar los registros
+        if busqueda:
+            fecha_inicio = date(2000, 1, 1)
+            fecha_fin = date(2100, 12, 31)
+        else:
+            hoy = date.today()
+            fecha_inicio = hoy.replace(day=1)
+            ultimo_dia = calendar.monthrange(hoy.year, hoy.month)[1]
+            fecha_fin = hoy.replace(day=ultimo_dia)
 
     offset = (page - 1) * size
 
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['contar'], [fecha_inicio, fecha_fin])
+            await cur.execute(
+                _QUERIES['contar'],
+                [fecha_inicio, fecha_fin, busqueda, busqueda, busqueda, busqueda, busqueda],
+            )
             total_records = (await cur.fetchone())[0]
 
             await cur.execute(
                 _QUERIES['listar'],
-                [fecha_inicio, fecha_fin, size, offset],
+                [fecha_inicio, fecha_fin, busqueda, busqueda, busqueda, busqueda, busqueda, size, offset],
             )
             filas = await cur.fetchall()
 

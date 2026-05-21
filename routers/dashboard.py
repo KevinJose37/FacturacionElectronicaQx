@@ -15,6 +15,13 @@ async def obtener_dashboard(fecha_inicio: str | None = None, fecha_fin: str | No
 
     Ejecuta todas las consultas en paralelo con asyncio.gather.
     """
+    fecha_mas_antigua = await dashboard_service.obtener_fecha_mas_antigua()
+    if not fecha_inicio:
+        fecha_inicio = fecha_mas_antigua
+    if not fecha_fin:
+        from datetime import datetime
+        fecha_fin = datetime.now().strftime('%Y-%m-%d')
+
     (
         kpis, proveedores, tendencia, facturas,
         actividad, alertas, alertas_dian,
@@ -37,6 +44,7 @@ async def obtener_dashboard(fecha_inicio: str | None = None, fecha_fin: str | No
     )
 
     respuesta = {
+        'fecha_mas_antigua': fecha_mas_antigua,
         'kpis': kpis,
         'provider_data': proveedores,
         'trend_data': tendencia,

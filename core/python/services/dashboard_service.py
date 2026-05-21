@@ -38,6 +38,25 @@ def _parsear_fechas(fecha_inicio: str | None, fecha_fin: str | None) -> tuple[da
     return dt_inicio, ahora
 
 
+async def obtener_fecha_mas_antigua() -> str:
+    """Obtiene la fecha de la factura más antigua en la base de datos.
+
+    Returns:
+        Fecha formateada como string (YYYY-MM-DD) o un valor por defecto si no hay facturas.
+    """
+    pool = get_pool()
+    try:
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT MIN(fecha_creacion) FROM facturacion.factura")
+                row = await cur.fetchone()
+                if row and row[0]:
+                    return row[0].strftime('%Y-%m-%d')
+    except Exception as e:
+        logger.error(f"Error al obtener la fecha mas antigua: {e}")
+    return '2020-01-01'
+
+
 async def obtener_kpis(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
     """Calcula los KPIs principales del dashboard.
 

@@ -68,17 +68,17 @@ async def listar_facturas(
 
     resultado = []
     for r in filas:
-        estado_txt = EstadosFactura.mapa_texto.get(r[5], 'pendiente')
+        estado_txt = EstadosFactura.mapa_texto.get(r[6], 'pendiente')
         resultado.append({
             'id': r[0],
-            'db_id': r[6],
+            'db_id': r[4],
             'provider': r[1] or DefaultTextos.sin_nombre,
             'type': DefaultTextos.factura_electronica,
             'status': estado_txt,
             'amount': float(r[3]),
-            'date': r[4].strftime(DefaultTextos.formato_fecha_corto) if r[4] else '',
+            'date': r[5].strftime(DefaultTextos.formato_fecha_corto) if r[5] else '',
             'time': '1.2s',
-            's3_key': r[6] or '',
+            's3_key': r[7] or '',
         })
     return resultado
 

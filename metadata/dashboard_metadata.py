@@ -14,7 +14,7 @@ class KpiDefiniciones:
         {'key': 'rejected', 'label': 'Facturas rechazadas', 'color': 'orange'},
         {'key': 'time', 'label': 'Tiempo promedio', 'color': 'purple'},
         {'key': 'total_value', 'label': 'Valor total facturado', 'color': 'turquoise'},
-        {'key': 'providers', 'label': 'Proveedores activos', 'color': 'turquoise'},
+        {'key': 'providers', 'label': 'Proveedores', 'color': 'turquoise'},
     )
     """Tupla de dicts con key, label y color de cada KPI."""
 

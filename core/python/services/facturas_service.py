@@ -78,7 +78,6 @@ async def listar_facturas(
             'amount': float(r[3]),
             'date': r[5].strftime(DefaultTextos.formato_fecha_corto) if r[5] else '',
             'time': '1.2s',
-            's3_key': r[7] or '',
         })
     return resultado
 
@@ -115,26 +114,70 @@ async def obtener_pdf_s3_key(id_factura: int) -> str | None:
         Ruta del archivo PDF en S3 o None si no se encuentra.
     """
     pool = get_pool()
-    query = """
-        SELECT ac.uri_almacenamiento
-        FROM facturacion.adjuntos_correo ac
-        WHERE ac.id_tipo_archivo = 3 -- 3 = PDF
-          AND ac.correo_id = (
-              SELECT correo_id 
-              FROM facturacion.adjuntos_correo 
-              WHERE adjunto_id = (
-                  SELECT adjunto_id 
-                  FROM facturacion.factura 
-                  WHERE id_factura = %s
-              )
-          )
+    
+    # 1. Obtener adjunto_id y correo_id para depuración
+    query_ids = """
+        SELECT f.adjunto_id, ac.correo_id, ac.nombre_archivo
+        FROM facturacion.factura f
+        LEFT JOIN facturacion.adjuntos_correo ac ON f.adjunto_id = ac.adjunto_id
+        WHERE f.id_factura = %s
+    """
+    
+    adjunto_id = None
+    correo_id = None
+    xml_name = None
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(query_ids, [id_factura])
+            row = await cur.fetchone()
+            if row:
+                adjunto_id, correo_id, xml_name = row
+                
+    msg = f"[PDF TRACE] Factura ID: {id_factura} -> adjunto_id: {adjunto_id}, correo_id: {correo_id}, XML Name: {xml_name}"
+    logger.info(msg)
+    print(msg, flush=True)
+
+    if not correo_id:
+        err_msg = f"[PDF TRACE] correo_id no encontrado para factura ID: {id_factura}"
+        logger.warning(err_msg)
+        print(err_msg, flush=True)
+        return None
+
+    # 2. Listar todos los adjuntos del mismo correo para ver si hay un PDF
+    query_all_adjuntos = """
+        SELECT adjunto_id, nombre_archivo, id_tipo_archivo, uri_almacenamiento
+        FROM facturacion.adjuntos_correo
+        WHERE correo_id = %s
+    """
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(query_all_adjuntos, [correo_id])
+            rows = await cur.fetchall()
+            list_msg = f"[PDF TRACE] Adjuntos en DB para correo_id {correo_id}:"
+            logger.info(list_msg)
+            print(list_msg, flush=True)
+            for r in rows:
+                item_msg = f"  - ID: {r[0]}, Nombre: {r[1]}, Tipo: {r[2]} (1:ZIP, 2:XML, 3:PDF), S3 Key: {r[3]}"
+                logger.info(item_msg)
+                print(item_msg, flush=True)
+
+    # 3. Buscar la S3 key del PDF
+    query_pdf = """
+        SELECT uri_almacenamiento
+        FROM facturacion.adjuntos_correo
+        WHERE id_tipo_archivo = 3 -- 3 = PDF
+          AND correo_id = %s
         LIMIT 1
     """
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(query, [id_factura])
+            await cur.execute(query_pdf, [correo_id])
             row = await cur.fetchone()
-            return row[0] if row else None
+            s3_key = row[0] if row else None
+            res_msg = f"[PDF TRACE] S3 Key de PDF encontrado en DB: '{s3_key}'"
+            logger.info(res_msg)
+            print(res_msg, flush=True)
+            return s3_key
 
 
 async def obtener_pdf_factura(id_factura: int) -> tuple[bytes, str] | None:
@@ -146,17 +189,34 @@ async def obtener_pdf_factura(id_factura: int) -> tuple[bytes, str] | None:
     Returns:
         Tupla con (contenido_bytes, nombre_archivo) o None si no existe.
     """
+    from config import get_aws_config
+    aws_cfg = get_aws_config()
+    bucket = aws_cfg.get('bucket_name')
+
     s3_key = await obtener_pdf_s3_key(id_factura)
     if not s3_key:
+        err_msg = f"[PDF TRACE] No se encontró la llave S3 del PDF para la factura ID {id_factura}"
+        logger.warning(err_msg)
+        print(err_msg, flush=True)
         return None
+
+    fetch_msg = f"[PDF TRACE] Descargando de S3 -> Bucket: '{bucket}', Key: '{s3_key}'"
+    logger.info(fetch_msg)
+    print(fetch_msg, flush=True)
 
     # Reutilizar el servicio de control para descargar desde S3
     from core.python.services import control_service
     contenido = await control_service.obtener_xml_factura(s3_key)
 
     if not contenido:
+        fail_msg = f"[PDF TRACE] El contenido descargado de S3 fue nulo para Key: '{s3_key}'"
+        logger.warning(fail_msg)
+        print(fail_msg, flush=True)
         return None
 
     filename = s3_key.split('/')[-1]
+    success_msg = f"[PDF TRACE] Descarga exitosa de S3 para '{filename}'"
+    logger.info(success_msg)
+    print(success_msg, flush=True)
     return contenido, filename
 

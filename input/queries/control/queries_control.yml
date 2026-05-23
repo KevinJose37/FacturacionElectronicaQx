@@ -24,6 +24,15 @@ control:
     JOIN facturacion.factura_control fc ON f.id_factura = fc.id_factura
     LEFT JOIN facturacion.adjuntos_correo ac ON f.adjunto_id = ac.adjunto_id
     WHERE f.fecha_generacion::date BETWEEN %s AND %s
+      AND (%s::text IS NULL OR
+           (%s::text = 'sin_evento_030' AND fc.acuso_recibido = FALSE) OR
+           (%s::text = 'sin_evento_032' AND fc.recibido_bien_servicio = FALSE) OR
+           (%s::text = 'sin_evento_033' AND fc.aceptacion_expresa = FALSE) OR
+           (%s::text = 'con_evento_rechazo' AND EXISTS (
+               SELECT 1 FROM facturacion.evento_dian_factura ed
+               WHERE ed.id_factura = f.id_factura AND ed.codigo_evento = '031'
+           ))
+          )
     ORDER BY f.fecha_creacion DESC
     LIMIT %s OFFSET %s
 
@@ -49,6 +58,15 @@ control:
     FROM facturacion.factura f
     JOIN facturacion.factura_control fc ON f.id_factura = fc.id_factura
     WHERE f.fecha_generacion::date BETWEEN %s AND %s
+      AND (%s::text IS NULL OR
+           (%s::text = 'sin_evento_030' AND fc.acuso_recibido = FALSE) OR
+           (%s::text = 'sin_evento_032' AND fc.recibido_bien_servicio = FALSE) OR
+           (%s::text = 'sin_evento_033' AND fc.aceptacion_expresa = FALSE) OR
+           (%s::text = 'con_evento_rechazo' AND EXISTS (
+               SELECT 1 FROM facturacion.evento_dian_factura ed
+               WHERE ed.id_factura = f.id_factura AND ed.codigo_evento = '031'
+           ))
+          )
 
   actualizar: >
     UPDATE facturacion.factura_control

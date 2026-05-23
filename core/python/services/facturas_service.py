@@ -62,6 +62,7 @@ async def listar_facturas(
         estado_txt = EstadosFactura.mapa_texto.get(r[5], 'pendiente')
         resultado.append({
             'id': r[0],
+            'db_id': r[6],
             'provider': r[1] or DefaultTextos.sin_nombre,
             'type': DefaultTextos.factura_electronica,
             'status': estado_txt,
@@ -92,3 +93,60 @@ async def obtener_estadisticas() -> dict:
         'monto_total': float(row[4]),
     }
     return estadisticas
+
+
+async def obtener_pdf_s3_key(id_factura: int) -> str | None:
+    """Busca la llave S3 del PDF asociado a una factura.
+
+    Args:
+        id_factura: ID de la factura.
+
+    Returns:
+        Ruta del archivo PDF en S3 o None si no se encuentra.
+    """
+    pool = get_pool()
+    query = """
+        SELECT ac.uri_almacenamiento
+        FROM facturacion.adjuntos_correo ac
+        WHERE ac.id_tipo_archivo = 3 -- 3 = PDF
+          AND ac.correo_id = (
+              SELECT correo_id 
+              FROM facturacion.adjuntos_correo 
+              WHERE adjunto_id = (
+                  SELECT adjunto_id 
+                  FROM facturacion.factura 
+                  WHERE id_factura = %s
+              )
+          )
+        LIMIT 1
+    """
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(query, [id_factura])
+            row = await cur.fetchone()
+            return row[0] if row else None
+
+
+async def obtener_pdf_factura(id_factura: int) -> tuple[bytes, str] | None:
+    """Descarga el contenido PDF de una factura desde S3.
+
+    Args:
+        id_factura: ID de la factura.
+
+    Returns:
+        Tupla con (contenido_bytes, nombre_archivo) o None si no existe.
+    """
+    s3_key = await obtener_pdf_s3_key(id_factura)
+    if not s3_key:
+        return None
+
+    # Reutilizar el servicio de control para descargar desde S3
+    from core.python.services import control_service
+    contenido = await control_service.obtener_xml_factura(s3_key)
+
+    if not contenido:
+        return None
+
+    filename = s3_key.split('/')[-1]
+    return contenido, filename
+

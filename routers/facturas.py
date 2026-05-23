@@ -2,13 +2,12 @@
 
 import asyncio
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends, HTTPException, Response
 
 from core import facturas_service
 from core.python.services.audit_service import registrar_auditoria
 from core.python.auth.deps import get_current_active_user
 from core.python.schemas.auth_schemas import UserInDB
-from fastapi import Depends
 
 router = APIRouter(prefix='/api/facturas', tags=['facturas'])
 
@@ -36,3 +35,42 @@ async def obtener_facturas(
 
     respuesta = {'stats': stats, 'invoices': facturas}
     return respuesta
+
+
+@router.get('/{id_factura}/pdf')
+async def descargar_pdf_factura(
+    id_factura: int,
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Response:
+    """Endpoint seguro para descargar el archivo PDF de una factura desde S3.
+
+    Args:
+        id_factura: ID único de la factura.
+
+    Returns:
+        Respuesta con el contenido del PDF y headers de descarga.
+
+    Raises:
+        HTTPException: Si el archivo no se pudo obtener o no existe.
+    """
+    pdf_data = await facturas_service.obtener_pdf_factura(id_factura)
+
+    if not pdf_data:
+        raise HTTPException(
+            status_code=404,
+            detail='No se pudo recuperar el archivo PDF de la factura desde el almacenamiento',
+        )
+
+    contenido, filename = pdf_data
+
+    headers = {
+        'Content-Disposition': f'inline; filename="{filename}"',
+        'Access-Control-Expose-Headers': 'Content-Disposition',
+    }
+
+    return Response(
+        content=contenido,
+        media_type='application/pdf',
+        headers=headers,
+    )
+

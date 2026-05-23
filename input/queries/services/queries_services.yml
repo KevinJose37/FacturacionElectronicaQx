@@ -132,7 +132,7 @@ facturas:
   listar: >
     SELECT f.prefijo_facturacion || '-' || f.numero_factura as num,
     f.razon_social_emisor, ep.descripcion, f.valor_total,
-    f.fecha_expedicion, f.id_estado_proceso
+    f.fecha_expedicion, f.id_estado_proceso, f.id_factura
     FROM facturacion.factura f
     JOIN facturacion.tipo_estado_proceso ep ON f.id_estado_proceso = ep.id_estado_proceso
     {where}

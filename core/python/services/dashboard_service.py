@@ -470,3 +470,70 @@ async def obtener_impuestos_stats(fecha_inicio: str | None = None, fecha_fin: st
             filas = await cur.fetchall()
     return [{'name': r[0], 'value': float(r[1]) if r[1] else 0.0} for r in filas]
 
+
+async def obtener_funnel_ingesta(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> dict:
+    """Obtiene los conteos del embudo de ingesta contable."""
+    dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
+    pool = get_pool()
+    try:
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(_QUERIES['funnel_ingesta'], (
+                    dt_inicio, dt_fin, dt_inicio, dt_fin,
+                    dt_inicio, dt_fin, dt_inicio, dt_fin
+                ))
+                row = await cur.fetchone()
+                if row:
+                    return {
+                        'correos': row[0] or 0,
+                        'adjuntos': row[1] or 0,
+                        'procesados': row[2] or 0,
+                        'validados': row[3] or 0
+                    }
+    except Exception as e:
+        logger.error(f"Error al obtener funnel ingesta: {e}")
+    return {'correos': 0, 'adjuntos': 0, 'procesados': 0, 'validados': 0}
+
+
+async def obtener_cuentas_por_pagar(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
+    """Obtiene la proyección de cuentas por pagar agrupadas por rango de vencimiento."""
+    dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
+    pool = get_pool()
+    try:
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(_QUERIES['cuentas_por_pagar'], (dt_inicio, dt_fin, dt_inicio, dt_fin))
+                filas = await cur.fetchall()
+                return [
+                    {
+                        'rango': r[0],
+                        'total': float(r[1]) if r[1] else 0.0,
+                        'cantidad': r[2] or 0
+                    }
+                    for r in filas
+                ]
+    except Exception as e:
+        logger.error(f"Error al obtener cuentas por pagar: {e}")
+    return []
+
+
+async def obtener_top_errores_ingesta(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
+    """Obtiene los 5 errores más frecuentes durante la ingesta."""
+    dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
+    pool = get_pool()
+    try:
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(_QUERIES['top_errores_ingesta'], (dt_inicio, dt_fin, dt_inicio, dt_fin))
+                filas = await cur.fetchall()
+                return [
+                    {
+                        'error': r[0] or "Otro",
+                        'total': r[1] or 0
+                    }
+                    for r in filas
+                ]
+    except Exception as e:
+        logger.error(f"Error al obtener top errores: {e}")
+    return []
+

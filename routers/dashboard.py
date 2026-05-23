@@ -26,7 +26,7 @@ async def obtener_dashboard(fecha_inicio: str | None = None, fecha_fin: str | No
         kpis, proveedores, tendencia, facturas,
         actividad, alertas, alertas_dian,
         valor_proveedor, forma_pago, medio_pago, eventos_dian, impuestos,
-        eventos_min
+        eventos_min, funnel_ingesta, cuentas_por_pagar, top_errores
     ) = await asyncio.gather(
         dashboard_service.obtener_kpis(fecha_inicio, fecha_fin),
         dashboard_service.obtener_facturas_por_proveedor(fecha_inicio, fecha_fin),
@@ -41,6 +41,9 @@ async def obtener_dashboard(fecha_inicio: str | None = None, fecha_fin: str | No
         dashboard_service.obtener_eventos_dian_stats(fecha_inicio, fecha_fin),
         dashboard_service.obtener_impuestos_stats(fecha_inicio, fecha_fin),
         dashboard_service.obtener_eventos_por_minuto(),
+        dashboard_service.obtener_funnel_ingesta(fecha_inicio, fecha_fin),
+        dashboard_service.obtener_cuentas_por_pagar(fecha_inicio, fecha_fin),
+        dashboard_service.obtener_top_errores_ingesta(fecha_inicio, fecha_fin),
     )
 
     respuesta = {
@@ -58,6 +61,9 @@ async def obtener_dashboard(fecha_inicio: str | None = None, fecha_fin: str | No
         'eventos_dian_data': eventos_dian,
         'impuestos_data': impuestos,
         'events_per_min': eventos_min,
+        'funnel_ingesta_data': funnel_ingesta,
+        'cuentas_por_pagar_data': cuentas_por_pagar,
+        'top_errores_ingesta_data': top_errores,
     }
     return respuesta
 

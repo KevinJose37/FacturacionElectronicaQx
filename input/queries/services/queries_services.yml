@@ -193,6 +193,39 @@ dashboard:
     SELECT COUNT(*) FROM facturacion.proceso_ingesta
     WHERE fecha_inicio >= NOW() - make_interval(mins => %s)
 
+  funnel_ingesta: >
+    SELECT
+    (SELECT COUNT(*) FROM facturacion.correo_entrante WHERE fecha_deteccion >= %s AND fecha_deteccion <= %s) as correos,
+    (SELECT COUNT(*) FROM facturacion.adjuntos_correo ac JOIN facturacion.correo_entrante c ON ac.correo_id = c.correo_id WHERE c.fecha_deteccion >= %s AND c.fecha_deteccion <= %s) as adjuntos,
+    (SELECT COUNT(DISTINCT adjunto_id) FROM facturacion.evento_ingesta WHERE fecha_creacion >= %s AND fecha_creacion <= %s) as procesados,
+    (SELECT COUNT(*) FROM facturacion.factura WHERE id_estado_proceso = 3 AND fecha_creacion >= %s AND fecha_creacion <= %s) as validados
+
+  cuentas_por_pagar: >
+    SELECT 
+      CASE 
+        WHEN f.fecha_vencimiento <= CURRENT_DATE THEN 'Vencidas'
+        WHEN f.fecha_vencimiento <= CURRENT_DATE + INTERVAL '7 days' THEN 'Próximos 7 días'
+        WHEN f.fecha_vencimiento <= CURRENT_DATE + INTERVAL '15 days' THEN '8 a 15 días'
+        WHEN f.fecha_vencimiento <= CURRENT_DATE + INTERVAL '30 days' THEN '16 a 30 días'
+        ELSE 'Más de 30 días'
+      END as rango,
+      COALESCE(SUM(f.valor_total), 0) as total,
+      COUNT(*)::int as cantidad
+    FROM facturacion.factura f
+    JOIN facturacion.pago_factura pf ON f.id_factura = pf.id_factura
+    WHERE pf.codigo_forma_pago = '2' AND f.fecha_creacion >= %s AND f.fecha_creacion <= %s
+    GROUP BY rango
+    ORDER BY MIN(f.fecha_vencimiento) ASC
+
+  top_errores_ingesta: >
+    SELECT te.descripcion as error, COUNT(*) as total
+    FROM facturacion.proceso_ingesta pi
+    JOIN facturacion.tipo_error te ON pi.id_error = te.id_tipo_error
+    WHERE pi.id_error IS NOT NULL AND pi.fecha_inicio >= %s AND pi.fecha_inicio <= %s
+    GROUP BY te.descripcion
+    ORDER BY total DESC
+    LIMIT 5
+
 # ══════════════════════════════════════════════
 # Facturas
 # ══════════════════════════════════════════════

@@ -200,7 +200,7 @@ dashboard:
 facturas:
   listar: >
     SELECT f.prefijo_facturacion || '-' || f.numero_factura as num,
-    f.razon_social_emisor, ep.descripcion, f.valor_total,
+    f.razon_social_emisor, ep.descripcion, f.valor_total, f.id_factura,
     f.fecha_expedicion, f.id_estado_proceso,
     ac.uri_almacenamiento as s3_key, ac.nombre_archivo, f.id_factura
     FROM facturacion.factura f

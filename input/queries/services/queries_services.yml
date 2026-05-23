@@ -201,11 +201,13 @@ facturas:
   listar: >
     SELECT f.prefijo_facturacion || '-' || f.numero_factura as num,
     f.razon_social_emisor, ep.descripcion, f.valor_total,
-    f.fecha_expedicion, f.id_estado_proceso
+    f.fecha_expedicion, f.id_estado_proceso,
+    ac.uri_almacenamiento as s3_key, ac.nombre_archivo
     FROM facturacion.factura f
     JOIN facturacion.tipo_estado_proceso ep ON f.id_estado_proceso = ep.id_estado_proceso
     LEFT JOIN facturacion.factura_control fc ON f.id_factura = fc.id_factura
     LEFT JOIN facturacion.pago_factura pf ON f.id_factura = pf.id_factura
+    LEFT JOIN facturacion.adjuntos_correo ac ON f.adjunto_id = ac.adjunto_id
     {where}
     ORDER BY f.fecha_creacion DESC LIMIT %s OFFSET %s
 

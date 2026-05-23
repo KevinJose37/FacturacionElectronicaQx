@@ -77,6 +77,7 @@ async def listar_facturas(
             'amount': float(r[3]),
             'date': r[4].strftime(DefaultTextos.formato_fecha_corto) if r[4] else '',
             'time': '1.2s',
+            's3_key': r[6] or '',
         })
     return resultado
 

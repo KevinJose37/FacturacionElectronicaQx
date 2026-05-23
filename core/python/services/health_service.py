@@ -41,11 +41,21 @@ async def get_health_status() -> dict:
                 base_url = f'{base_url}/v1'
             
             # Intentar un GET rápido a /models (estándar OpenAI)
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                headers = chat_service._construir_headers()
-                res = await client.get(f'{base_url}/models', headers=headers)
-                if res.status_code == 200:
-                    llm_status = "up"
+            headers = chat_service._construir_headers()
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    res = await client.get(f'{base_url}/models', headers=headers)
+                    if res.status_code == 200:
+                        llm_status = "up"
+            except Exception as ssl_err:
+                logger.warning(f"Healthcheck de LLM con verificación SSL falló ({ssl_err}), reintentando sin verificar SSL...")
+                try:
+                    async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+                        res = await client.get(f'{base_url}/models', headers=headers)
+                        if res.status_code == 200:
+                            llm_status = "up"
+                except Exception as retry_err:
+                    logger.error(f"Reintento de healthcheck de LLM sin verificación SSL también falló: {retry_err}")
         else:
             logger.warning("LLM no configurado, omitiendo healthcheck profundo.")
     except Exception as e:

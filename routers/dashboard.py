@@ -15,38 +15,49 @@ async def obtener_dashboard(fecha_inicio: str | None = None, fecha_fin: str | No
 
     Ejecuta todas las consultas en paralelo con asyncio.gather.
     """
+    fecha_mas_antigua = await dashboard_service.obtener_fecha_mas_antigua()
+    if not fecha_inicio:
+        fecha_inicio = fecha_mas_antigua
+    if not fecha_fin:
+        from datetime import datetime
+        fecha_fin = datetime.now().strftime('%Y-%m-%d')
+
     (
-        kpis, flow, proveedores, tendencia, facturas,
-        actividad, tipos_doc, heatmap, indicadores, eventos_min, alertas,
-        alertas_dian
+        kpis, proveedores, tendencia, facturas,
+        actividad, alertas, alertas_dian,
+        valor_proveedor, forma_pago, medio_pago, eventos_dian, impuestos,
+        eventos_min
     ) = await asyncio.gather(
         dashboard_service.obtener_kpis(fecha_inicio, fecha_fin),
-        dashboard_service.obtener_etapas_flujo(fecha_inicio, fecha_fin),
         dashboard_service.obtener_facturas_por_proveedor(fecha_inicio, fecha_fin),
         dashboard_service.obtener_tendencia(fecha_inicio, fecha_fin),
         dashboard_service.obtener_ultimas_facturas(),
         dashboard_service.obtener_actividad_reciente(),
-        dashboard_service.obtener_tipos_documento(fecha_inicio, fecha_fin),
-        dashboard_service.obtener_heatmap_errores(fecha_inicio, fecha_fin),
-        dashboard_service.obtener_indicadores_pipeline(),
-        dashboard_service.obtener_eventos_por_minuto(),
         dashboard_service.obtener_alertas_activas(),
         alertas_dian_service.obtener_alertas_dian(),
+        dashboard_service.obtener_valor_proveedor_stats(fecha_inicio, fecha_fin),
+        dashboard_service.obtener_forma_pago_stats(fecha_inicio, fecha_fin),
+        dashboard_service.obtener_medio_pago_stats(fecha_inicio, fecha_fin),
+        dashboard_service.obtener_eventos_dian_stats(fecha_inicio, fecha_fin),
+        dashboard_service.obtener_impuestos_stats(fecha_inicio, fecha_fin),
+        dashboard_service.obtener_eventos_por_minuto(),
     )
 
     respuesta = {
+        'fecha_mas_antigua': fecha_mas_antigua,
         'kpis': kpis,
-        'flow_stages': flow,
-        'flow_indicators': indicadores,
         'provider_data': proveedores,
-        'doc_type_data': tipos_doc,
         'trend_data': tendencia,
-        'heatmap_data': heatmap,
         'invoices': facturas,
         'activity': actividad,
-        'events_per_min': eventos_min,
         'alerts': alertas,
         'alertas_dian': alertas_dian,
+        'valor_proveedor_data': valor_proveedor,
+        'forma_pago_data': forma_pago,
+        'medio_pago_data': medio_pago,
+        'eventos_dian_data': eventos_dian,
+        'impuestos_data': impuestos,
+        'events_per_min': eventos_min,
     }
     return respuesta
 

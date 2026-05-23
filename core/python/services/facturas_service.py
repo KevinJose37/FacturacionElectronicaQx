@@ -43,9 +43,18 @@ async def listar_facturas(
         params.extend(ids_estado)
 
     if busqueda:
-        condiciones.append(_FILTROS['busqueda'])
-        patron = f'%{busqueda}%'
-        params.extend([patron, patron, patron])
+        if busqueda == 'sin_evento_030':
+            condiciones.append("pf.codigo_forma_pago != '1' AND (fc.eventos_dian_notif IS NULL OR fc.eventos_dian_notif NOT LIKE '%%030%%')")
+        elif busqueda == 'sin_evento_032':
+            condiciones.append("pf.codigo_forma_pago != '1' AND (fc.eventos_dian_notif IS NULL OR fc.eventos_dian_notif NOT LIKE '%%032%%')")
+        elif busqueda == 'sin_evento_033':
+            condiciones.append("pf.codigo_forma_pago != '1' AND (fc.eventos_dian_notif IS NULL OR fc.eventos_dian_notif NOT LIKE '%%033%%')")
+        elif busqueda == 'con_evento_rechazo':
+            condiciones.append("pf.codigo_forma_pago != '1' AND fc.eventos_dian_notif LIKE '%%031%%'")
+        else:
+            condiciones.append(_FILTROS['busqueda'])
+            patron = f'%{busqueda}%'
+            params.extend([patron, patron, patron])
 
     where = f'WHERE {" AND ".join(condiciones)}' if condiciones else ''
     params.extend([por_pagina, offset])
@@ -69,6 +78,7 @@ async def listar_facturas(
             'amount': float(r[3]),
             'date': r[4].strftime(DefaultTextos.formato_fecha_corto) if r[4] else '',
             'time': '1.2s',
+            's3_key': r[6] or '',
         })
     return resultado
 

@@ -127,6 +127,68 @@ async def _ejecutar_tool_call(tool_call: dict) -> dict:
     return mensaje_resultado
 
 
+async def _realizar_peticiones_chat(
+    client: httpx.AsyncClient,
+    url: str,
+    headers: dict,
+    messages_for_llm: list,
+) -> str:
+    """Realiza el ciclo de peticiones al LLM con la instancia del cliente proporcionada."""
+    for iteration in range(_MAX_ITERATIONS):
+        payload = {
+            'model': _LLM_MODEL,
+            'messages': messages_for_llm,
+            'temperature': _TEMPERATURE,
+            'max_tokens': _MAX_TOKENS,
+            'tools': chat_tools.TOOL_DEFINITIONS,
+            'tool_choice': 'auto',
+        }
+
+        response = await client.post(url, headers=headers, json=payload)
+
+        if response.status_code != 200:
+            logger.error(
+                MensajesLogChat.llm_api_error,
+                response.status_code,
+                response.text[:500],
+            )
+            error_msg = ErroresChat.error_ia.format(status=response.status_code)
+            raise httpx.HTTPStatusError(
+                error_msg, request=response.request, response=response,
+            )
+
+        data = response.json()
+        message = data['choices'][0]['message']
+
+        if not message.get('tool_calls'):
+            answer = message.get('content') or ''
+            return answer
+
+        logger.info(
+            MensajesLogChat.tools_solicitadas,
+            len(message['tool_calls']),
+            iteration + 1,
+        )
+
+        messages_for_llm.append(message)
+
+        for tool_call in message['tool_calls']:
+            tool_result = await _ejecutar_tool_call(tool_call)
+            messages_for_llm.append(tool_result)
+
+    payload_final = {
+        'model': _LLM_MODEL,
+        'messages': messages_for_llm,
+        'temperature': _TEMPERATURE,
+        'max_tokens': _MAX_TOKENS,
+    }
+    response = await client.post(url, headers=headers, json=payload_final)
+    data = response.json()
+    answer = data['choices'][0]['message'].get('content') or ErroresChat.fallback_sin_respuesta
+
+    return answer
+
+
 async def procesar_chat(mensajes_usuario: list) -> str:
     """Procesa los mensajes del usuario y retorna la respuesta del LLM.
 
@@ -154,57 +216,18 @@ async def procesar_chat(mensajes_usuario: list) -> str:
     url = _construir_url_llm()
     headers = _construir_headers()
 
-    async with httpx.AsyncClient(timeout=_LLM_TIMEOUT) as client:
-        for iteration in range(_MAX_ITERATIONS):
-            payload = {
-                'model': _LLM_MODEL,
-                'messages': messages_for_llm,
-                'temperature': _TEMPERATURE,
-                'max_tokens': _MAX_TOKENS,
-                'tools': chat_tools.TOOL_DEFINITIONS,
-                'tool_choice': 'auto',
-            }
-
-            response = await client.post(url, headers=headers, json=payload)
-
-            if response.status_code != 200:
-                logger.error(
-                    MensajesLogChat.llm_api_error,
-                    response.status_code,
-                    response.text[:500],
-                )
-                error_msg = ErroresChat.error_ia.format(status=response.status_code)
-                raise httpx.HTTPStatusError(
-                    error_msg, request=response.request, response=response,
-                )
-
-            data = response.json()
-            message = data['choices'][0]['message']
-
-            if not message.get('tool_calls'):
-                answer = message.get('content') or ''
-                return answer
-
-            logger.info(
-                MensajesLogChat.tools_solicitadas,
-                len(message['tool_calls']),
-                iteration + 1,
+    try:
+        async with httpx.AsyncClient(timeout=_LLM_TIMEOUT) as client:
+            answer = await _realizar_peticiones_chat(
+                client, url, headers, list(messages_for_llm)
             )
-
-            messages_for_llm.append(message)
-
-            for tool_call in message['tool_calls']:
-                tool_result = await _ejecutar_tool_call(tool_call)
-                messages_for_llm.append(tool_result)
-
-        payload_final = {
-            'model': _LLM_MODEL,
-            'messages': messages_for_llm,
-            'temperature': _TEMPERATURE,
-            'max_tokens': _MAX_TOKENS,
-        }
-        response = await client.post(url, headers=headers, json=payload_final)
-        data = response.json()
-        answer = data['choices'][0]['message'].get('content') or ErroresChat.fallback_sin_respuesta
+    except Exception as ssl_err:
+        logger.warning(
+            "Error en comunicación con LLM con verificación SSL, reintentando sin verificar SSL..."
+        )
+        async with httpx.AsyncClient(timeout=_LLM_TIMEOUT, verify=False) as client:
+            answer = await _realizar_peticiones_chat(
+                client, url, headers, list(messages_for_llm)
+            )
 
     return answer

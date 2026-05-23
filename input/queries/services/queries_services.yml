@@ -37,12 +37,14 @@ dashboard:
 
   kpis: >
     SELECT
-    COUNT(*) FILTER (WHERE fecha_creacion >= %s AND fecha_creacion <= %s) as actual,
-    COUNT(*) FILTER (WHERE fecha_creacion >= %s AND fecha_creacion < %s) as anterior,
-    COUNT(*) FILTER (WHERE id_estado_proceso = 3 AND fecha_creacion >= %s AND fecha_creacion <= %s) as validadas,
-    COUNT(*) FILTER (WHERE id_estado_proceso IN (4, 5) AND fecha_creacion >= %s AND fecha_creacion <= %s) as rechazadas,
-    COUNT(DISTINCT id_tercero_emisor) FILTER (WHERE fecha_creacion >= %s AND fecha_creacion <= %s) as proveedores
+    COUNT(*) as processed,
+    COUNT(*) FILTER (WHERE id_estado_proceso = 3) as validated,
+    COUNT(*) FILTER (WHERE id_estado_proceso IN (4, 5)) as rejected,
+    COUNT(DISTINCT id_tercero_emisor) as providers,
+    COALESCE(SUM(valor_total), 0) as total_value,
+    COALESCE((SELECT AVG(EXTRACT(EPOCH FROM (fecha_fin - fecha_inicio))) FROM facturacion.proceso_ingesta WHERE fecha_fin IS NOT NULL AND fecha_inicio >= %s AND fecha_inicio <= %s), 0.0) as avg_time
     FROM facturacion.factura
+    WHERE fecha_creacion >= %s AND fecha_creacion <= %s
 
   etapas_flujo: >
     SELECT
@@ -59,15 +61,83 @@ dashboard:
     FROM facturacion.factura f
     WHERE f.razon_social_emisor IS NOT NULL AND f.fecha_creacion >= %s AND f.fecha_creacion <= %s
     GROUP BY f.razon_social_emisor
-    ORDER BY total DESC LIMIT %s
+    ORDER BY total DESC
 
   tendencia: >
-    SELECT fecha_creacion::date as dia,
-    COUNT(*) as procesadas,
-    COUNT(*) FILTER (WHERE id_estado_proceso = 3) as validadas
-    FROM facturacion.factura
-    WHERE fecha_creacion >= %s AND fecha_creacion <= %s
-    GROUP BY dia ORDER BY dia
+    WITH dates AS (
+      SELECT generate_series(%s::date, %s::date, '1 day'::interval)::date AS dia
+    ),
+    recibos AS (
+      SELECT fc.fecha_admision_proveedor AS dia, COUNT(*) AS recibidas
+      FROM facturacion.factura_control fc
+      WHERE fc.fecha_admision_proveedor >= %s AND fc.fecha_admision_proveedor <= %s
+      GROUP BY fc.fecha_admision_proveedor
+    ),
+    compras AS (
+      SELECT f.fecha_expedicion::date AS dia, COUNT(*) AS compradas
+      FROM facturacion.factura f
+      WHERE f.fecha_expedicion >= %s AND f.fecha_expedicion <= %s
+      GROUP BY f.fecha_expedicion::date
+    ),
+    procesadas AS (
+      SELECT f.fecha_creacion::date AS dia, COUNT(*) AS procesadas
+      FROM facturacion.factura f
+      WHERE f.fecha_creacion >= %s AND f.fecha_creacion <= %s
+      GROUP BY f.fecha_creacion::date
+    )
+    SELECT 
+      d.dia,
+      COALESCE(r.recibidas, 0) AS recibidas,
+      COALESCE(c.compradas, 0) AS compradas,
+      COALESCE(p.procesadas, 0) AS procesadas
+    FROM dates d
+    LEFT JOIN recibos r ON d.dia = r.dia
+    LEFT JOIN compras c ON d.dia = c.dia
+    LEFT JOIN procesadas p ON d.dia = p.dia
+    ORDER BY d.dia
+
+  valor_proveedor_stats: >
+    SELECT f.razon_social_emisor AS name, SUM(f.valor_total) AS value
+    FROM facturacion.factura f
+    WHERE f.razon_social_emisor IS NOT NULL AND f.fecha_creacion >= %s AND f.fecha_creacion <= %s
+    GROUP BY f.razon_social_emisor
+    ORDER BY value DESC
+
+  forma_pago_stats: >
+    SELECT COALESCE(tf.descripcion, pf.codigo_forma_pago, 'No definido') AS name, COUNT(DISTINCT f.id_factura) AS value
+    FROM facturacion.factura f
+    LEFT JOIN facturacion.pago_factura pf ON f.id_factura = pf.id_factura
+    LEFT JOIN facturacion.tipo_forma_pago tf ON pf.codigo_forma_pago = tf.codigo_forma_pago
+    WHERE f.fecha_creacion >= %s AND f.fecha_creacion <= %s
+    GROUP BY name
+    ORDER BY value DESC
+
+  medio_pago_stats: >
+    SELECT COALESCE(tmp.descripcion, pf.codigo_medio_pago, 'No definido') AS name, COUNT(DISTINCT f.id_factura) AS value
+    FROM facturacion.factura f
+    LEFT JOIN facturacion.pago_factura pf ON f.id_factura = pf.id_factura
+    LEFT JOIN facturacion.tipo_medio_pago tmp ON pf.codigo_medio_pago = tmp.codigo_medio_pago
+    WHERE f.fecha_creacion >= %s AND f.fecha_creacion <= %s
+    GROUP BY name
+    ORDER BY value DESC
+
+  eventos_dian_stats: >
+    SELECT COALESCE(ted.nombre_evento, edf.codigo_evento, 'No definido') AS name, COUNT(*) AS value
+    FROM facturacion.evento_dian_factura edf
+    JOIN facturacion.factura f ON edf.id_factura = f.id_factura
+    LEFT JOIN facturacion.tipo_evento_dian ted ON edf.codigo_evento = ted.codigo_evento
+    WHERE f.fecha_creacion >= %s AND f.fecha_creacion <= %s
+    GROUP BY name
+    ORDER BY value DESC
+
+  impuestos_stats: >
+    SELECT COALESCE(ti.nombre, ti.descripcion, im.codigo_impuesto, 'Otros') AS name, SUM(im.valor_impuesto) AS value
+    FROM facturacion.impuesto_factura im
+    JOIN facturacion.factura f ON im.id_factura = f.id_factura
+    LEFT JOIN facturacion.tipo_impuesto ti ON im.codigo_impuesto = ti.codigo_impuesto
+    WHERE f.fecha_creacion >= %s AND f.fecha_creacion <= %s
+    GROUP BY name
+    ORDER BY value DESC
 
   ultimas_facturas: >
     SELECT f.prefijo_facturacion || '-' || f.numero_factura as num,
@@ -98,12 +168,11 @@ dashboard:
     ORDER BY COUNT(*) DESC
 
   heatmap_errores: >
-    SELECT EXTRACT(DOW FROM fecha_inicio)::int as dia,
-    EXTRACT(HOUR FROM fecha_inicio)::int as hora,
+    SELECT EXTRACT(DOW FROM fecha_creacion)::int as dia,
+    EXTRACT(HOUR FROM fecha_creacion)::int as hora,
     COUNT(*) as total
-    FROM facturacion.proceso_ingesta
-    WHERE id_error IS NOT NULL
-    AND fecha_inicio >= %s AND fecha_inicio <= %s
+    FROM facturacion.factura
+    WHERE fecha_creacion >= %s AND fecha_creacion <= %s
     GROUP BY dia, hora
     ORDER BY dia, hora
 
@@ -132,9 +201,13 @@ facturas:
   listar: >
     SELECT f.prefijo_facturacion || '-' || f.numero_factura as num,
     f.razon_social_emisor, ep.descripcion, f.valor_total,
-    f.fecha_expedicion, f.id_estado_proceso, f.id_factura
+    f.fecha_expedicion, f.id_estado_proceso,
+    ac.uri_almacenamiento as s3_key, ac.nombre_archivo, f.id_factura
     FROM facturacion.factura f
     JOIN facturacion.tipo_estado_proceso ep ON f.id_estado_proceso = ep.id_estado_proceso
+    LEFT JOIN facturacion.factura_control fc ON f.id_factura = fc.id_factura
+    LEFT JOIN facturacion.pago_factura pf ON f.id_factura = pf.id_factura
+    LEFT JOIN facturacion.adjuntos_correo ac ON f.adjunto_id = ac.adjunto_id
     {where}
     ORDER BY f.fecha_creacion DESC LIMIT %s OFFSET %s
 

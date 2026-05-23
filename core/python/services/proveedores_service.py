@@ -56,7 +56,7 @@ async def listar_proveedores() -> list:
 
         resultado.append({
             'name': r[1] or DefaultTextos.sin_nombre,
-            'cuit': r[0],
+            'nit': r[0],
             'invoices': total,
             'validRate': tasa,
             'status': estado,

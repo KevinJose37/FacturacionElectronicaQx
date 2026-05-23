@@ -41,7 +41,7 @@ class ProveedorResumen(BaseModel):
     """Resumen de un proveedor para listados."""
 
     name: str
-    cuit: str
+    nit: str
     invoices: int
     valid_rate: float
     status: str

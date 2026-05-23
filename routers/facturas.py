@@ -111,3 +111,42 @@ async def descargar_pdf_factura(
         media_type='application/pdf',
         headers=headers,
     )
+
+
+@router.get('/{id_factura}/xml')
+async def descargar_xml_factura_por_id(
+    id_factura: int,
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> Response:
+    """Endpoint seguro para descargar el archivo XML de una factura desde S3 usando su ID.
+
+    Args:
+        id_factura: ID único de la factura.
+
+    Returns:
+        Respuesta con el contenido del XML y headers de descarga.
+
+    Raises:
+        HTTPException: Si el archivo no se pudo obtener o no existe.
+    """
+    xml_data = await facturas_service.obtener_xml_factura_by_id(id_factura)
+
+    if not xml_data:
+        raise HTTPException(
+            status_code=404,
+            detail='No se pudo recuperar el archivo XML de la factura desde el almacenamiento',
+        )
+
+    contenido, filename = xml_data
+
+    headers = {
+        'Content-Disposition': f'attachment; filename="{filename}"',
+        'Access-Control-Expose-Headers': 'Content-Disposition',
+    }
+
+    return Response(
+        content=contenido,
+        media_type='application/xml',
+        headers=headers,
+    )
+

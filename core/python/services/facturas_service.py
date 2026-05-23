@@ -220,3 +220,72 @@ async def obtener_pdf_factura(id_factura: int) -> tuple[bytes, str] | None:
     print(success_msg, flush=True)
     return contenido, filename
 
+
+async def obtener_xml_s3_key(id_factura: int) -> str | None:
+    """Busca la llave S3 del XML asociado a una factura.
+
+    Args:
+        id_factura: ID de la factura.
+
+    Returns:
+        Ruta del archivo XML en S3 o None si no se encuentra.
+    """
+    pool = get_pool()
+    query_xml = """
+        SELECT ac.uri_almacenamiento
+        FROM facturacion.factura f
+        LEFT JOIN facturacion.adjuntos_correo ac ON f.adjunto_id = ac.adjunto_id
+        WHERE f.id_factura = %s
+    """
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(query_xml, [id_factura])
+            row = await cur.fetchone()
+            s3_key = row[0] if row else None
+            res_msg = f"[XML TRACE] S3 Key de XML encontrado en DB para factura ID {id_factura}: '{s3_key}'"
+            logger.info(res_msg)
+            print(res_msg, flush=True)
+            return s3_key
+
+
+async def obtener_xml_factura_by_id(id_factura: int) -> tuple[bytes, str] | None:
+    """Descarga el contenido XML de una factura desde S3 usando su ID de base de datos.
+
+    Args:
+        id_factura: ID de la factura.
+
+    Returns:
+        Tupla con (contenido_bytes, nombre_archivo) o None si no existe.
+    """
+    from config import get_aws_config
+    aws_cfg = get_aws_config()
+    bucket = aws_cfg.get('bucket_name')
+
+    s3_key = await obtener_xml_s3_key(id_factura)
+    if not s3_key:
+        err_msg = f"[XML TRACE] No se encontró la llave S3 del XML para la factura ID {id_factura}"
+        logger.warning(err_msg)
+        print(err_msg, flush=True)
+        return None
+
+    fetch_msg = f"[XML TRACE] Descargando XML de S3 -> Bucket: '{bucket}', Key: '{s3_key}'"
+    logger.info(fetch_msg)
+    print(fetch_msg, flush=True)
+
+    # Reutilizar el servicio de control para descargar desde S3
+    from core.python.services import control_service
+    contenido = await control_service.obtener_xml_factura(s3_key)
+
+    if not contenido:
+        fail_msg = f"[XML TRACE] El contenido descargado de S3 fue nulo para Key: '{s3_key}'"
+        logger.warning(fail_msg)
+        print(fail_msg, flush=True)
+        return None
+
+    filename = s3_key.split('/')[-1]
+    success_msg = f"[XML TRACE] Descarga exitosa de S3 para XML '{filename}'"
+    logger.info(success_msg)
+    print(success_msg, flush=True)
+    return contenido, filename
+
+

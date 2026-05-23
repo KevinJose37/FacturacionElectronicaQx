@@ -28,6 +28,7 @@ async def obtener_control(
     fecha_fin: date = Query(None),
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
+    busqueda: str = Query(None),
 ) -> dict:
     """Obtiene registros de control de facturas con paginación y filtros.
 
@@ -36,12 +37,13 @@ async def obtener_control(
         fecha_fin: Filtro opcional de fecha final.
         page: Número de página (1-indexed).
         size: Cantidad de registros por página.
+        busqueda: Filtro opcional por tipo de alerta/evento.
 
     Returns:
         Diccionario con items y metadata de paginación.
     """
     resultado = await control_service.listar_control(
-        fecha_inicio, fecha_fin, page, size,
+        fecha_inicio, fecha_fin, page, size, busqueda,
     )
     return resultado
 

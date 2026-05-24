@@ -61,11 +61,13 @@ async def get_health_status() -> dict:
     except Exception as e:
         logger.error(f"Error en healthcheck de LLM: {e}")
 
-    if db_status == "up" and llm_status == "up":
-        global_status = "ok"
-    elif db_status == "up":
-        # Si la BD sirve pero el LLM no, el sistema principal sigue operando
-        global_status = "degraded"
+    if db_status == "up":
+        # Si la base de datos está activa (corazón del sistema de facturación), el estado es estable (ok).
+        # Si el LLM opcional está caído o simplemente no está configurado, el sistema sigue operativo.
+        if llm_status == "up" or not chat_service.esta_configurado():
+            global_status = "ok"
+        else:
+            global_status = "degraded"
 
     return {
         "status": global_status,

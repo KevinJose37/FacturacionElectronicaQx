@@ -21,7 +21,8 @@ from decimal import Decimal
 from typing import Optional
 
 from config import get_postgres_config, load_yaml_config
-from core.python.verificacion_grafica.service import extraer_cufe_pdf, verificar_requisitos_pdf
+from core.python.verificacion_grafica.service import extraer_cufe_pdf
+from core.python.verificacion_grafica.controlador import verificar_representacion_grafica
 from utils.alerts import AlertManager
 from core.python.facturas.invoice_repository import InvoiceRepository
 from metadata.db_metadata import (
@@ -298,7 +299,7 @@ class InvoiceProcessor:
         res_imp = validar_impuestos_v1(xml_invoice)
         self._registrar_proceso(conn, adjunto_id, IdTipoProceso.extraccion_impuestos, res_imp)
 
-        res_firma = validar_firma_digital_v1(xml_invoice, self._ruta_ca)
+        res_firma = validar_firma_digital_v1(xml_invoice, None)
         self._registrar_proceso(conn, adjunto_id, IdTipoProceso.validacion_firma_digital, res_firma)
 
         res_qr = validar_qr_code_v1(xml_invoice, cufe)
@@ -320,6 +321,7 @@ class InvoiceProcessor:
         self._registrar_proceso(conn, ar_adjunto, IdTipoProceso.validacion_documento_dian, res_dian)
 
         # 6. Validaciones del AttachedDocument (req_06)
+        res_fv = None
         if ad_ev:
             xml_ad = obtener_xml_s3(ad_ev['uri_almacenamiento'])
             if xml_ad is not None:
@@ -328,12 +330,32 @@ class InvoiceProcessor:
                 res_fv = {'valido': False, 'mensaje': 'No se pudo descargar AttachedDocument.', 'datos': {}}
             self._registrar_proceso(conn, ad_ev['adjunto_id'], IdTipoProceso.validacion_fecha_validacion, res_fv)
 
+        # Determinar si la factura es válida o se rechaza
+        validaciones_obligatorias = [
+            res_denom, res_emisor, res_adq, res_num, res_fecha,
+            res_items, res_valor, res_forma, res_medio, res_fiscal,
+            res_imp, res_firma, res_qr, res_anexo, res_sw
+        ]
+        if ar_ev:
+            validaciones_obligatorias.append(res_dian)
+        if ad_ev:
+            validaciones_obligatorias.append(res_fv)
+
+        fallas = [v['mensaje'] for v in validaciones_obligatorias if not v.get('valido', False)]
+        if fallas:
+            id_estado_factura = IdEstadoProceso.error
+        else:
+            id_estado_factura = IdEstadoProceso.procesado
+
         # 7. Poblar tablas de BD
-        self._poblar_tablas(
+        id_factura = self._poblar_tablas(
             conn, adjunto_id, cufe, res_denom, res_emisor, res_adq,
             res_num, res_fecha, res_valor, res_firma, res_qr,
             res_items, res_imp, res_forma, res_medio, res_fiscal, res_sw,
             res_dian,
+            res_fv=res_fv if ad_ev else None,
+            id_estado_factura=id_estado_factura,
+            fallas=fallas
         )
 
         # 8. Marcar eventos como procesados
@@ -345,11 +367,29 @@ class InvoiceProcessor:
         if pdf_ev:
             self._repo.marcar_evento_procesado(conn, pdf_ev['adjunto_id'])
 
-        # 9. Verificación Gráfica del PDF (si existe)
-        if pdf_ev:
+        # Disparar alerta si hubo fallas DIAN
+        if fallas:
+            motivo_rechazo = "; ".join(fallas)
+            nit_proveedor = res_emisor['datos'].get('numero_documento')
+            num_factura = res_num['datos'].get('numero_factura') or cufe[:20]
+            
+            self._alert_manager.factura_rechazada(
+                motivo=motivo_rechazo,
+                nit=nit_proveedor,
+                num_factura=num_factura,
+                factura_id=id_factura,
+                adjunto_id=adjunto_id,
+                correo_id=invoice_ev.get('correo_id')
+            )
+
+        # 9. Verificación Gráfica del PDF (si existe y se persistió con éxito)
+        if pdf_ev and id_factura > 0:
             self._ejecutar_verificacion_grafica(conn, cufe, pdf_ev)
 
-        logger.debug('Factura procesada exitosamente: CUFE=%s', cufe[:20])
+        if fallas:
+            logger.warning('Factura rechazada por fallas DIAN (CUFE=%s): %s', cufe[:20], fallas)
+        else:
+            logger.debug('Factura procesada exitosamente: CUFE=%s', cufe[:20])
         return True
 
     # ------------------------------------------------------------------
@@ -471,36 +511,49 @@ class InvoiceProcessor:
                 )
                 return
 
-            resultado = asyncio.run(verificar_requisitos_pdf(tmp_path, datos_factura))
+            resultado = asyncio.run(verificar_representacion_grafica(tmp_path, datos_factura))
             
-            valido = resultado.get('valido', False)
-            faltantes = resultado.get('faltantes', [])
+            aprobado = resultado.get('aprobado', False)
+            metodo = resultado.get('metodo', 'DESCONOCIDO')
+            observacion = resultado.get('observacion', '')
+            campos = resultado.get('campos', {})
             
-            if valido:
-                mensaje = "Representación gráfica verificada correctamente por IA."
-                estado = IdEstadoProceso.procesado
+            factura_id = datos_factura.get('id_factura')
+            
+            if aprobado:
+                mensaje = f"Representación gráfica verificada correctamente ({metodo})."
+                estado_grafico = 'APROBADA'
+                estado_proceso = IdEstadoProceso.procesado
             else:
-                faltantes_str = ", ".join(faltantes)
-                mensaje = f"IA detectó faltantes en el PDF: {faltantes_str}"
-                estado = IdEstadoProceso.procesado # NO rechazamos factura
+                mensaje = f"IA detectó discrepancias en el PDF ({metodo}): {observacion}"
+                estado_grafico = 'PENDIENTE'
+                estado_proceso = IdEstadoProceso.procesado
+                
+                campos_fallidos = [c for c, info in campos.items() if not info.get('encontrado')]
                 
                 self._alert_manager.verificacion_grafica_fallida(
                     num_factura=datos_factura.get('numero_factura', 'DESCONOCIDO'),
-                    metodos=['LLM (PyMuPDF)'],
-                    campos_fallidos={'faltantes': faltantes},
+                    metodos=[metodo],
+                    campos_fallidos={'faltantes': campos_fallidos},
                     adjunto_id=adjunto_id,
-                    correo_id=pdf_ev.get('correo_id')
+                    correo_id=pdf_ev.get('correo_id'),
+                    factura_id=factura_id
                 )
+
+            if factura_id:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        UPDATE FACTURACION.FACTURA 
+                        SET VERIFICACION_GRAFICA_ESTADO = %s, FECHA_ACTUALIZACION = NOW()
+                        WHERE ID_FACTURA = %s
+                        """,
+                        (estado_grafico, factura_id)
+                    )
 
             self._repo.crear_proceso_ingesta(
                 conn, adjunto_id, IdTipoProceso.verificacion_grafica,
-                mensaje, estado
-            )
-        except Exception as e:
-            logger.exception("Error en verificación gráfica: %s", e)
-            self._repo.crear_proceso_ingesta(
-                conn, adjunto_id, IdTipoProceso.verificacion_grafica,
-                f"Error en IA: {e}", IdEstadoProceso.error
+                mensaje[:254], estado_proceso
             )
         finally:
             if borrar_tmp and tmp_path and os.path.exists(tmp_path):
@@ -655,7 +708,8 @@ class InvoiceProcessor:
     def _poblar_tablas(self, conn, adjunto_id, cufe, res_denom, res_emisor,
                        res_adq, res_num, res_fecha, res_valor, res_firma,
                        res_qr, res_items, res_imp, res_forma, res_medio,
-                       res_fiscal, res_sw, res_dian) -> None:
+                       res_fiscal, res_sw, res_dian, res_fv=None,
+                       id_estado_factura=None, fallas=None) -> int:
         """Puebla las tablas de facturación con los datos validados."""
         try:
             # TERCERO emisor
@@ -666,8 +720,6 @@ class InvoiceProcessor:
                 'digito_verificador': datos_emisor.get('digito_verificador'),
                 'correo_contacto': datos_emisor.get('correo_contacto'),
                 'telefono_contacto': datos_emisor.get('telefono_contacto'),
-                # Tipo de identificación DIAN (Anexo 1.9): viene del schemeName
-                # del cbc:CompanyID. Se persiste como FK a TIPO_DOCUMENTO_IDENTIDAD.
                 'id_tipo_documento': datos_emisor.get('scheme_name'),
             })
 
@@ -679,8 +731,6 @@ class InvoiceProcessor:
                 'digito_verificador': datos_adq.get('digito_verificador'),
                 'correo_contacto': datos_adq.get('correo_contacto'),
                 'telefono_contacto': datos_adq.get('telefono_contacto'),
-                # Tipo de identificación DIAN (Anexo 1.9): viene del schemeName
-                # del cbc:CompanyID. Se persiste como FK a TIPO_DOCUMENTO_IDENTIDAD.
                 'id_tipo_documento': datos_adq.get('scheme_name'),
             })
 
@@ -728,7 +778,6 @@ class InvoiceProcessor:
             d_denom = res_denom['datos']
             d_pago = res_forma['datos']
             
-            # Mapeo de campos adicionales requeridos
             nombre_proveedor = datos_emisor.get('razon_social') or datos_emisor.get('nombre_comercial')
             nit_proveedor = datos_emisor.get('numero_documento')
             forma_pago_desc = "CREDITO" if d_pago.get('codigo_forma_pago') == '2' else "CONTADO"
@@ -752,12 +801,12 @@ class InvoiceProcessor:
                 'hash_firma': d_firma.get('hash_firma_digital'),
                 'contenido_qr': d_qr.get('contenido_qr'),
                 'adjunto_id': adjunto_id,
-                'id_estado_proceso': IdEstadoProceso.procesado,
+                'id_estado_proceso': id_estado_factura if id_estado_factura is not None else IdEstadoProceso.procesado,
             })
 
             if id_factura <= 0:
                 logger.error('No se pudo insertar la factura CUFE=%s', cufe[:20])
-                return
+                return 0
 
             # Insertar en FACTURA_CONTROL
             self._repo.upsert_factura_control(conn, {
@@ -817,7 +866,6 @@ class InvoiceProcessor:
                         conn, id_fabricante, id_software
                     )
                     if id_producto > 0:
-                        # Solo vincular al proveedor tecnológico si está autorizado
                         nit_pt = nit_proveedor if d_sw.get('es_autorizado') else None
                         self._repo.insertar_software_factura(
                             conn, id_factura, id_producto, nit_pt
@@ -835,9 +883,6 @@ class InvoiceProcessor:
                     id_rastreo=d_dian.get('id_rastreo'),
                 )
 
-            # Copia de adjuntos originales (.zip, .xml, .pdf) a la zona
-            # `processed/facturas/{proveedor}/{year}/{month}/{day}/` en S3.
-            # Es best-effort: si falla, NO se aborta el registro de la factura.
             try:
                 self._copiar_adjuntos_a_processed(
                     conn=conn,
@@ -855,19 +900,26 @@ class InvoiceProcessor:
                 )
 
             # Registro final
+            obs = f'Factura registrada: ID={id_factura}, CUFE={cufe[:20]}...'
+            est = IdEstadoProceso.procesado
+            if fallas:
+                obs = f'Factura rechazada por fallas DIAN: {"; ".join(fallas)}'
+                est = IdEstadoProceso.error
             self._repo.crear_proceso_ingesta(
                 conn, adjunto_id, IdTipoProceso.registro_factura,
-                f'Factura registrada: ID={id_factura}, CUFE={cufe[:20]}...',
-                IdEstadoProceso.procesado,
+                obs[:254],
+                est,
             )
+            return id_factura
 
         except Exception as exc:
             logger.exception('Error poblando tablas para CUFE=%s: %s', cufe[:20], exc)
             self._repo.crear_proceso_ingesta(
                 conn, adjunto_id, IdTipoProceso.registro_factura,
-                f'Error al registrar factura: {exc}',
+                f'Error al registrar factura: {exc}'[:254],
                 IdEstadoProceso.error,
             )
+            return 0
 
     def _manejar_error_evento(self, conn, evento: dict, error: str) -> None:
         """Maneja errores incrementando intentos o marcando como fallido."""

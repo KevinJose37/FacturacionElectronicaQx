@@ -127,7 +127,7 @@ Se implementaron **18 validadores individuales** en `core/python/validators/`:
 
 ### 1.10 Base de Datos
 
-Schema completo en `modelo_facturacion_gpt.sql` (821 líneas, 46 KB):
+Schema completo en `modelo_facturacion.sql` (821 líneas, 46 KB):
 - **12 tablas de catálogo** (`TIPO_*`) pre-pobladas con datos DIAN oficiales
 - **90+ proveedores tecnológicos** del catálogo DIAN
 - **Tabla USUARIO** con auth bcrypt

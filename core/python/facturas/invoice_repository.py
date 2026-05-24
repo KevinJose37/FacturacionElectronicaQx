@@ -435,6 +435,7 @@ class InvoiceRepository:
             cur.execute(
                 """
                 SELECT
+                    f.ID_FACTURA,
                     f.CUFE,
                     f.DENOMINACION,
                     f.PREFIJO_FACTURACION,

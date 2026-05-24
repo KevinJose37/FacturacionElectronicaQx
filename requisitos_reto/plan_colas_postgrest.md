@@ -45,7 +45,7 @@ Ya existe un archivo `queue_publisher.py` con una abstracción `QueuePublisher` 
 
 ### Componente 1: Cola de Trabajo con PostgreSQL
 
-#### `modelo_facturacion_gpt.sql`
+#### `modelo_facturacion.sql`
 Agregar un índice parcial para optimizar la consulta `FOR UPDATE SKIP LOCKED` y una columna para rastrear qué worker tomó el job:
 ```sql
 CREATE INDEX CONCURRENTLY IF NOT EXISTS IX_EVENTO_INGESTA_PENDIENTES 

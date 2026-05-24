@@ -36,14 +36,18 @@ async def listar_facturas(
     condiciones = []
     params = []
 
-    if estado and estado in EstadosFactura.mapa_ids:
+    if estado == 'manual':
+        condiciones.append("f.verificacion_grafica_estado = 'PENDIENTE'")
+    elif estado and estado in EstadosFactura.mapa_ids:
         ids_estado = EstadosFactura.mapa_ids[estado]
         placeholders = ', '.join(['%s'] * len(ids_estado))
         condiciones.append(_FILTROS['estado'].format(placeholders=placeholders))
         params.extend(ids_estado)
 
     if busqueda:
-        if busqueda == 'sin_evento_030':
+        if busqueda == 'verificacion_manual':
+            condiciones.append("f.verificacion_grafica_estado = 'PENDIENTE'")
+        elif busqueda == 'sin_evento_030':
             condiciones.append("pf.codigo_forma_pago != '1' AND (fc.eventos_dian_notif IS NULL OR fc.eventos_dian_notif NOT LIKE '%%030%%')")
         elif busqueda == 'sin_evento_032':
             condiciones.append("pf.codigo_forma_pago != '1' AND (fc.eventos_dian_notif IS NULL OR fc.eventos_dian_notif NOT LIKE '%%032%%')")
@@ -75,9 +79,11 @@ async def listar_facturas(
             'provider': r[1] or DefaultTextos.sin_nombre,
             'type': DefaultTextos.factura_electronica,
             'status': estado_txt,
-            'amount': float(r[3]),
+            'amount': float(r[3]) if r[3] is not None else 0.0,
             'date': r[5].strftime(DefaultTextos.formato_fecha_corto) if r[5] else '',
             'time': '1.2s',
+            'motivo_rechazo': r[10] or '',
+            'verificacion_grafica_estado': r[11] or '',
         })
     return resultado
 
@@ -287,5 +293,67 @@ async def obtener_xml_factura_by_id(id_factura: int) -> tuple[bytes, str] | None
     logger.info(success_msg)
     print(success_msg, flush=True)
     return contenido, filename
+
+
+async def actualizar_verificacion_grafica(id_factura: int, aprobado: bool) -> bool:
+    """Actualiza el estado de la verificación gráfica de una factura de forma manual."""
+    pool = get_pool()
+    estado_grafico = 'APROBADA' if aprobado else 'RECHAZADA'
+    estado_factura = 3 if aprobado else 4  # 3 = PROCESADO, 4 = ERROR (Rechazada)
+    estado_proceso = 3 if aprobado else 4
+
+    query_get_adjunto = """
+        SELECT adjunto_id 
+        FROM facturacion.factura 
+        WHERE id_factura = %s
+    """
+    
+    query_update_factura = """
+        UPDATE facturacion.factura 
+        SET verificacion_grafica_estado = %s, 
+            id_estado_proceso = %s,
+            fecha_actualizacion = NOW()
+        WHERE id_factura = %s
+    """
+
+    query_update_proceso = """
+        UPDATE facturacion.proceso_ingesta 
+        SET id_estado = %s, 
+            observacion = %s,
+            fecha_fin = NOW()
+        WHERE adjunto_id = %s AND id_proceso = 25
+    """
+
+    query_resolve_alerta = """
+        UPDATE facturacion.alerta 
+        SET resuelta = TRUE, 
+            fecha_resolucion = NOW()
+        WHERE factura_id = %s AND codigo_tipo_alerta = 'VERIFICACION_GRAFICA_FALLIDA'
+    """
+
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(query_get_adjunto, [id_factura])
+            row = await cur.fetchone()
+            if not row:
+                return False
+            adjunto_id = row[0]
+
+            await cur.execute(query_update_factura, [estado_grafico, estado_factura, id_factura])
+
+            obs_proceso = 'Verificacion grafica aprobada manualmente por el usuario.' if aprobado else 'Verificacion grafica rechazada manualmente por el usuario.'
+            await cur.execute(query_update_proceso, [estado_proceso, obs_proceso, adjunto_id])
+            if cur.rowcount == 0:
+                query_insert_proceso = """
+                    INSERT INTO facturacion.proceso_ingesta 
+                    (adjunto_id, id_proceso, id_estado, observacion, fecha_inicio, fecha_fin)
+                    VALUES (%s, 25, %s, %s, NOW(), NOW())
+                """
+                await cur.execute(query_insert_proceso, [adjunto_id, estado_proceso, obs_proceso])
+
+            await cur.execute(query_resolve_alerta, [id_factura])
+            
+            return True
+
 
 

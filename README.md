@@ -1,6 +1,6 @@
 # Base de Datos - Facturación Electrónica
 
-Este proyecto contiene la configuración para levantar la base de datos PostgreSQL de facturación mediante Docker. La base de datos incluye la migración de la estructura inicial cargada automáticamente en el primer arranque desde el archivo `modelo_facturacion_gpt.sql`.
+Este proyecto contiene la configuración para levantar la base de datos PostgreSQL de facturación mediante Docker. La base de datos incluye la migración de la estructura inicial cargada automáticamente en el primer arranque desde el archivo `modelo_facturacion.sql`.
 
 ## Requisitos Previos
 
@@ -111,7 +111,7 @@ Las migraciones SQL se encuentran en `scripts/` con el formato `migration_NNN_de
 
 | Archivo | Descripción | Idempotente |
 |---------|-------------|:-----------:|
-| `modelo_facturacion_gpt.sql` | Schema inicial completo (se ejecuta auto con Docker) | ✅ |
+| `modelo_facturacion.sql` | Schema inicial completo (se ejecuta auto con Docker) | ✅ |
 | `scripts/migration_001_tipo_documento.sql` | Agrega columna `tipo_documento` a `factura` | ✅ |
 
 #### Correr migraciones en el VPS

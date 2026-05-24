@@ -40,6 +40,7 @@ dashboard:
     COUNT(*) as processed,
     COUNT(*) FILTER (WHERE id_estado_proceso = 3) as validated,
     COUNT(*) FILTER (WHERE id_estado_proceso IN (4, 5)) as rejected,
+    COUNT(*) FILTER (WHERE verificacion_grafica_estado = 'PENDIENTE') as pending_human,
     COUNT(DISTINCT id_tercero_emisor) as providers,
     COALESCE(SUM(valor_total), 0) as total_value,
     COALESCE((SELECT AVG(EXTRACT(EPOCH FROM (fecha_fin - fecha_inicio))) FROM facturacion.proceso_ingesta WHERE fecha_fin IS NOT NULL AND fecha_inicio >= %s AND fecha_inicio <= %s), 0.0) as avg_time
@@ -235,7 +236,15 @@ facturas:
     SELECT CASE WHEN COALESCE(f.prefijo_facturacion, '') = '' THEN f.numero_factura ELSE f.prefijo_facturacion || '-' || f.numero_factura END as num,
     f.razon_social_emisor, ep.descripcion, f.valor_total, f.id_factura,
     f.fecha_expedicion, f.id_estado_proceso,
-    ac.uri_almacenamiento as s3_key, ac.nombre_archivo, f.id_factura
+    ac.uri_almacenamiento as s3_key, ac.nombre_archivo, f.id_factura,
+    COALESCE(
+        (SELECT STRING_AGG(te.descripcion, '; ') 
+         FROM facturacion.proceso_ingesta pi 
+         JOIN facturacion.tipo_error te ON pi.id_error = te.id_tipo_error 
+         WHERE pi.adjunto_id = f.adjunto_id AND pi.id_error IS NOT NULL),
+        ''
+    ) as motivo_rechazo,
+    f.verificacion_grafica_estado
     FROM facturacion.factura f
     JOIN facturacion.tipo_estado_proceso ep ON f.id_estado_proceso = ep.id_estado_proceso
     LEFT JOIN facturacion.factura_control fc ON f.id_factura = fc.id_factura

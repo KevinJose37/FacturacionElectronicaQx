@@ -36,14 +36,14 @@ def test_validar_fecha_generacion_futura():
 
 def test_validar_fecha_validacion_exito():
     """Prueba validación exitosa de fecha de validación DIAN."""
-    hoy = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    ayer = (datetime.now(timezone.utc) - timedelta(days=1)).strftime('%Y-%m-%d')
     xml_content = f"""
     <AttachedDocument xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
                       xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2">
         <cac:ParentDocumentLineReference>
             <cac:DocumentReference>
                 <cac:ResultOfVerification>
-                    <cbc:ValidationDate>{hoy}</cbc:ValidationDate>
+                    <cbc:ValidationDate>{ayer}</cbc:ValidationDate>
                     <cbc:ValidationTime>09:00:00-05:00</cbc:ValidationTime>
                     <cbc:ValidatorID>DIAN</cbc:ValidatorID>
                 </cac:ResultOfVerification>

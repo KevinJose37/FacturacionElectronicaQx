@@ -14,7 +14,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./modelo_facturacion_gpt.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./modelo_facturacion.sql:/docker-entrypoint-initdb.d/init.sql:ro
 
   # ── Antivirus ──
   clamav:

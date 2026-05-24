@@ -29,7 +29,7 @@ openpyxl==3.1.5
 pymupdf==1.24.10
 httpx==0.27.2
 cryptography==43.0.1
-signxml==3.5.0
+signxml>=3.2.0
 
 # === Autenticación (OAuth2 / JWT) ===
 PyJWT==2.8.0

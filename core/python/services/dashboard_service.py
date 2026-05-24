@@ -72,9 +72,10 @@ async def obtener_kpis(fecha_inicio: str | None = None, fecha_fin: str | None = 
             processed = row[0]
             validated = row[1]
             rejected = row[2]
-            providers = row[3]
-            total_value = float(row[4]) if row[4] else 0.0
-            avg_time = float(row[5]) if row[5] else 0.0
+            pending_human = row[3]
+            providers = row[4]
+            total_value = float(row[5]) if row[5] else 0.0
+            avg_time = float(row[6]) if row[6] else 0.0
 
     avg_time_formatted = f"{avg_time:.1f}s"
     total_value_formatted = f"$ {total_value:,.2f}"
@@ -85,6 +86,10 @@ async def obtener_kpis(fecha_inicio: str | None = None, fecha_fin: str | None = 
         'rejected': {
             'value': str(rejected), 'delta': 0.0,
             'spark': [max(0, rejected - i) for i in range(12, 0, -1)],
+        },
+        'pending_human': {
+            'value': str(pending_human), 'delta': 0.0,
+            'spark': [max(0, pending_human - i) for i in range(12, 0, -1)],
         },
         'time': {
             'value': avg_time_formatted, 'delta': 0.0,

@@ -50,6 +50,16 @@ async def init_pool() -> None:
     await _pool.open()
     logger.info(MensajesDB.pool_inicializado, host, port, dbname)
 
+    try:
+        async with _pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "ALTER TABLE facturacion.factura ADD COLUMN IF NOT EXISTS verificacion_grafica_estado VARCHAR(20) DEFAULT NULL;"
+                )
+                logger.info("Migracion: Columna verificacion_grafica_estado verificada/creada exitosamente.")
+    except Exception as e:
+        logger.error(f"Error al ejecutar migracion de columna verificacion_grafica_estado: {e}")
+
 
 async def close_pool() -> None:
     """Cierra el pool de conexiones de forma limpia."""

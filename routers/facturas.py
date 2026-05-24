@@ -150,3 +150,35 @@ async def descargar_xml_factura_por_id(
         headers=headers,
     )
 
+
+from pydantic import BaseModel
+
+class DecisionVerificacionGrafica(BaseModel):
+    aprobado: bool
+
+
+@router.post('/{id_factura}/verificacion-grafica')
+async def decidir_verificacion_grafica(
+    id_factura: int,
+    decision: DecisionVerificacionGrafica,
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> dict:
+    """Registra la aprobación o rechazo manual de la validación gráfica."""
+    await registrar_auditoria(
+        user_id=current_user.id_usuario if hasattr(current_user, 'id_usuario') else 0,
+        tipo_acceso='MANUAL_GRAPHIC_DECISION',
+        tabla_afectada='FACTURA',
+        query_params={'id_factura': id_factura, 'aprobado': decision.aprobado}
+    )
+    exito = await facturas_service.actualizar_verificacion_grafica(
+        id_factura=id_factura,
+        aprobado=decision.aprobado
+    )
+    if not exito:
+        raise HTTPException(
+            status_code=404,
+            detail='No se encontró la factura especificada o no se pudo actualizar',
+        )
+    return {'status': 'success', 'message': 'Decisión manual registrada exitosamente'}
+
+

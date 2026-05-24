@@ -12,6 +12,7 @@ class KpiDefiniciones:
         {'key': 'processed', 'label': 'Facturas procesadas', 'color': 'turquoise'},
         {'key': 'validated', 'label': 'Facturas validadas', 'color': 'turquoise'},
         {'key': 'rejected', 'label': 'Facturas rechazadas', 'color': 'orange'},
+        {'key': 'pending_human', 'label': 'Verificación manual', 'color': 'orange'},
         {'key': 'time', 'label': 'Tiempo promedio', 'color': 'purple'},
         {'key': 'total_value', 'label': 'Valor total facturado', 'color': 'turquoise'},
         {'key': 'providers', 'label': 'Proveedores', 'color': 'turquoise'},

@@ -50,6 +50,85 @@ def _col_fecha(columna: str) -> str:
     return columna
 
 
+def construir_subconsulta_filtros(filtros: dict | None) -> tuple[str, list]:
+    if not filtros:
+        return "", []
+    
+    subquery_parts = []
+    subquery_params = []
+    
+    proveedores = filtros.get('proveedores')
+    if proveedores:
+        subquery_parts.append(f"f_sub.razon_social_emisor IN ({','.join(['%s']*len(proveedores))})")
+        subquery_params.extend(proveedores)
+
+    formas_pago = filtros.get('formas_pago')
+    if formas_pago:
+        subquery_parts.append(f"COALESCE(tf_sub.descripcion, pf_sub.codigo_forma_pago, 'No definido') IN ({','.join(['%s']*len(formas_pago))})")
+        subquery_params.extend(formas_pago)
+
+    medios_pago = filtros.get('medios_pago')
+    if medios_pago:
+        subquery_parts.append(f"COALESCE(tmp_sub.descripcion, pf_sub.codigo_medio_pago, 'No definido') IN ({','.join(['%s']*len(medios_pago))})")
+        subquery_params.extend(medios_pago)
+
+    impuestos = filtros.get('impuestos')
+    if impuestos:
+        subquery_parts.append(f"COALESCE(ti_sub.nombre, ti_sub.descripcion, im_sub.codigo_impuesto, 'Otros') IN ({','.join(['%s']*len(impuestos))})")
+        subquery_params.extend(impuestos)
+
+    errores = filtros.get('errores')
+    if errores:
+        subquery_parts.append(f"te_sub.descripcion IN ({','.join(['%s']*len(errores))})")
+        subquery_params.extend(errores)
+
+    eventos_dian = filtros.get('eventos_dian')
+    if eventos_dian:
+        subquery_parts.append(f"COALESCE(ted_sub.nombre_evento, edf_sub.codigo_evento, 'No definido') IN ({','.join(['%s']*len(eventos_dian))})")
+        subquery_params.extend(eventos_dian)
+
+    rangos_vencimiento = filtros.get('rangos_vencimiento')
+    if rangos_vencimiento:
+        rango_clause = """(CASE 
+            WHEN f_sub.fecha_vencimiento <= CURRENT_DATE THEN 'Vencidas'
+            WHEN f_sub.fecha_vencimiento <= CURRENT_DATE + INTERVAL '7 days' THEN 'Próximos 7 días'
+            WHEN f_sub.fecha_vencimiento <= CURRENT_DATE + INTERVAL '15 days' THEN '8 a 15 días'
+            WHEN f_sub.fecha_vencimiento <= CURRENT_DATE + INTERVAL '30 days' THEN '16 a 30 días'
+            ELSE 'Más de 30 días'
+        END)"""
+        subquery_parts.append(f"{rango_clause} IN ({','.join(['%s']*len(rangos_vencimiento))})")
+        subquery_params.extend(rangos_vencimiento)
+
+    if not subquery_parts:
+        return "", []
+
+    subquery = f"""
+        SELECT DISTINCT f_sub.id_factura 
+        FROM facturacion.factura f_sub
+        LEFT JOIN facturacion.pago_factura pf_sub ON f_sub.id_factura = pf_sub.id_factura
+        LEFT JOIN facturacion.tipo_forma_pago tf_sub ON pf_sub.codigo_forma_pago = tf_sub.codigo_forma_pago
+        LEFT JOIN facturacion.tipo_medio_pago tmp_sub ON pf_sub.codigo_medio_pago = tmp_sub.codigo_medio_pago
+        LEFT JOIN facturacion.evento_dian_factura edf_sub ON f_sub.id_factura = edf_sub.id_factura
+        LEFT JOIN facturacion.tipo_evento_dian ted_sub ON edf_sub.codigo_evento = ted_sub.codigo_evento
+        LEFT JOIN facturacion.impuesto_factura im_sub ON f_sub.id_factura = im_sub.id_factura
+        LEFT JOIN facturacion.tipo_impuesto ti_sub ON im_sub.codigo_impuesto = ti_sub.codigo_impuesto
+        LEFT JOIN facturacion.proceso_ingesta pi_sub ON f_sub.adjunto_id = pi_sub.adjunto_id
+        LEFT JOIN facturacion.tipo_error te_sub ON pi_sub.id_error = te_sub.id_tipo_error
+        WHERE {" AND ".join(subquery_parts)}
+    """
+    return subquery, subquery_params
+
+
+def aplicar_subconsulta(query_base: str, col_id_factura: str, subquery: str) -> str:
+    if not subquery:
+        return query_base
+    if "GROUP BY" in query_base:
+        parts = query_base.split("GROUP BY", 1)
+        return f"{parts[0]} AND {col_id_factura} IN ({subquery}) GROUP BY {parts[1]}"
+    else:
+        return f"{query_base} AND {col_id_factura} IN ({subquery})"
+
+
 async def obtener_fecha_mas_antigua() -> str:
     """Obtiene la fecha de la factura más antigua en la base de datos.
 
@@ -69,7 +148,7 @@ async def obtener_fecha_mas_antigua() -> str:
     return '2020-01-01'
 
 
-async def obtener_kpis(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion') -> list:
+async def obtener_kpis(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion', filtros: dict = None) -> list:
     """Calcula los KPIs principales del dashboard.
 
     Returns:
@@ -80,9 +159,16 @@ async def obtener_kpis(fecha_inicio: str | None = None, fecha_fin: str | None = 
     pool = get_pool()
     # Replace fecha_creacion with the selected column in the KPIs query
     query = _QUERIES['kpis'].replace('fecha_creacion', col)
+    
+    subquery, subquery_params = construir_subconsulta_filtros(filtros)
+    query = aplicar_subconsulta(query, 'id_factura', subquery)
+    params = (dt_inicio, dt_fin, dt_inicio, dt_fin)
+    if subquery:
+        params += tuple(subquery_params)
+
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(query, (dt_inicio, dt_fin, dt_inicio, dt_fin))
+            await cur.execute(query, params)
             row = await cur.fetchone()
             processed = row[0]
             validated = row[1]
@@ -128,7 +214,7 @@ async def obtener_kpis(fecha_inicio: str | None = None, fecha_fin: str | None = 
     return kpis
 
 
-async def obtener_etapas_flujo(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion') -> list:
+async def obtener_etapas_flujo(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion', filtros: dict = None) -> list:
     """Obtiene las etapas del pipeline con conteos.
 
     Returns:
@@ -139,9 +225,16 @@ async def obtener_etapas_flujo(fecha_inicio: str | None = None, fecha_fin: str |
 
     pool = get_pool()
     query = _QUERIES['etapas_flujo'].replace('fecha_creacion', col)
+    
+    subquery, subquery_params = construir_subconsulta_filtros(filtros)
+    query = aplicar_subconsulta(query, 'id_factura', subquery)
+    params = (dt_inicio, dt_fin)
+    if subquery:
+        params += tuple(subquery_params)
+
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(query, (dt_inicio, dt_fin))
+            await cur.execute(query, params)
             row = await cur.fetchone()
             total, validacion, procesamiento, erp, finalizado = row
 
@@ -156,15 +249,22 @@ async def obtener_etapas_flujo(fecha_inicio: str | None = None, fecha_fin: str |
     return etapas
 
 
-async def obtener_facturas_por_proveedor(fecha_inicio: str | None = None, fecha_fin: str | None = None, limite: int = 6, columna_fecha: str = 'fecha_creacion') -> list:
+async def obtener_facturas_por_proveedor(fecha_inicio: str | None = None, fecha_fin: str | None = None, limite: int = 6, columna_fecha: str = 'fecha_creacion', filtros: dict = None) -> list:
     """Top proveedores por cantidad de facturas globales."""
     col = _col_fecha(columna_fecha)
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
     query = _QUERIES['facturas_por_proveedor'].replace('fecha_creacion', col)
+    
+    subquery, subquery_params = construir_subconsulta_filtros(filtros)
+    query = aplicar_subconsulta(query, 'f.id_factura', subquery)
+    params = (dt_inicio, dt_fin)
+    if subquery:
+        params += tuple(subquery_params)
+
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(query, (dt_inicio, dt_fin))
+            await cur.execute(query, params)
             filas = await cur.fetchall()
 
     resultado = [
@@ -174,7 +274,7 @@ async def obtener_facturas_por_proveedor(fecha_inicio: str | None = None, fecha_
     return resultado
 
 
-async def obtener_tendencia(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
+async def obtener_tendencia(fecha_inicio: str | None = None, fecha_fin: str | None = None, filtros: dict = None) -> list:
     """Tendencia de procesamiento de facturas por día.
 
     Returns:
@@ -185,9 +285,41 @@ async def obtener_tendencia(fecha_inicio: str | None = None, fecha_fin: str | No
     d_fin = dt_fin.date()
 
     pool = get_pool()
+    query = _QUERIES['tendencia']
+    
+    subquery, subquery_params = construir_subconsulta_filtros(filtros)
+    
+    if subquery:
+        query = query.replace(
+            "WHERE fc.fecha_admision_proveedor >= %s AND fc.fecha_admision_proveedor <= %s",
+            f"WHERE fc.fecha_admision_proveedor >= %s AND fc.fecha_admision_proveedor <= %s AND fc.id_factura IN ({subquery})"
+        )
+        query = query.replace(
+            "WHERE f.fecha_expedicion::date >= %s AND f.fecha_expedicion::date <= %s",
+            f"WHERE f.fecha_expedicion::date >= %s AND f.fecha_expedicion::date <= %s AND f.id_factura IN ({subquery})"
+        )
+        query = query.replace(
+            "WHERE f.fecha_creacion::date >= %s AND f.fecha_creacion::date <= %s",
+            f"WHERE f.fecha_creacion::date >= %s AND f.fecha_creacion::date <= %s AND f.id_factura IN ({subquery})"
+        )
+        
+        params = (
+            d_ini, d_fin,
+            d_ini, d_fin,
+        )
+        params += tuple(subquery_params)
+        
+        params += (d_ini, d_fin,)
+        params += tuple(subquery_params)
+        
+        params += (d_ini, d_fin,)
+        params += tuple(subquery_params)
+    else:
+        params = (d_ini, d_fin, d_ini, d_fin, d_ini, d_fin, d_ini, d_fin)
+
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['tendencia'], (d_ini, d_fin, d_ini, d_fin, d_ini, d_fin, d_ini, d_fin))
+            await cur.execute(query, params)
             filas = await cur.fetchall()
 
     resultado = [
@@ -202,7 +334,7 @@ async def obtener_tendencia(fecha_inicio: str | None = None, fecha_fin: str | No
     return resultado
 
 
-async def obtener_ultimas_facturas(limite: int = 8) -> list:
+async def obtener_ultimas_facturas(limite: int = 8, filtros: dict = None) -> list:
     """Últimas facturas procesadas.
 
     Args:
@@ -212,9 +344,19 @@ async def obtener_ultimas_facturas(limite: int = 8) -> list:
         Lista de facturas recientes con datos del proveedor.
     """
     pool = get_pool()
+    query = _QUERIES['ultimas_facturas']
+    
+    subquery, subquery_params = construir_subconsulta_filtros(filtros)
+    
+    if subquery:
+        query = query.replace("ORDER BY f.fecha_creacion", f"WHERE f.id_factura IN ({subquery}) ORDER BY f.fecha_creacion")
+        params = tuple(subquery_params) + (limite,)
+    else:
+        params = (limite,)
+
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['ultimas_facturas'], (limite,))
+            await cur.execute(query, params)
             filas = await cur.fetchall()
 
     resultado = []
@@ -423,82 +565,149 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
     return resultado
 
 
-async def obtener_valor_proveedor_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion') -> list:
+async def obtener_valor_proveedor_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion', filtros: dict = None) -> list:
     """Obtiene los valores de facturación acumulados por proveedor."""
     col = _col_fecha(columna_fecha)
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
     query = _QUERIES['valor_proveedor_stats'].replace('fecha_creacion', col)
+    
+    subquery, subquery_params = construir_subconsulta_filtros(filtros)
+    query = aplicar_subconsulta(query, 'f.id_factura', subquery)
+    params = (dt_inicio, dt_fin)
+    if subquery:
+        params += tuple(subquery_params)
+
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(query, (dt_inicio, dt_fin))
+            await cur.execute(query, params)
             filas = await cur.fetchall()
     return [{'name': r[0] or DefaultTextos.sin_nombre, 'value': float(r[1]) if r[1] else 0.0} for r in filas]
 
 
-async def obtener_forma_pago_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion') -> list:
+async def obtener_forma_pago_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion', filtros: dict = None) -> list:
     """Obtiene conteo de facturas por forma de pago."""
     col = _col_fecha(columna_fecha)
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
     query = _QUERIES['forma_pago_stats'].replace('fecha_creacion', col)
+    
+    subquery, subquery_params = construir_subconsulta_filtros(filtros)
+    query = aplicar_subconsulta(query, 'f.id_factura', subquery)
+    params = (dt_inicio, dt_fin)
+    if subquery:
+        params += tuple(subquery_params)
+
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(query, (dt_inicio, dt_fin))
+            await cur.execute(query, params)
             filas = await cur.fetchall()
     return [{'name': r[0], 'value': r[1]} for r in filas]
 
 
-async def obtener_medio_pago_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion') -> list:
+async def obtener_medio_pago_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion', filtros: dict = None) -> list:
     """Obtiene conteo de facturas por medio de pago."""
     col = _col_fecha(columna_fecha)
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
     query = _QUERIES['medio_pago_stats'].replace('fecha_creacion', col)
+    
+    subquery, subquery_params = construir_subconsulta_filtros(filtros)
+    query = aplicar_subconsulta(query, 'f.id_factura', subquery)
+    params = (dt_inicio, dt_fin)
+    if subquery:
+        params += tuple(subquery_params)
+
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(query, (dt_inicio, dt_fin))
+            await cur.execute(query, params)
             filas = await cur.fetchall()
     return [{'name': r[0], 'value': r[1]} for r in filas]
 
 
-async def obtener_eventos_dian_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion') -> list:
+async def obtener_eventos_dian_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion', filtros: dict = None) -> list:
     """Obtiene la cantidad de eventos DIAN por tipo de evento."""
     col = _col_fecha(columna_fecha)
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
     query = _QUERIES['eventos_dian_stats'].replace('fecha_creacion', col)
+    
+    subquery, subquery_params = construir_subconsulta_filtros(filtros)
+    query = aplicar_subconsulta(query, 'f.id_factura', subquery)
+    params = (dt_inicio, dt_fin)
+    if subquery:
+        params += tuple(subquery_params)
+
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(query, (dt_inicio, dt_fin))
+            await cur.execute(query, params)
             filas = await cur.fetchall()
     return [{'name': r[0], 'value': r[1]} for r in filas]
 
 
-async def obtener_impuestos_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion') -> list:
+async def obtener_impuestos_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion', filtros: dict = None) -> list:
     """Obtiene la suma de valor por tipo de impuesto."""
     col = _col_fecha(columna_fecha)
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
     query = _QUERIES['impuestos_stats'].replace('fecha_creacion', col)
+    
+    subquery, subquery_params = construir_subconsulta_filtros(filtros)
+    query = aplicar_subconsulta(query, 'f.id_factura', subquery)
+    params = (dt_inicio, dt_fin)
+    if subquery:
+        params += tuple(subquery_params)
+
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(query, (dt_inicio, dt_fin))
+            await cur.execute(query, params)
             filas = await cur.fetchall()
     return [{'name': r[0], 'value': float(r[1]) if r[1] else 0.0} for r in filas]
 
 
-async def obtener_funnel_ingesta(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> dict:
+async def obtener_funnel_ingesta(fecha_inicio: str | None = None, fecha_fin: str | None = None, filtros: dict = None) -> dict:
     """Obtiene los conteos del embudo de ingesta contable."""
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
+    
+    subquery, subquery_params = construir_subconsulta_filtros(filtros)
+    
     try:
+        if subquery:
+            query = f"""
+                SELECT
+                (SELECT COUNT(*) FROM facturacion.correo_entrante WHERE fecha_deteccion >= %s AND fecha_deteccion <= %s
+                 AND correo_id IN (SELECT DISTINCT ac.correo_id FROM facturacion.adjuntos_correo ac JOIN facturacion.factura f_sub ON ac.adjunto_id = f_sub.adjunto_id WHERE f_sub.id_factura IN ({subquery}))) as correos,
+                
+                (SELECT COUNT(*) FROM facturacion.adjuntos_correo ac JOIN facturacion.correo_entrante c ON ac.correo_id = c.correo_id JOIN facturacion.factura f_sub ON ac.adjunto_id = f_sub.adjunto_id WHERE c.fecha_deteccion >= %s AND c.fecha_deteccion <= %s
+                 AND f_sub.id_factura IN ({subquery})) as adjuntos,
+                
+                (SELECT COUNT(DISTINCT adjunto_id) FROM facturacion.evento_ingesta WHERE fecha_creacion >= %s AND fecha_creacion <= %s
+                 AND adjunto_id IN (SELECT f_sub.adjunto_id FROM facturacion.factura f_sub WHERE f_sub.id_factura IN ({subquery}))) as procesados,
+                
+                (SELECT COUNT(*) FROM facturacion.factura WHERE id_estado_proceso = 3 AND fecha_creacion >= %s AND fecha_creacion <= %s
+                 AND id_factura IN ({subquery})) as validados
+            """
+            params = []
+            # correos
+            params.extend([dt_inicio, dt_fin])
+            params.extend(subquery_params)
+            # adjuntos
+            params.extend([dt_inicio, dt_fin])
+            params.extend(subquery_params)
+            # procesados
+            params.extend([dt_inicio, dt_fin])
+            params.extend(subquery_params)
+            # validados
+            params.extend([dt_inicio, dt_fin])
+            params.extend(subquery_params)
+        else:
+            query = _QUERIES['funnel_ingesta']
+            params = [dt_inicio, dt_fin, dt_inicio, dt_fin, dt_inicio, dt_fin, dt_inicio, dt_fin]
+
         async with pool.connection() as conn:
             async with conn.cursor() as cur:
-                await cur.execute(_QUERIES['funnel_ingesta'], (
-                    dt_inicio, dt_fin, dt_inicio, dt_fin,
-                    dt_inicio, dt_fin, dt_inicio, dt_fin
-                ))
+                await cur.execute(query, params)
                 row = await cur.fetchone()
                 if row:
                     return {
@@ -512,16 +721,23 @@ async def obtener_funnel_ingesta(fecha_inicio: str | None = None, fecha_fin: str
     return {'correos': 0, 'adjuntos': 0, 'procesados': 0, 'validados': 0}
 
 
-async def obtener_cuentas_por_pagar(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion') -> list:
+async def obtener_cuentas_por_pagar(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion', filtros: dict = None) -> list:
     """Obtiene la proyección de cuentas por pagar agrupadas por rango de vencimiento."""
     col = _col_fecha(columna_fecha)
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
     query = _QUERIES['cuentas_por_pagar'].replace('fecha_creacion', col)
+    
+    subquery, subquery_params = construir_subconsulta_filtros(filtros)
+    query = aplicar_subconsulta(query, 'f.id_factura', subquery)
+    params = (dt_inicio, dt_fin, dt_inicio, dt_fin)
+    if subquery:
+        params += tuple(subquery_params)
+
     try:
         async with pool.connection() as conn:
             async with conn.cursor() as cur:
-                await cur.execute(query, (dt_inicio, dt_fin, dt_inicio, dt_fin))
+                await cur.execute(query, params)
                 filas = await cur.fetchall()
                 return [
                     {
@@ -536,14 +752,23 @@ async def obtener_cuentas_por_pagar(fecha_inicio: str | None = None, fecha_fin: 
     return []
 
 
-async def obtener_top_errores_ingesta(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
+async def obtener_top_errores_ingesta(fecha_inicio: str | None = None, fecha_fin: str | None = None, filtros: dict = None) -> list:
     """Obtiene los 5 errores más frecuentes durante la ingesta."""
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
+    query = _QUERIES['top_errores_ingesta']
+    
+    subquery, subquery_params = construir_subconsulta_filtros(filtros)
+    if subquery:
+        query = query.replace("WHERE", f"JOIN facturacion.factura f ON pi.adjunto_id = f.adjunto_id WHERE f.id_factura IN ({subquery}) AND")
+        params = tuple(subquery_params) + (dt_inicio, dt_fin, dt_inicio, dt_fin)
+    else:
+        params = (dt_inicio, dt_fin, dt_inicio, dt_fin)
+
     try:
         async with pool.connection() as conn:
             async with conn.cursor() as cur:
-                await cur.execute(_QUERIES['top_errores_ingesta'], (dt_inicio, dt_fin, dt_inicio, dt_fin))
+                await cur.execute(query, params)
                 filas = await cur.fetchall()
                 return [
                     {

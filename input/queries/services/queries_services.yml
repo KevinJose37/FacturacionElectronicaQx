@@ -77,13 +77,13 @@ dashboard:
     compras AS (
       SELECT f.fecha_expedicion::date AS dia, COUNT(*) AS compradas
       FROM facturacion.factura f
-      WHERE f.fecha_expedicion >= %s AND f.fecha_expedicion <= %s
+      WHERE f.fecha_expedicion::date >= %s AND f.fecha_expedicion::date <= %s
       GROUP BY f.fecha_expedicion::date
     ),
     procesadas AS (
       SELECT f.fecha_creacion::date AS dia, COUNT(*) AS procesadas
       FROM facturacion.factura f
-      WHERE f.fecha_creacion >= %s AND f.fecha_creacion <= %s
+      WHERE f.fecha_creacion::date >= %s AND f.fecha_creacion::date <= %s
       GROUP BY f.fecha_creacion::date
     )
     SELECT 
@@ -260,7 +260,8 @@ facturas:
     COUNT(*) FILTER (WHERE id_estado_proceso = 3) as validadas,
     COUNT(*) FILTER (WHERE id_estado_proceso IN (1, 2)) as pendientes,
     COUNT(*) FILTER (WHERE id_estado_proceso IN (4, 5)) as rechazadas,
-    COALESCE(SUM(valor_total), 0) as monto
+    COALESCE(SUM(valor_total), 0) as monto,
+    COUNT(*) FILTER (WHERE verificacion_grafica_estado = 'PENDIENTE') as pending_human
     FROM facturacion.factura
 
 # Fragmentos de condiciones para facturas

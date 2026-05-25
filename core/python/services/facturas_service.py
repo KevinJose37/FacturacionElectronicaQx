@@ -107,6 +107,7 @@ async def obtener_estadisticas() -> dict:
         'pendientes': row[2],
         'rechazadas': row[3],
         'monto_total': float(row[4]),
+        'pendientes_verificacion_manual': row[5] if len(row) > 5 else 0,
     }
     return estadisticas
 

@@ -27,10 +27,13 @@ def _parsear_fechas(fecha_inicio: str | None, fecha_fin: str | None) -> tuple[da
     ahora = datetime.now(tz=timezone.utc)
     if fecha_inicio and fecha_fin:
         try:
-            dt_inicio = datetime.fromisoformat(fecha_inicio).replace(tzinfo=timezone.utc)
-            dt_fin = datetime.fromisoformat(fecha_fin).replace(tzinfo=timezone.utc, hour=23, minute=59, second=59)
+            fi = fecha_inicio.split('T')[0]
+            ff = fecha_fin.split('T')[0]
+            dt_inicio = datetime.strptime(fi, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            dt_fin = datetime.strptime(ff, "%Y-%m-%d").replace(tzinfo=timezone.utc, hour=23, minute=59, second=59)
             return dt_inicio, dt_fin
-        except ValueError:
+        except Exception as e:
+            logger.error(f"Error parseando fechas: {e}")
             pass
     
     # Default: últimos 7 días

@@ -56,9 +56,15 @@ async def init_pool() -> None:
                 await cur.execute(
                     "ALTER TABLE facturacion.factura ADD COLUMN IF NOT EXISTS verificacion_grafica_estado VARCHAR(20) DEFAULT NULL;"
                 )
-                logger.info("Migracion: Columna verificacion_grafica_estado verificada/creada exitosamente.")
+                await cur.execute(
+                    "ALTER TABLE facturacion.factura ADD COLUMN IF NOT EXISTS motivo_rechazo TEXT DEFAULT NULL;"
+                )
+                await cur.execute(
+                    "ALTER TABLE facturacion.factura ADD COLUMN IF NOT EXISTS verificacion_grafica_detalle JSONB DEFAULT NULL;"
+                )
+                logger.info("Migracion: Columnas de verificacion grafica y motivos de rechazo verificadas/creadas exitosamente.")
     except Exception as e:
-        logger.error(f"Error al ejecutar migracion de columna verificacion_grafica_estado: {e}")
+        logger.error(f"Error al ejecutar migraciones de columnas en factura: {e}")
 
 
 async def close_pool() -> None:

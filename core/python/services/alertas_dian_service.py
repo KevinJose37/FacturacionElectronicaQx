@@ -49,7 +49,8 @@ async def obtener_alertas_dian(fecha_corte: datetime | None = None) -> dict:
     Args:
         fecha_corte:
             Fecha límite para considerar facturas. Si es None,
-            se usa datetime.now(UTC) (momento de ejecución).
+            se intenta leer la última ejecución exitosa del scheduler.
+            Si no hay archivo, se usa datetime.now(UTC).
 
     Returns:
         Diccionario con las 4 alertas, cada una contiene:
@@ -57,6 +58,22 @@ async def obtener_alertas_dian(fecha_corte: datetime | None = None) -> dict:
         - total: cantidad total de facturas afectadas
         - detalle: desglose por año y mes
     """
+    import json
+    import os
+
+    # Si no se provee fecha_corte, es una consulta de visualización.
+    # Intentamos obtener los datos de la última ejecución programada real.
+    if fecha_corte is None:
+        raiz = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        ruta_cache = os.path.join(raiz, 'temp', 'alertas_dian_ultimo.json')
+        
+        if os.path.exists(ruta_cache):
+            try:
+                with open(ruta_cache, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                logger.warning('Error al leer caché de alertas DIAN, recalculando...')
+
     if fecha_corte is None:
         fecha_corte = datetime.now(tz=timezone.utc)
 

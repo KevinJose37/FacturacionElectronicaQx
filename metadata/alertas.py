@@ -29,11 +29,11 @@ class EtiquetasAlerta:
 class ConfigScheduler:
     """Configuración del programador de alertas."""
 
-    hora_ejecucion = 12
-    """Hora local de ejecución (12:00 PM)."""
+    hora_ejecucion = None
+    """Ejecución por intervalos horaria."""
 
     minuto_ejecucion = 0
     """Minuto de ejecución."""
 
-    segundos_espera = 30
+    segundos_espera = 60
     """Intervalo de verificación en el bucle principal."""

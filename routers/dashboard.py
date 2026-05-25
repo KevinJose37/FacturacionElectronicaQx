@@ -122,14 +122,16 @@ async def obtener_flujo() -> list:
 
 
 @router.get('/alertas-dian')
-async def obtener_alertas_dian() -> dict:
+async def obtener_alertas_dian(refresh: bool = Query(False)) -> dict:
     """Obtiene el reporte de alertas de eventos DIAN.
 
-    Retorna facturas sin eventos 030, 032, 033 y
-    facturas con evento de rechazo 031, agrupadas por año y mes.
-    Solo para facturas con forma_pago diferente a Contado.
+    Args:
+        refresh: Si es True, fuerza el recálculo ignorando el caché.
     """
-    resultado = await alertas_dian_service.obtener_alertas_dian()
+    from datetime import datetime, timezone
+    
+    fecha = datetime.now(tz=timezone.utc) if refresh else None
+    resultado = await alertas_dian_service.obtener_alertas_dian(fecha_corte=fecha)
     return resultado
 
 

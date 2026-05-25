@@ -100,21 +100,21 @@ async def ejecutar_alertas() -> dict:
     return respuesta
 
 
-def _ya_ejecuto_hoy(ultima_ejecucion: str | None) -> bool:
-    """Verifica si ya se ejecutó el proceso en el día actual.
+def _ya_ejecuto_esta_hora(ultima_ejecucion: str | None) -> bool:
+    """Verifica si ya se ejecutó el proceso en la hora actual.
 
     Args:
         ultima_ejecucion: Fecha ISO de la última ejecución.
 
     Returns:
-        True si la fecha coincide con el día de hoy.
+        True si la fecha coincide con la hora actual.
     """
     ya_ejecuto = False
     if ultima_ejecucion:
         try:
             fecha = datetime.fromisoformat(ultima_ejecucion)
-            hoy = datetime.now().date()
-            ya_ejecuto = fecha.date() == hoy
+            ahora = datetime.now()
+            ya_ejecuto = fecha.date() == ahora.date() and fecha.hour == ahora.hour
         except ValueError:
             ya_ejecuto = False
 
@@ -137,8 +137,7 @@ def main() -> None:
         return
 
     logger.info(
-        'Scheduler iniciado — esperando ejecución diaria a las %02d:%02d',
-        ConfigScheduler.hora_ejecucion,
+        'Scheduler iniciado — esperando ejecución horaria al minuto :%02d',
         ConfigScheduler.minuto_ejecucion,
     )
 
@@ -146,33 +145,17 @@ def main() -> None:
 
     while True:
         ahora = datetime.now()
-        es_hora = (
-            ahora.hour == ConfigScheduler.hora_ejecucion
-            and ahora.minute == ConfigScheduler.minuto_ejecucion
-        )
-        ya_ejecuto = _ya_ejecuto_hoy(ultima_fecha_ejecucion)
+        es_momento = ahora.minute == ConfigScheduler.minuto_ejecucion
+        ya_ejecuto = _ya_ejecuto_esta_hora(ultima_fecha_ejecucion)
 
-        if es_hora and not ya_ejecuto:
-            logger.info('Son las 12:00 PM — ejecutando alertas DIAN.')
+        if es_momento and not ya_ejecuto:
+            logger.info('Iniciando ejecución horaria de alertas DIAN.')
             try:
                 asyncio.run(ejecutar_alertas())
                 ultima_fecha_ejecucion = ahora.isoformat()
             except Exception:
                 logger.exception('Error durante la ejecución de alertas DIAN')
-        else:
-            proxima = ahora.replace(
-                hour=ConfigScheduler.hora_ejecucion,
-                minute=ConfigScheduler.minuto_ejecucion,
-                second=0,
-                microsecond=0
-            )
-            if ahora >= proxima:
-                proxima += timedelta(days=1)
-
-            delta = (proxima - ahora).total_seconds()
-            if delta > 3600:
-                logger.debug('Próxima ejecución en %.0f horas.', delta / 3600)
-
+        
         time.sleep(ConfigScheduler.segundos_espera)
 
 

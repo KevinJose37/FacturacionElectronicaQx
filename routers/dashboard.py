@@ -131,3 +131,10 @@ async def obtener_alertas_dian() -> dict:
     """
     resultado = await alertas_dian_service.obtener_alertas_dian()
     return resultado
+
+
+@router.post('/alertas/{id_alerta}/resolver')
+async def resolver_alerta(id_alerta: int) -> dict:
+    """Marca una alerta como resuelta."""
+    exito = await dashboard_service.resolver_alerta(id_alerta)
+    return {'success': exito}

@@ -73,6 +73,10 @@ async def listar_facturas(
     resultado = []
     for r in filas:
         estado_txt = EstadosFactura.mapa_texto.get(r[6], 'pendiente')
+        verif_graf_estado = r[12] or ''
+        if verif_graf_estado == 'PENDIENTE':
+            estado_txt = 'pendiente_verificacion_manual'
+
         resultado.append({
             'id': r[0],
             'db_id': r[4],
@@ -84,7 +88,7 @@ async def listar_facturas(
             'time': '1.2s',
             'motivo_rechazo_xml': r[10] or '',
             'motivo_rechazo_pdf': r[11] or '',
-            'verificacion_grafica_estado': r[12] or '',
+            'verificacion_grafica_estado': verif_graf_estado,
         })
     return resultado
 
@@ -339,13 +343,18 @@ async def obtener_detalle_verificacion(id_factura: int) -> dict | None:
                 detalle_raw = row[0]
                 verificacion_ia = {}
                 if detalle_raw:
-                    if isinstance(detalle_raw, str):
-                        try:
-                            verificacion_ia = _json.loads(detalle_raw)
-                        except _json.JSONDecodeError:
-                            verificacion_ia = {}
-                    elif isinstance(detalle_raw, dict):
-                        verificacion_ia = detalle_raw
+                    # Guardia contra la multi-serialización de cadenas JSON
+                    parsed = detalle_raw
+                    for _ in range(5):
+                        if isinstance(parsed, str):
+                            try:
+                                parsed = _json.loads(parsed)
+                            except _json.JSONDecodeError:
+                                break
+                        else:
+                            break
+                    if isinstance(parsed, dict):
+                        verificacion_ia = parsed
 
                 datos_xml = {
                     'numero_factura': row[2] or '',

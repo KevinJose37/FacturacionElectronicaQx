@@ -528,10 +528,11 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
 
     resultado = []
     for r in filas:
-        # r[0]=id, r[1]=tipo, r[2]=prioridad, r[3]=titulo, r[4]=mensaje, r[5]=fecha, r[6]=remitente, r[7]=asunto
+        # r[0]=id, r[1]=tipo, r[2]=prioridad, r[3]=titulo, r[4]=mensaje, r[5]=fecha, r[6]=remitente, r[7]=asunto, r[8]=id_factura
         mensaje_original = r[4]
         remitente = r[6]
         asunto = r[7] or 'Sin Asunto'
+        id_factura = r[8]
         
         # Si existe el remitente (email real), intentamos limpiar el mensaje de alertas de correo
         mensaje_final = mensaje_original
@@ -539,7 +540,6 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
             import re
             
             # Limpiar el nombre del remitente si viene con formato MIME o caracteres especiales
-            # Ejemplo: "=?iso-8859-1?Q?Iv=E1n... <email>" -> "email"
             match_email = re.search(r'[\w\.-]+@[\w\.-]+', remitente)
             email_limpio = match_email.group(0) if match_email else remitente
             
@@ -561,6 +561,9 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
             'title': r[3],
             'message': mensaje_final,
             'date': r[5].isoformat() if r[5] else '',
+            'email': email_limpio if remitente else None,
+            'asunto': asunto,
+            'id_factura': id_factura
         })
     return resultado
 

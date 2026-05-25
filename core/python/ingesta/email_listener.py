@@ -115,7 +115,7 @@ class EmailListener:
                 time.sleep(self.backoff_base**intento)
 
     def _obtener_uids(self, conn: imaplib.IMAP4_SSL) -> list:
-        """Obtiene UIDs de correos pendientes usando Checkpointing por UID (Solución Industrial)."""
+        """Obtiene UIDs de correos pendientes usando Checkpointing por UID y UNSEEN."""
         # 1. Refrescar estado de la carpeta
         conn.select(self.carpeta)
         
@@ -129,30 +129,45 @@ class EmailListener:
                     ultimo_uid = int(res[0])
         
         # 3. Definir criterio de búsqueda
+        # Buscamos correos nuevos (UID mayor al último) O correos no leídos (UNSEEN)
+        # Esto asegura que si alguien marca un correo como no leído, se vuelva a procesar 
+        # (siempre que no exista ya en la BD por MESSAGE_ID).
+        
+        uids_finales = set()
+
+        # A. Por UID (Nuevos)
         if ultimo_uid > 0:
-            # Escenario Normal: UIDs mayores al último procesado
-            criterio = f"UID {ultimo_uid + 1}:*"
-            status, data = conn.uid("search", None, criterio)
-            uids = data[0].split() if status == "OK" else []
-            uids = [u for u in uids if int(u) > ultimo_uid]
-            logger.info("Puntero UID=%d. Encontrados %d nuevos correos.", ultimo_uid, len(uids))
+            criterio_uid = f"UID {ultimo_uid + 1}:*"
+            status, data = conn.uid("search", None, criterio_uid)
+            if status == "OK" and data[0]:
+                uids_nuevos = data[0].split()
+                for u in uids_nuevos:
+                    if int(u) > ultimo_uid:
+                        uids_finales.add(int(u))
+            logger.info("Puntero UID=%d. Encontrados %d nuevos correos por secuencia.", ultimo_uid, len(uids_finales))
         else:
-            # Escenario de Arranque/BD Limpia: 
-            # Traemos los UNSEEN + los últimos dos correos (aunque estén leídos)
-            # para asegurar que no se pierda nada en la transición.
-            status_unseen, data_unseen = conn.uid("search", None, "UNSEEN")
-            unseen_uids = data_unseen[0].split() if status_unseen == "OK" else []
-            
+            # Si no hay puntero, traemos los últimos 5 para establecer base
             status_all, data_all = conn.uid("search", None, "ALL")
-            all_uids = data_all[0].split() if status_all == "OK" else []
-            recent_all = all_uids[-2:] if all_uids else []
-            
-            # Combinar y ordenar
-            uids_set = {int(u) for u in (unseen_uids + recent_all)}
-            uids = [str(u).encode() for u in sorted(list(uids_set))]
-            logger.info("Arranque inicial: Verificando %d correos para establecer puntero.", len(uids))
-            
-        return uids
+            all_uids = data_all[0].split() if status_all == "OK" and data_all[0] else []
+            for u in all_uids[-5:]:
+                uids_finales.add(int(u))
+            logger.info("BD Limpia: Verificando últimos %d correos para establecer puntero.", len(uids_finales))
+
+        # B. Por FLAG (No leídos)
+        status_unseen, data_unseen = conn.uid("search", None, "UNSEEN")
+        if status_unseen == "OK" and data_unseen[0]:
+            unseen_uids = data_unseen[0].split()
+            count_unseen = 0
+            for u in unseen_uids:
+                uid_int = int(u)
+                if uid_int not in uids_finales:
+                    uids_finales.add(uid_int)
+                    count_unseen += 1
+            if count_unseen > 0:
+                logger.info("Encontrados %d correos adicionales marcados como NO LEÍDOS.", count_unseen)
+
+        # Retornar lista ordenada de bytes
+        return [str(u).encode() for u in sorted(list(uids_finales))]
 
 
 

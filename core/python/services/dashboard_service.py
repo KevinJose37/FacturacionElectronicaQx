@@ -509,14 +509,7 @@ async def obtener_eventos_por_minuto(ventana_minutos: int = 10) -> dict:
     return resultado
 
 async def obtener_alertas_activas(limite: int = 5) -> list:
-    """Obtiene las alertas activas (no resueltas) más recientes.
-
-    Args:
-        limite: Cantidad máxima de alertas a retornar.
-
-    Returns:
-        Lista de diccionarios con los datos de las alertas.
-    """
+    """Obtiene las alertas activas (no resueltas) más recientes con limpieza de errores técnicos."""
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
@@ -527,43 +520,49 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
             filas = await cur.fetchall()
 
     resultado = []
+    import re
+    
+    # Patrón para limpiar errores técnicos de base de datos
+    patron_tecnico = r'Último error: current transaction is aborted, commands ignored until end of transaction block'
+
     for r in filas:
-        # r[0]=id, r[1]=tipo, r[2]=prioridad, r[3]=titulo, r[4]=mensaje, r[5]=fecha, r[6]=remitente, r[7]=asunto, r[8]=id_factura
+        # r[0]=id, r[1]=tipo, r[2]=prioridad, r[3]=titulo, r[4]=mensaje, r[5]=fecha, r[6]=remitente, r[7]=asunto
+        # r[8]=id_factura, r[9]=num_factura, r[10]=fecha_factura, r[11]=proveedor
         mensaje_original = r[4]
         remitente = r[6]
-        asunto = r[7] or 'Sin Asunto'
+        asunto = r[7]
         id_factura = r[8]
+        num_factura = r[9]
+        fecha_factura = r[10].strftime('%d/%m/%Y') if r[10] else None
+        proveedor = r[11]
         
-        # Si existe el remitente (email real), intentamos limpiar el mensaje de alertas de correo
-        mensaje_final = mensaje_original
-        if remitente and ('fue identificado como facturación' in mensaje_original or 'Adjunto incompleto en correo' in mensaje_original):
-            import re
-            
-            # Limpiar el nombre del remitente si viene con formato MIME o caracteres especiales
+        # 1. Limpieza de errores técnicos
+        mensaje_limpio = re.sub(patron_tecnico, '', mensaje_original).strip()
+        
+        # 2. Gestión de metadatos (Filtrar "Sin Asunto")
+        asunto_limpio = asunto if asunto and asunto.lower() != 'sin asunto' else None
+        
+        # Limpieza de remitente
+        email_limpio = None
+        if remitente:
             match_email = re.search(r'[\w\.-]+@[\w\.-]+', remitente)
             email_limpio = match_email.group(0) if match_email else remitente
-            
-            # Construir el nuevo mensaje con Asunto y Remitente limpio
-            if 'fue identificado como facturación' in mensaje_original:
-                patron = r'El correo [^ ]+ fue identificado como facturación'
-                reemplazo = f'El correo con Asunto: "{asunto}" de {email_limpio} fue identificado como facturación'
-                mensaje_final = re.sub(patron, reemplazo, mensaje_original)
-            
-            if 'Adjunto incompleto en correo' in mensaje_original:
-                patron = r'Adjunto incompleto en correo [^:]+:'
-                reemplazo = f'Adjunto incompleto en correo con Asunto: "{asunto}" de {email_limpio}:'
-                mensaje_final = re.sub(patron, reemplazo, mensaje_final)
 
         resultado.append({
             'id': r[0],
             'type': r[1],
             'priority': r[2],
             'title': r[3],
-            'message': mensaje_final,
+            'message': mensaje_limpio,
             'date': r[5].isoformat() if r[5] else '',
-            'email': email_limpio if remitente else None,
-            'asunto': asunto,
-            'id_factura': id_factura
+            'email': email_limpio,
+            'asunto': asunto_limpio,
+            'factura': {
+                'id': id_factura,
+                'numero': num_factura,
+                'fecha': fecha_factura,
+                'proveedor': proveedor
+            } if id_factura else None
         })
     return resultado
 

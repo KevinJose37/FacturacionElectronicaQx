@@ -528,6 +528,7 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
     for r in filas:
         # r[0]=id, r[1]=tipo, r[2]=prioridad, r[3]=titulo, r[4]=mensaje, r[5]=fecha, r[6]=remitente, r[7]=asunto
         # r[8]=id_factura, r[9]=num_factura, r[10]=fecha_factura, r[11]=proveedor
+        # r[12]=fecha_correo, r[13]=correo_id, r[14]=xml_s3_key, r[15]=pdf_s3_key
         mensaje_original = r[4]
         remitente = r[6]
         asunto = r[7]
@@ -535,6 +536,10 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
         num_factura = r[9]
         fecha_factura = r[10].strftime('%d/%m/%Y') if r[10] else None
         proveedor = r[11]
+        fecha_correo = r[12].strftime('%d/%m/%Y %H:%M') if r[12] else None
+        correo_id = r[13]
+        xml_s3_key = r[14]
+        pdf_s3_key = r[15]
         
         # 1. Limpieza de errores técnicos
         mensaje_limpio = re.sub(patron_tecnico, '', mensaje_original).strip()
@@ -557,6 +562,10 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
             'date': r[5].isoformat() if r[5] else '',
             'email': email_limpio,
             'asunto': asunto_limpio,
+            'fecha_correo': fecha_correo,
+            'correo_id': correo_id,
+            'xml_s3_key': xml_s3_key,
+            'pdf_s3_key': pdf_s3_key,
             'factura': {
                 'id': id_factura,
                 'numero': num_factura,
@@ -565,6 +574,7 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
             } if id_factura else None
         })
     return resultado
+
 
 
 async def obtener_valor_proveedor_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion', filtros: dict = None) -> list:

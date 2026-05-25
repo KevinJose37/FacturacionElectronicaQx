@@ -527,18 +527,17 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
 
     for r in filas:
         # r[0]=id, r[1]=tipo, r[2]=prioridad, r[3]=titulo, r[4]=mensaje, r[5]=fecha, r[6]=remitente, r[7]=asunto
-        # r[8]=id_factura, r[9]=num_factura, r[10]=fecha_factura, r[11]=proveedor
-        # r[12]=fecha_correo, r[13]=correo_id, r[14]=xml_s3_key, r[15]=pdf_s3_key
-        # r[16]=xml_nombre, r[17]=pdf_nombre
+        # r[8]=fecha_correo, r[9]=correo_id, r[10]=id_factura, r[11]=num_factura, r[12]=fecha_factura, r[13]=proveedor
+        # r[14]=xml_s3_key, r[15]=pdf_s3_key, r[16]=xml_nombre, r[17]=pdf_nombre
         mensaje_original = r[4]
         remitente = r[6]
         asunto = r[7]
-        id_factura = r[8]
-        num_factura = r[9]
-        fecha_factura = r[10].strftime('%d/%m/%Y') if r[10] else None
-        proveedor = r[11]
-        fecha_correo = r[12].strftime('%d/%m/%Y %H:%M') if r[12] else None
-        correo_id = r[13]
+        fecha_correo = r[8].strftime('%d/%m/%Y %H:%M') if r[8] else None
+        correo_id = r[9]
+        id_factura = r[10]
+        num_factura = r[11]
+        fecha_factura = r[12].strftime('%d/%m/%Y') if r[12] else None
+        proveedor = r[13]
         xml_s3_key = r[14]
         pdf_s3_key = r[15]
         xml_nombre = r[16]

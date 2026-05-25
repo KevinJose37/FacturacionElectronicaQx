@@ -151,10 +151,29 @@ async def descargar_xml_factura_por_id(
     )
 
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Optional
+
+
+@router.get('/{id_factura}/detalle-verificacion')
+async def obtener_detalle_verificacion(
+    id_factura: int,
+    current_user: UserInDB = Depends(get_current_active_user),
+) -> dict:
+    """Obtiene los resultados de la verificación IA y datos XML para la revisión manual."""
+    detalle = await facturas_service.obtener_detalle_verificacion(id_factura)
+    if not detalle:
+        return {
+            'verificacion_ia': {},
+            'verificacion_estado': 'PENDIENTE',
+            'datos_xml': {},
+        }
+    return detalle
+
 
 class DecisionVerificacionGrafica(BaseModel):
     aprobado: bool
+    motivos_rechazo: Optional[list[str]] = Field(default=None, description='Lista de numerales incumplidos del Art. 11 Res. 000165')
 
 
 @router.post('/{id_factura}/verificacion-grafica')
@@ -168,11 +187,16 @@ async def decidir_verificacion_grafica(
         user_id=current_user.id_usuario if hasattr(current_user, 'id_usuario') else 0,
         tipo_acceso='MANUAL_GRAPHIC_DECISION',
         tabla_afectada='FACTURA',
-        query_params={'id_factura': id_factura, 'aprobado': decision.aprobado}
+        query_params={
+            'id_factura': id_factura,
+            'aprobado': decision.aprobado,
+            'motivos_rechazo': decision.motivos_rechazo,
+        }
     )
     exito = await facturas_service.actualizar_verificacion_grafica(
         id_factura=id_factura,
-        aprobado=decision.aprobado
+        aprobado=decision.aprobado,
+        motivos_rechazo=decision.motivos_rechazo,
     )
     if not exito:
         raise HTTPException(

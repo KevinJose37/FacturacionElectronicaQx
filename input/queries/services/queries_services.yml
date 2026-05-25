@@ -243,7 +243,8 @@ facturas:
          JOIN facturacion.tipo_error te ON pi.id_error = te.id_tipo_error 
          WHERE pi.adjunto_id = f.adjunto_id AND pi.id_error IS NOT NULL),
         ''
-    ) as motivo_rechazo,
+    ) as motivo_rechazo_xml,
+    COALESCE(f.motivo_rechazo, '') as motivo_rechazo_pdf,
     f.verificacion_grafica_estado
     FROM facturacion.factura f
     JOIN facturacion.tipo_estado_proceso ep ON f.id_estado_proceso = ep.id_estado_proceso

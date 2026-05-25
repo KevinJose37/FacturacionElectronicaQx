@@ -110,12 +110,15 @@ async def verificar_con_ia(
             
         campos_res = resultado_ia.get("campos", {})
 
-        # Mapear respuesta de IA al formato interno
+        # Mapear respuesta de IA al formato interno with confidence
         todos_ok = True
         for campo in campos_fallidos:
-            if not campos_res.get(campo, {}).get("presente", False):
+            campo_info = campos_res.get(campo, {})
+            presente = campo_info.get("presente", False)
+            confianza = float(campo_info.get("confianza", 0.0))
+            # A field passes if present AND confidence >= 0.7
+            if not presente or confianza < 0.7:
                 todos_ok = False
-                break
 
         return {
             "aprobado": todos_ok,

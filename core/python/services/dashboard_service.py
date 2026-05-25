@@ -38,6 +38,15 @@ def _parsear_fechas(fecha_inicio: str | None, fecha_fin: str | None) -> tuple[da
     return dt_inicio, ahora
 
 
+_COLUMNAS_FECHA_VALIDAS = {'fecha_creacion', 'fecha_expedicion'}
+
+def _col_fecha(columna: str) -> str:
+    """Validates and returns a safe column name for date filtering."""
+    if columna not in _COLUMNAS_FECHA_VALIDAS:
+        return 'fecha_creacion'
+    return columna
+
+
 async def obtener_fecha_mas_antigua() -> str:
     """Obtiene la fecha de la factura más antigua en la base de datos.
 
@@ -57,17 +66,20 @@ async def obtener_fecha_mas_antigua() -> str:
     return '2020-01-01'
 
 
-async def obtener_kpis(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
+async def obtener_kpis(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion') -> list:
     """Calcula los KPIs principales del dashboard.
 
     Returns:
         Lista de diccionarios con los KPIs calculados.
     """
+    col = _col_fecha(columna_fecha)
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
+    # Replace fecha_creacion with the selected column in the KPIs query
+    query = _QUERIES['kpis'].replace('fecha_creacion', col)
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['kpis'], (dt_inicio, dt_fin, dt_inicio, dt_fin))
+            await cur.execute(query, (dt_inicio, dt_fin, dt_inicio, dt_fin))
             row = await cur.fetchone()
             processed = row[0]
             validated = row[1]
@@ -113,18 +125,20 @@ async def obtener_kpis(fecha_inicio: str | None = None, fecha_fin: str | None = 
     return kpis
 
 
-async def obtener_etapas_flujo(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
+async def obtener_etapas_flujo(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion') -> list:
     """Obtiene las etapas del pipeline con conteos.
 
     Returns:
         Lista de etapas del flujo con conteo y estado.
     """
+    col = _col_fecha(columna_fecha)
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
 
     pool = get_pool()
+    query = _QUERIES['etapas_flujo'].replace('fecha_creacion', col)
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['etapas_flujo'], (dt_inicio, dt_fin))
+            await cur.execute(query, (dt_inicio, dt_fin))
             row = await cur.fetchone()
             total, validacion, procesamiento, erp, finalizado = row
 
@@ -139,20 +153,15 @@ async def obtener_etapas_flujo(fecha_inicio: str | None = None, fecha_fin: str |
     return etapas
 
 
-async def obtener_facturas_por_proveedor(fecha_inicio: str | None = None, fecha_fin: str | None = None, limite: int = 6) -> list:
-    """Top proveedores por cantidad de facturas globales.
-
-    Args:
-        limite: Cantidad máxima de proveedores a retornar.
-
-    Returns:
-        Lista de proveedores con conteo de facturas.
-    """
+async def obtener_facturas_por_proveedor(fecha_inicio: str | None = None, fecha_fin: str | None = None, limite: int = 6, columna_fecha: str = 'fecha_creacion') -> list:
+    """Top proveedores por cantidad de facturas globales."""
+    col = _col_fecha(columna_fecha)
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
+    query = _QUERIES['facturas_por_proveedor'].replace('fecha_creacion', col)
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['facturas_por_proveedor'], (dt_inicio, dt_fin))
+            await cur.execute(query, (dt_inicio, dt_fin))
             filas = await cur.fetchall()
 
     resultado = [
@@ -262,21 +271,16 @@ async def obtener_actividad_reciente(limite: int = 8) -> list:
     return resultado
 
 
-async def obtener_tipos_documento(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
-    """Conteo de documentos agrupados por tipo_documento.
-
-    Usa la columna tipo_documento de la tabla factura para generar
-    datos para el gráfico de torta (DocTypePie).
-
-    Returns:
-        Lista de diccionarios con nombre del tipo y conteo.
-    """
+async def obtener_tipos_documento(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion') -> list:
+    """Conteo de documentos agrupados por tipo_documento."""
+    col = _col_fecha(columna_fecha)
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
 
     pool = get_pool()
+    query = _QUERIES['tipos_documento'].replace('fecha_creacion', col)
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['tipos_documento'], (dt_inicio, dt_fin))
+            await cur.execute(query, (dt_inicio, dt_fin))
             filas = await cur.fetchall()
 
     resultado = [
@@ -286,21 +290,16 @@ async def obtener_tipos_documento(fecha_inicio: str | None = None, fecha_fin: st
     return resultado
 
 
-async def obtener_heatmap_errores(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
-    """Genera datos para el heatmap de errores por día de la semana y hora.
-
-    Cuenta registros en proceso_ingesta donde id_error IS NOT NULL,
-    agrupados por día de la semana (0=Lun..6=Dom) y hora del día.
-
-    Returns:
-        Lista de celdas con day (str), hour (int) y value (int).
-    """
+async def obtener_heatmap_errores(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion') -> list:
+    """Genera datos para el heatmap de errores por día de la semana y hora."""
+    col = _col_fecha(columna_fecha)
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
 
     pool = get_pool()
+    query = _QUERIES['heatmap_errores'].replace('fecha_creacion', col)
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['heatmap_errores'], (dt_inicio, dt_fin))
+            await cur.execute(query, (dt_inicio, dt_fin))
             filas = await cur.fetchall()
 
     resultado = [
@@ -421,57 +420,67 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
     return resultado
 
 
-async def obtener_valor_proveedor_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
+async def obtener_valor_proveedor_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion') -> list:
     """Obtiene los valores de facturación acumulados por proveedor."""
+    col = _col_fecha(columna_fecha)
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
+    query = _QUERIES['valor_proveedor_stats'].replace('fecha_creacion', col)
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['valor_proveedor_stats'], (dt_inicio, dt_fin))
+            await cur.execute(query, (dt_inicio, dt_fin))
             filas = await cur.fetchall()
     return [{'name': r[0] or DefaultTextos.sin_nombre, 'value': float(r[1]) if r[1] else 0.0} for r in filas]
 
 
-async def obtener_forma_pago_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
+async def obtener_forma_pago_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion') -> list:
     """Obtiene conteo de facturas por forma de pago."""
+    col = _col_fecha(columna_fecha)
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
+    query = _QUERIES['forma_pago_stats'].replace('fecha_creacion', col)
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['forma_pago_stats'], (dt_inicio, dt_fin))
+            await cur.execute(query, (dt_inicio, dt_fin))
             filas = await cur.fetchall()
     return [{'name': r[0], 'value': r[1]} for r in filas]
 
 
-async def obtener_medio_pago_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
+async def obtener_medio_pago_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion') -> list:
     """Obtiene conteo de facturas por medio de pago."""
+    col = _col_fecha(columna_fecha)
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
+    query = _QUERIES['medio_pago_stats'].replace('fecha_creacion', col)
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['medio_pago_stats'], (dt_inicio, dt_fin))
+            await cur.execute(query, (dt_inicio, dt_fin))
             filas = await cur.fetchall()
     return [{'name': r[0], 'value': r[1]} for r in filas]
 
 
-async def obtener_eventos_dian_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
+async def obtener_eventos_dian_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion') -> list:
     """Obtiene la cantidad de eventos DIAN por tipo de evento."""
+    col = _col_fecha(columna_fecha)
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
+    query = _QUERIES['eventos_dian_stats'].replace('fecha_creacion', col)
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['eventos_dian_stats'], (dt_inicio, dt_fin))
+            await cur.execute(query, (dt_inicio, dt_fin))
             filas = await cur.fetchall()
     return [{'name': r[0], 'value': r[1]} for r in filas]
 
 
-async def obtener_impuestos_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
+async def obtener_impuestos_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion') -> list:
     """Obtiene la suma de valor por tipo de impuesto."""
+    col = _col_fecha(columna_fecha)
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
+    query = _QUERIES['impuestos_stats'].replace('fecha_creacion', col)
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['impuestos_stats'], (dt_inicio, dt_fin))
+            await cur.execute(query, (dt_inicio, dt_fin))
             filas = await cur.fetchall()
     return [{'name': r[0], 'value': float(r[1]) if r[1] else 0.0} for r in filas]
 
@@ -500,14 +509,16 @@ async def obtener_funnel_ingesta(fecha_inicio: str | None = None, fecha_fin: str
     return {'correos': 0, 'adjuntos': 0, 'procesados': 0, 'validados': 0}
 
 
-async def obtener_cuentas_por_pagar(fecha_inicio: str | None = None, fecha_fin: str | None = None) -> list:
+async def obtener_cuentas_por_pagar(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion') -> list:
     """Obtiene la proyección de cuentas por pagar agrupadas por rango de vencimiento."""
+    col = _col_fecha(columna_fecha)
     dt_inicio, dt_fin = _parsear_fechas(fecha_inicio, fecha_fin)
     pool = get_pool()
+    query = _QUERIES['cuentas_por_pagar'].replace('fecha_creacion', col)
     try:
         async with pool.connection() as conn:
             async with conn.cursor() as cur:
-                await cur.execute(_QUERIES['cuentas_por_pagar'], (dt_inicio, dt_fin, dt_inicio, dt_fin))
+                await cur.execute(query, (dt_inicio, dt_fin, dt_inicio, dt_fin))
                 filas = await cur.fetchall()
                 return [
                     {

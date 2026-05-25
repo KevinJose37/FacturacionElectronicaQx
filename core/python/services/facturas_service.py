@@ -82,8 +82,9 @@ async def listar_facturas(
             'amount': float(r[3]) if r[3] is not None else 0.0,
             'date': r[5].strftime(DefaultTextos.formato_fecha_corto) if r[5] else '',
             'time': '1.2s',
-            'motivo_rechazo': r[10] or '',
-            'verificacion_grafica_estado': r[11] or '',
+            'motivo_rechazo_xml': r[10] or '',
+            'motivo_rechazo_pdf': r[11] or '',
+            'verificacion_grafica_estado': r[12] or '',
         })
     return resultado
 
@@ -295,12 +296,97 @@ async def obtener_xml_factura_by_id(id_factura: int) -> tuple[bytes, str] | None
     return contenido, filename
 
 
-async def actualizar_verificacion_grafica(id_factura: int, aprobado: bool) -> bool:
+async def obtener_detalle_verificacion(id_factura: int) -> dict | None:
+    """Obtiene el detalle de verificación gráfica y datos XML clave para la revisión manual.
+
+    Args:
+        id_factura: ID de la factura.
+
+    Returns:
+        Diccionario con verificacion_ia (resultado IA campo por campo) y datos_xml (campos clave).
+    """
+    import json as _json
+    pool = get_pool()
+    query = """
+        SELECT 
+            f.verificacion_grafica_detalle,
+            f.verificacion_grafica_estado,
+            f.numero_factura,
+            f.prefijo_facturacion,
+            f.razon_social_emisor,
+            f.nit_emisor,
+            f.razon_social_adquiriente,
+            f.nit_adquiriente,
+            f.valor_total,
+            f.cufe,
+            f.fecha_expedicion,
+            f.denominacion,
+            f.resolucion_dian,
+            f.forma_pago,
+            f.iva
+        FROM facturacion.factura f
+        WHERE f.id_factura = %s
+    """
+    try:
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(query, [id_factura])
+                row = await cur.fetchone()
+                if not row:
+                    return None
+
+                detalle_raw = row[0]
+                verificacion_ia = {}
+                if detalle_raw:
+                    if isinstance(detalle_raw, str):
+                        try:
+                            verificacion_ia = _json.loads(detalle_raw)
+                        except _json.JSONDecodeError:
+                            verificacion_ia = {}
+                    elif isinstance(detalle_raw, dict):
+                        verificacion_ia = detalle_raw
+
+                datos_xml = {
+                    'numero_factura': row[2] or '',
+                    'prefijo_facturacion': row[3] or '',
+                    'razon_social_emisor': row[4] or '',
+                    'nit_emisor': row[5] or '',
+                    'razon_social_adquiriente': row[6] or '',
+                    'nit_adquiriente': row[7] or '',
+                    'valor_total': str(row[8]) if row[8] is not None else '',
+                    'cufe': row[9] or '',
+                    'fecha_expedicion': row[10].strftime('%Y-%m-%d') if row[10] else '',
+                    'denominacion': row[11] or '',
+                    'resolucion_dian': row[12] or '',
+                    'forma_pago': row[13] or '',
+                    'iva': str(row[14]) if row[14] is not None else '',
+                }
+
+                return {
+                    'verificacion_ia': verificacion_ia,
+                    'verificacion_estado': row[1] or 'PENDIENTE',
+                    'datos_xml': datos_xml,
+                }
+    except Exception as e:
+        logger.error("Error obteniendo detalle de verificación: %s", e)
+        return None
+
+
+async def actualizar_verificacion_grafica(
+    id_factura: int,
+    aprobado: bool,
+    motivos_rechazo: list[str] | None = None,
+) -> bool:
     """Actualiza el estado de la verificación gráfica de una factura de forma manual."""
     pool = get_pool()
     estado_grafico = 'APROBADA' if aprobado else 'RECHAZADA'
     estado_factura = 3 if aprobado else 4  # 3 = PROCESADO, 4 = ERROR (Rechazada)
     estado_proceso = 3 if aprobado else 4
+
+    # Build motivo_rechazo string from the selected numerals
+    motivo_rechazo_texto = None
+    if not aprobado and motivos_rechazo:
+        motivo_rechazo_texto = 'Rechazo manual – Incumplimiento representación gráfica: ' + ', '.join(motivos_rechazo)
 
     query_get_adjunto = """
         SELECT adjunto_id 
@@ -312,6 +398,7 @@ async def actualizar_verificacion_grafica(id_factura: int, aprobado: bool) -> bo
         UPDATE facturacion.factura 
         SET verificacion_grafica_estado = %s, 
             id_estado_proceso = %s,
+            motivo_rechazo = COALESCE(%s, motivo_rechazo),
             fecha_actualizacion = NOW()
         WHERE id_factura = %s
     """
@@ -339,9 +426,11 @@ async def actualizar_verificacion_grafica(id_factura: int, aprobado: bool) -> bo
                 return False
             adjunto_id = row[0]
 
-            await cur.execute(query_update_factura, [estado_grafico, estado_factura, id_factura])
+            await cur.execute(query_update_factura, [estado_grafico, estado_factura, motivo_rechazo_texto, id_factura])
 
             obs_proceso = 'Verificacion grafica aprobada manualmente por el usuario.' if aprobado else 'Verificacion grafica rechazada manualmente por el usuario.'
+            if motivo_rechazo_texto:
+                obs_proceso = motivo_rechazo_texto
             await cur.execute(query_update_proceso, [estado_proceso, obs_proceso, adjunto_id])
             if cur.rowcount == 0:
                 query_insert_proceso = """

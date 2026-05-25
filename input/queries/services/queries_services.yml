@@ -43,7 +43,11 @@ dashboard:
            (SELECT ac_xml.uri_almacenamiento FROM facturacion.adjuntos_correo ac_xml 
             WHERE ac_xml.correo_id = ce.correo_id AND ac_xml.id_tipo_archivo = 2 LIMIT 1) as xml_s3_key,
            (SELECT ac_pdf.uri_almacenamiento FROM facturacion.adjuntos_correo ac_pdf 
-            WHERE ac_pdf.correo_id = ce.correo_id AND ac_pdf.id_tipo_archivo = 3 LIMIT 1) as pdf_s3_key
+            WHERE ac_pdf.correo_id = ce.correo_id AND ac_pdf.id_tipo_archivo = 3 LIMIT 1) as pdf_s3_key,
+           (SELECT ac_xml.nombre_archivo FROM facturacion.adjuntos_correo ac_xml 
+            WHERE ac_xml.correo_id = ce.correo_id AND ac_xml.id_tipo_archivo = 2 LIMIT 1) as xml_nombre,
+           (SELECT ac_pdf.nombre_archivo FROM facturacion.adjuntos_correo ac_pdf 
+            WHERE ac_pdf.correo_id = ce.correo_id AND ac_pdf.id_tipo_archivo = 3 LIMIT 1) as pdf_nombre
     FROM facturacion.alerta a
     LEFT JOIN alerta_con_correo acc ON a.id_alerta = acc.id_alerta
     LEFT JOIN facturacion.correo_entrante ce ON ce.correo_id = acc.correo_id_raiz

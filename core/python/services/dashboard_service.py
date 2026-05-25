@@ -529,6 +529,7 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
         # r[0]=id, r[1]=tipo, r[2]=prioridad, r[3]=titulo, r[4]=mensaje, r[5]=fecha, r[6]=remitente, r[7]=asunto
         # r[8]=id_factura, r[9]=num_factura, r[10]=fecha_factura, r[11]=proveedor
         # r[12]=fecha_correo, r[13]=correo_id, r[14]=xml_s3_key, r[15]=pdf_s3_key
+        # r[16]=xml_nombre, r[17]=pdf_nombre
         mensaje_original = r[4]
         remitente = r[6]
         asunto = r[7]
@@ -540,6 +541,8 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
         correo_id = r[13]
         xml_s3_key = r[14]
         pdf_s3_key = r[15]
+        xml_nombre = r[16]
+        pdf_nombre = r[17]
         
         # 1. Limpieza de errores técnicos
         mensaje_limpio = re.sub(patron_tecnico, '', mensaje_original).strip()
@@ -566,12 +569,14 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
             'correo_id': correo_id,
             'xml_s3_key': xml_s3_key,
             'pdf_s3_key': pdf_s3_key,
+            'xml_nombre': xml_nombre,
+            'pdf_nombre': pdf_nombre,
             'factura': {
                 'id': id_factura,
                 'numero': num_factura,
                 'fecha': fecha_factura,
                 'proveedor': proveedor
-            } if id_factura else None
+            } if id_factura and num_factura else None
         })
     return resultado
 

@@ -319,17 +319,20 @@ async def obtener_detalle_verificacion(id_factura: int) -> dict | None:
             f.numero_factura,
             f.prefijo_facturacion,
             f.razon_social_emisor,
-            f.nit_emisor,
+            emisor.numero_documento as nit_emisor,
             f.razon_social_adquiriente,
-            f.nit_adquiriente,
+            adq.numero_documento as nit_adquiriente,
             f.valor_total,
             f.cufe,
             f.fecha_expedicion,
             f.denominacion,
-            f.resolucion_dian,
-            f.forma_pago,
-            f.iva
+            auth.numero_resolucion as resolucion_dian,
+            (SELECT codigo_forma_pago FROM facturacion.pago_factura WHERE id_factura = f.id_factura LIMIT 1) as forma_pago,
+            (SELECT SUM(valor_impuesto) FROM facturacion.impuesto_factura WHERE id_factura = f.id_factura AND codigo_impuesto = '01') as iva
         FROM facturacion.factura f
+        LEFT JOIN facturacion.tercero emisor ON f.id_tercero_emisor = emisor.id_tercero
+        LEFT JOIN facturacion.tercero adq ON f.id_tercero_adquiriente = adq.id_tercero
+        LEFT JOIN facturacion.autorizacion_numeracion_dian auth ON f.id_autorizacion = auth.id_autorizacion
         WHERE f.id_factura = %s
     """
     try:

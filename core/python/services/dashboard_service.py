@@ -746,7 +746,7 @@ async def obtener_cuentas_por_pagar(fecha_inicio: str | None = None, fecha_fin: 
     
     subquery, subquery_params = construir_subconsulta_filtros(filtros)
     query = aplicar_subconsulta(query, 'f.id_factura', subquery)
-    params = (dt_inicio, dt_fin, dt_inicio, dt_fin)
+    params = (dt_inicio, dt_fin)
     if subquery:
         params += tuple(subquery_params)
 
@@ -777,9 +777,9 @@ async def obtener_top_errores_ingesta(fecha_inicio: str | None = None, fecha_fin
     subquery, subquery_params = construir_subconsulta_filtros(filtros)
     if subquery:
         query = query.replace("WHERE", f"JOIN facturacion.factura f ON pi.adjunto_id = f.adjunto_id WHERE f.id_factura IN ({subquery}) AND")
-        params = tuple(subquery_params) + (dt_inicio, dt_fin, dt_inicio, dt_fin)
+        params = tuple(subquery_params) + (dt_inicio, dt_fin)
     else:
-        params = (dt_inicio, dt_fin, dt_inicio, dt_fin)
+        params = (dt_inicio, dt_fin)
 
     try:
         async with pool.connection() as conn:

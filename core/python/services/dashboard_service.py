@@ -579,16 +579,18 @@ async def obtener_alertas_activas(limite: int = 50) -> list:
             } if num_factura else None
         }
 
-        # Determinación de la clave de agrupación (por número y emisor, o id_factura)
+        # Determinación de la clave de agrupación (por correo_id, o número y emisor, o id_factura)
         clave_factura = None
-        if num_factura and proveedor:
+        if correo_id:
+            clave_factura = f"correo_{correo_id}"
+        elif num_factura and proveedor:
             clave_factura = (str(num_factura).strip().upper(), str(proveedor).strip().upper())
         elif id_factura:
             clave_factura = id_factura
 
         if clave_factura:
             if clave_factura in vistas_facturas:
-                # Ya existe una alerta para esta factura, agrupamos
+                # Ya existe una alerta para esta factura/correo, agrupamos
                 grupo = vistas_facturas[clave_factura]
                 
                 # Concatenar el mensaje si es diferente
@@ -604,11 +606,12 @@ async def obtener_alertas_activas(limite: int = 50) -> list:
                     if idx_nueva < idx_actual:
                         grupo['priority'] = prio_nueva
                 
-                # Si la nueva alerta tiene un id_factura válido, nos aseguramos de que el grupo lo conserve
-                if id_factura and not grupo['factura']['id']:
-                    grupo['factura']['id'] = id_factura
-                        
-                grupo['title'] = "Factura con múltiples observaciones"
+                # Si la nueva alerta tiene datos de factura y el grupo no, los adoptamos
+                if item['factura'] and not grupo['factura']:
+                    grupo['factura'] = item['factura']
+                elif item['factura'] and grupo['factura']:
+                    if item['factura']['id'] and not grupo['factura']['id']:
+                        grupo['factura']['id'] = item['factura']['id']
             else:
                 # Primera alerta de esta factura
                 item['_mensajes_lista'] = [mensaje_limpio]
@@ -623,6 +626,7 @@ async def obtener_alertas_activas(limite: int = 50) -> list:
         if len(grupo['_mensajes_lista']) > 1:
             bullet_points = "\n".join(f"• {m}" for m in grupo['_mensajes_lista'])
             grupo['message'] = f"Se detectaron múltiples observaciones en esta factura:\n{bullet_points}"
+            grupo['title'] = "Factura con múltiples observaciones"
         grupo.pop('_mensajes_lista', None)
 
     return alertas_finales
@@ -855,19 +859,51 @@ async def resolver_alerta(id_alerta: int) -> bool:
                 # 1. Obtener la factura_id, adjunto_id y metadatos de la factura asociada
                 await cur.execute(
                     """
-                    SELECT a.factura_id, a.adjunto_id, f.numero_factura, f.id_tercero_emisor
+                    SELECT a.factura_id, a.adjunto_id, f.numero_factura, f.id_tercero_emisor, ac.correo_id
                     FROM facturacion.alerta a
                     LEFT JOIN facturacion.factura f ON f.id_factura = a.factura_id
+                    LEFT JOIN facturacion.adjuntos_correo ac ON ac.adjunto_id = a.adjunto_id
                     WHERE a.id_alerta = %s
                     """,
                     (id_alerta,)
                 )
                 row = await cur.fetchone()
                 if row:
-                    factura_id, adjunto_id, numero_factura, id_tercero_emisor = row
+                    factura_id, adjunto_id, numero_factura, id_tercero_emisor, correo_id = row
                     
-                    # Si la alerta tiene factura vinculada con número y emisor, resolvemos todas las alertas
-                    # de cualquier factura con el mismo número y emisor, además del adjunto
+                    # Si la alerta tiene un correo_id asociado, resolvemos todas las alertas de ese correo
+                    if correo_id:
+                        await cur.execute(
+                            """
+                            UPDATE facturacion.alerta 
+                            SET resuelta = TRUE 
+                            WHERE id_alerta IN (
+                                SELECT a2.id_alerta 
+                                FROM facturacion.alerta a2
+                                JOIN facturacion.adjuntos_correo ac2 ON ac2.adjunto_id = a2.adjunto_id
+                                WHERE ac2.correo_id = %s
+                            ) OR adjunto_id = %s OR factura_id = %s
+                            """,
+                            (correo_id, adjunto_id, factura_id)
+                        )
+                        # También resolvemos por número de factura y emisor si aplica
+                        if numero_factura and id_tercero_emisor:
+                            await cur.execute(
+                                """
+                                UPDATE facturacion.alerta 
+                                SET resuelta = TRUE 
+                                WHERE id_alerta IN (
+                                    SELECT a2.id_alerta 
+                                    FROM facturacion.alerta a2
+                                    JOIN facturacion.factura f2 ON f2.id_factura = a2.factura_id
+                                    WHERE f2.numero_factura = %s AND f2.id_tercero_emisor = %s
+                                )
+                                """,
+                                (numero_factura, id_tercero_emisor)
+                            )
+                        return True
+                    
+                    # Si no tiene correo_id, pero tiene factura vinculada con número y emisor, resolvemos por esos campos
                     if numero_factura and id_tercero_emisor:
                         await cur.execute(
                             """

@@ -781,3 +781,19 @@ async def obtener_top_errores_ingesta(fecha_inicio: str | None = None, fecha_fin
         logger.error(f"Error al obtener top errores: {e}")
     return []
 
+
+async def resolver_alerta(id_alerta: int) -> bool:
+    """Marca una alerta como resuelta en la base de datos."""
+    pool = get_pool()
+    try:
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE facturacion.alerta SET resuelta = TRUE WHERE id_alerta = %s",
+                    (id_alerta,)
+                )
+                return cur.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error al resolver alerta {id_alerta}: {e}")
+        return False
+

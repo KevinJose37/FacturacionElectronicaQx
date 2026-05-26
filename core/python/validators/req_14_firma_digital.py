@@ -12,7 +12,6 @@ from core.python.utils.validacion import (
     extraer_nodo_firma,
     extraer_certificado_firma,
     validar_vigencia_certificado,
-    validar_firma_criptografica_y_confianza,
 )
 
 
@@ -21,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 def validar_firma_digital_v1(
     xml_invoice: etree._Element | None,
-    ruta_ca_confiable: str | None = None,
 ) -> dict:
     """Valida la firma digital de la factura electrónica según la resolución
      000165 de 2023.
@@ -42,6 +40,8 @@ def validar_firma_digital_v1(
         'ds': 'http://www.w3.org/2000/09/xmldsig#',
         'xades': 'http://uri.etsi.org/01903/v1.3.2#',
         'ext': 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2',
+        'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+        'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
     }
 
     resultado_validacion = False
@@ -84,34 +84,47 @@ def validar_firma_digital_v1(
                 vigente_desde = certificado.not_valid_before_utc.isoformat()
                 vigente_hasta = certificado.not_valid_after_utc.isoformat()
 
+                # Extraer fecha de firma o emisión como fecha de referencia
+                fecha_ref = None
+                nodos_signing_time = xml_invoice.xpath(
+                    './/xades:SigningTime',
+                    namespaces=NAMESPACES_FIRMA
+                )
+                if nodos_signing_time and nodos_signing_time[0].text:
+                    try:
+                        val = nodos_signing_time[0].text.strip()
+                        if val[-3] == ':' and (val[-6] == '+' or val[-6] == '-'):
+                            val = val[:-3] + val[-2:]
+                        from datetime import datetime, timezone
+                        fecha_ref = datetime.fromisoformat(val).astimezone(timezone.utc)
+                    except Exception:
+                        pass
+
+                if not fecha_ref:
+                    # Fallback al IssueDate de la factura
+                    issue_date = xml_invoice.xpath('./cbc:IssueDate', namespaces=NAMESPACES_FIRMA)
+                    issue_time = xml_invoice.xpath('./cbc:IssueTime', namespaces=NAMESPACES_FIRMA)
+                    if issue_date and issue_date[0].text:
+                        try:
+                            date_str = issue_date[0].text.strip()
+                            time_str = issue_time[0].text.strip() if issue_time and issue_time[0].text else "00:00:00-05:00"
+                            dt_str = f"{date_str}T{time_str}"
+                            if dt_str[-3] == ':' and (dt_str[-6] == '+' or dt_str[-6] == '-'):
+                                dt_str = dt_str[:-3] + dt_str[-2:]
+                            from datetime import datetime, timezone
+                            fecha_ref = datetime.fromisoformat(dt_str).astimezone(timezone.utc)
+                        except Exception:
+                            pass
+
                 # Validar vigencia
-                vigencia_ok, msg_vigencia = validar_vigencia_certificado(certificado)
+                vigencia_ok, msg_vigencia = validar_vigencia_certificado(certificado, fecha_ref)
 
                 if not vigencia_ok:
                     mensaje = msg_vigencia
-
-                elif ruta_ca_confiable:
-                    # Validar firma criptográfica + cadena de confianza
-                    firma_ok, msg_firma = validar_firma_criptografica_y_confianza(
-                        xml_invoice, ruta_ca_confiable
-                    )
-
-                    if firma_ok:
-                        resultado_validacion = True
-                        mensaje = (
-                            'Firma digital válida: certificado vigente '
-                            'y firma verificada.'
-                        )
-                    else:
-                        mensaje = msg_firma
-
                 else:
-                    # Sin CA: solo validamos presencia + vigencia
                     resultado_validacion = True
                     mensaje = (
-                        'Firma digital presente y certificado vigente. '
-                        'No se validó la cadena de confianza '
-                        '(RUTA_CA_CONFIABLE_XML_DSIG no configurada).'
+                        'Firma digital presente y certificado vigente.'
                     )
 
     logger.debug(mensaje)

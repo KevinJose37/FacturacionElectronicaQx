@@ -447,11 +447,22 @@ class InvoiceRepository:
                     f.RAZON_SOCIAL_EMISOR as NOMBRE_EMISOR,
                     adq.NUMERO_DOCUMENTO as NIT_ADQUIRIENTE,
                     f.RAZON_SOCIAL_ADQUIRIENTE as NOMBRE_ADQUIRIENTE,
+                    auth.NUMERO_RESOLUCION as RESOLUCION_DIAN,
+                    (SELECT CODIGO_FORMA_PAGO FROM FACTURACION.PAGO_FACTURA WHERE ID_FACTURA = f.ID_FACTURA LIMIT 1) as FORMA_PAGO,
+                    (SELECT CODIGO_MEDIO_PAGO FROM FACTURACION.PAGO_FACTURA WHERE ID_FACTURA = f.ID_FACTURA LIMIT 1) as MEDIO_PAGO,
+                    (SELECT STRING_AGG(CODIGO_RESPONSABILIDAD, ', ') FROM FACTURACION.CONDICION_FISCAL_FACTURA WHERE ID_FACTURA = f.ID_FACTURA) as CALIDAD_TRIBUTARIA,
+                    (SELECT SUM(VALOR_IMPUESTO) FROM FACTURACION.IMPUESTO_FACTURA WHERE ID_FACTURA = f.ID_FACTURA AND CODIGO_IMPUESTO = '01') as VALOR_IVA,
+                    (SELECT fs.RAZON_SOCIAL || ' / ' || ps.NOMBRE_SOFTWARE 
+                     FROM FACTURACION.SOFTWARE_FACTURA sf 
+                     JOIN FACTURACION.PRODUCTO_SOFTWARE ps ON sf.ID_PRODUCTO_SOFTWARE = ps.ID_PRODUCTO_SOFTWARE 
+                     JOIN FACTURACION.FABRICANTE_SOFTWARE fs ON ps.ID_FABRICANTE_SOFTWARE = fs.ID_FABRICANTE_SOFTWARE 
+                     WHERE sf.ID_FACTURA = f.ID_FACTURA LIMIT 1) as INFORMACION_SOFTWARE,
                     (SELECT STRING_AGG(CODIGO_FORMA_PAGO || ' / ' || COALESCE(CODIGO_MEDIO_PAGO, ''), ', ') 
                      FROM FACTURACION.PAGO_FACTURA WHERE ID_FACTURA = f.ID_FACTURA) as PAGOS
                 FROM FACTURACION.FACTURA f
                 LEFT JOIN FACTURACION.TERCERO emisor ON f.ID_TERCERO_EMISOR = emisor.ID_TERCERO
                 LEFT JOIN FACTURACION.TERCERO adq ON f.ID_TERCERO_ADQUIRIENTE = adq.ID_TERCERO
+                LEFT JOIN FACTURACION.AUTORIZACION_NUMERACION_DIAN auth ON f.ID_AUTORIZACION = auth.ID_AUTORIZACION
                 WHERE f.CUFE = %s
                 """,
                 (cufe,)
@@ -461,6 +472,10 @@ class InvoiceRepository:
                 return None
             columnas = [desc[0].lower() for desc in cur.description]
             datos = dict(zip(columnas, row))
+            # Mapeos de compatibilidad para el verificador gráfico
+            datos['razon_social_emisor'] = datos.get('nombre_emisor')
+            datos['razon_social_adquiriente'] = datos.get('nombre_adquiriente')
+            datos['fecha_hora_generacion'] = datos.get('fecha_generacion')
 
             # Obtener detalles de factura
             cur.execute(

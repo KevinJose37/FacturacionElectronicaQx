@@ -34,13 +34,17 @@ def validar_adquiriente_v1(xml_raw: etree._Element) -> dict:
 
     XPATH_BASE = './cac:AccountingCustomerParty/cac:Party'
 
-    # Extraer nombre: primero PartyLegalEntity (más confiable), luego PartyName
+    # Extraer nombre: primero PartyLegalEntity (más confiable), luego PartyName, luego PartyTaxScheme
     nodos_razon_social = xml_raw.xpath(
         XPATH_BASE + '/cac:PartyLegalEntity/cbc:RegistrationName',
         namespaces=NAMESPACES
     )
     nodos_nombre_comercial = xml_raw.xpath(
         XPATH_BASE + '/cac:PartyName/cbc:Name', namespaces=NAMESPACES
+    )
+    nodos_razon_social_tax = xml_raw.xpath(
+        XPATH_BASE + '/cac:PartyTaxScheme/cbc:RegistrationName',
+        namespaces=NAMESPACES
     )
 
     razon_social = (
@@ -51,7 +55,11 @@ def validar_adquiriente_v1(xml_raw: etree._Element) -> dict:
         (nodos_nombre_comercial[0].text or '').strip()
         if nodos_nombre_comercial else None
     )
-    nombre = razon_social or nombre_comercial
+    razon_social_tax = (
+        (nodos_razon_social_tax[0].text or '').strip()
+        if nodos_razon_social_tax else None
+    )
+    nombre = razon_social or nombre_comercial or razon_social_tax
 
     # Extraer NIT y atributos
     nodos_nit = xml_raw.xpath(
@@ -84,7 +92,7 @@ def validar_adquiriente_v1(xml_raw: etree._Element) -> dict:
         'valido': validacion['resultado'],
         'mensaje': validacion['mensaje'],
         'datos': {
-            'razon_social': razon_social or nombre,
+            'razon_social': razon_social or razon_social_tax or nombre,
             'nombre_comercial': nombre_comercial,
             'numero_documento': nit,
             'digito_verificador': dv_xml,

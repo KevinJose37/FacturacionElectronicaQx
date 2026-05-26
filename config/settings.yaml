@@ -145,11 +145,16 @@ verificacion_grafica:
     - nit_emisor
     - razon_social_emisor
     - nit_adquiriente
-    - numero_factura
-    - valor_total
-    - cufe
-  campos_deseables:
     - razon_social_adquiriente
+    - numero_factura
+    - resolucion_dian
+    - fecha_hora_generacion
+    - valor_total
+    - forma_pago
+    - medio_pago
+    - calidad_tributaria
     - valor_iva
-    - numero_resolucion
+    - cufe
+    - informacion_software
+  campos_deseables: []
   ia_habilitada: true

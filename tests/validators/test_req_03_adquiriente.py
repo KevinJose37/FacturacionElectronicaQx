@@ -80,3 +80,24 @@ def test_validar_adquiriente_v1_consumidor_final(namespaces):
     # Tipo 13 (Cédula) no requiere DV
     assert resultado['valido'] is True
     assert resultado['datos']['numero_documento'] == '222222222'
+
+def test_validar_adquiriente_v1_tax_scheme(namespaces):
+    """Prueba validación de adquiriente usando fallback de PartyTaxScheme/RegistrationName."""
+    xml_content = """
+    <Invoice xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+             xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2">
+        <cac:AccountingCustomerParty>
+            <cac:Party>
+                <cac:PartyTaxScheme>
+                    <cbc:RegistrationName>COMPRADOR EN TAX SCHEME</cbc:RegistrationName>
+                    <cbc:CompanyID schemeName="13">222222222</cbc:CompanyID>
+                </cac:PartyTaxScheme>
+            </cac:Party>
+        </cac:AccountingCustomerParty>
+    </Invoice>
+    """
+    xml = etree.fromstring(xml_content)
+    resultado = validar_adquiriente_v1(xml)
+    assert resultado['valido'] is True
+    assert resultado['datos']['numero_documento'] == '222222222'
+    assert resultado['datos']['razon_social'] == 'COMPRADOR EN TAX SCHEME'

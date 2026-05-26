@@ -536,6 +536,22 @@ class EmailListener:
         Returns:
             dict con IDs registrados, o None si el XML falló.
         """
+        # 0. Verificar que sea una factura electrónica (Invoice)
+        try:
+            from lxml import etree
+            tree = etree.parse(par.xml_path)
+            root = tree.getroot()
+            tag_local = etree.QName(root).localname
+            if tag_local != 'Invoice':
+                logger.info(
+                    "Omitiendo archivo %s: no es una factura electrónica (tipo: %s).",
+                    par.xml_path.name, tag_local
+                )
+                return None
+        except Exception as e:
+            logger.error("Error al verificar tag raíz de %s: %s", par.xml_path.name, e)
+            return None
+
         # 1. Escanear malware — XML es obligatorio
         scan_xml = self._escanear_archivo(par.xml_path)
         if not scan_xml.seguro:

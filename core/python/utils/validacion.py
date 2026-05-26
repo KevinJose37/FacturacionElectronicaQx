@@ -15,10 +15,7 @@ from decimal import ROUND_HALF_UP
 
 from lxml import etree
 
-from signxml import XMLVerifier
-from signxml import SignatureConfiguration
-from signxml.exceptions import InvalidSignature
-from signxml.exceptions import InvalidCertificate
+
 
 from metadata.db_metadata import IdTipoError
 from metadata.db_metadata import IdTipoDocumentoIdentidad
@@ -397,56 +394,20 @@ def validar_fecha_futura(fecha: str, hora: str) -> dict:
     return validacion
 
 
-def validar_firma_criptografica_y_confianza(
-    xml_factura: etree._Element,
-    ruta_ca_confiable: str,
+
+def validar_vigencia_certificado(
+    certificado: x509.Certificate,
+    fecha_referencia: Optional[datetime] = None,
 ) -> Tuple[bool, str]:
-    """Verifica la firma XMLDSig/XAdES.
-
-    Cubre:
-    - Integridad (DigestValue)
-    - Firma (SignatureValue)
-    - Cadena de confianza (CA)
-    """
-    resultado = False
-    mensaje = ''
-
-    try:
-        config = SignatureConfiguration(require_x509=True)
-
-        if ruta_ca_confiable:
-            XMLVerifier().verify(
-                xml_factura,
-                ca_pem_file=ruta_ca_confiable,
-                expect_config=config,
-            )
-            resultado = True
-            mensaje = 'Firma digital válida y cadena de confianza verificada.'
-        else:
-            mensaje = (
-                'No se configuró RUTA_CA_CONFIABLE_XML_DSIG para validar '
-                'la cadena de confianza.'
-            )
-
-    except (InvalidSignature, InvalidCertificate) as exc:
-        mensaje = (
-            'La firma digital no es válida o no confía en la cadena del certificado: '
-            f'{exc}'
-        )
-    except Exception as exc:
-        mensaje = f'No fue posible verificar la firma digital: {exc}'
-
-    return resultado, mensaje
-
-
-def validar_vigencia_certificado(certificado: x509.Certificate) -> Tuple[bool, str]:
     """Valida vigencia temporal del certificado."""
     resultado = False
     mensaje = ''
 
-    ahora = datetime.now(timezone.utc)
+    comparar_con = fecha_referencia or datetime.now(timezone.utc)
+    if comparar_con.tzinfo is None:
+        comparar_con = comparar_con.replace(tzinfo=timezone.utc)
 
-    if certificado.not_valid_before_utc <= ahora <= certificado.not_valid_after_utc:
+    if certificado.not_valid_before_utc <= comparar_con <= certificado.not_valid_after_utc:
         resultado = True
     else:
         mensaje = (

@@ -64,6 +64,16 @@ def validar_lineas_factura_v1(xml_invoice: etree._Element | None) -> dict:
                     './cac:Item/cac:StandardItemIdentification/cbc:ID',
                     namespaces=NAMESPACES
                 )
+                if not codigo_item:
+                    codigo_item = linea.xpath(
+                        './cac:Item/cac:SellersItemIdentification/cbc:ID',
+                        namespaces=NAMESPACES
+                    )
+                if not codigo_item:
+                    codigo_item = linea.xpath(
+                        './cac:Item/cac:BuyersItemIdentification/cbc:ID',
+                        namespaces=NAMESPACES
+                    )
                 precio_unitario = linea.xpath(
                     './cac:Price/cbc:PriceAmount', namespaces=NAMESPACES
                 )

@@ -236,6 +236,24 @@ class InvoiceProcessor:
             )
             return False
 
+        # 1b. Verificar que sea una factura electrónica (Invoice)
+        from lxml import etree
+        tag_local = etree.QName(xml_invoice).localname
+        if tag_local != 'Invoice':
+            logger.warning(
+                'Omitiendo documento %s: no es una factura electrónica (tipo=%s).',
+                s3_key, tag_local
+            )
+            # Marcar todos los eventos de la familia como procesados para limpiarlos de la cola
+            self._repo.marcar_evento_procesado(conn, adjunto_id)
+            if ar_ev:
+                self._repo.marcar_evento_procesado(conn, ar_ev['adjunto_id'])
+            if ad_ev:
+                self._repo.marcar_evento_procesado(conn, ad_ev['adjunto_id'])
+            if pdf_ev:
+                self._repo.marcar_evento_procesado(conn, pdf_ev['adjunto_id'])
+            return True
+
         # 2. CUFE — PASO BLOQUEANTE
         res_cufe = validar_cufe_v1(xml_invoice)
         cufe = res_cufe['datos'].get('cufe')
@@ -299,7 +317,7 @@ class InvoiceProcessor:
         res_imp = validar_impuestos_v1(xml_invoice)
         self._registrar_proceso(conn, adjunto_id, IdTipoProceso.extraccion_impuestos, res_imp)
 
-        res_firma = validar_firma_digital_v1(xml_invoice, None)
+        res_firma = validar_firma_digital_v1(xml_invoice)
         self._registrar_proceso(conn, adjunto_id, IdTipoProceso.validacion_firma_digital, res_firma)
 
         res_qr = validar_qr_code_v1(xml_invoice, cufe)
@@ -511,14 +529,13 @@ class InvoiceProcessor:
                 )
                 return
 
-            resultado = asyncio.run(verificar_representacion_grafica(tmp_path, datos_factura))
+            factura_id = datos_factura.get('id_factura')
+            resultado = asyncio.run(verificar_representacion_grafica(tmp_path, datos_factura, id_factura=factura_id))
             
             aprobado = resultado.get('aprobado', False)
             metodo = resultado.get('metodo', 'DESCONOCIDO')
             observacion = resultado.get('observacion', '')
             campos = resultado.get('campos', {})
-            
-            factura_id = datos_factura.get('id_factura')
             
             if aprobado:
                 mensaje = f"Representación gráfica verificada correctamente ({metodo})."

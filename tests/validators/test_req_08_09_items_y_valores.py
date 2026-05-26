@@ -84,3 +84,28 @@ def test_validar_valor_total_error_diferencia():
     
     assert resultado['valido'] is False
     assert resultado['id_error'] == IdTipoError.valor_total_inconsistente
+
+def test_validar_lineas_sellers_item_id(xml_items):
+    """Prueba de fallback para código de ítem desde SellersItemIdentification."""
+    xml_str = xml_items.replace(
+        "<cac:StandardItemIdentification>\n                    <cbc:ID>SERV-001</cbc:ID>\n                </cac:StandardItemIdentification>",
+        "<cac:SellersItemIdentification>\n                    <cbc:ID>SELL-001</cbc:ID>\n                </cac:SellersItemIdentification>"
+    )
+    xml = etree.fromstring(xml_str)
+    resultado = validar_lineas_factura_v1(xml)
+    
+    assert resultado['valido'] is True
+    assert resultado['datos']['lineas'][0]['codigo_item'] == 'SELL-001'
+
+def test_validar_lineas_buyers_item_id(xml_items):
+    """Prueba de fallback para código de ítem desde BuyersItemIdentification."""
+    xml_str = xml_items.replace(
+        "<cac:StandardItemIdentification>\n                    <cbc:ID>SERV-001</cbc:ID>\n                </cac:StandardItemIdentification>",
+        "<cac:BuyersItemIdentification>\n                    <cbc:ID>BUY-001</cbc:ID>\n                </cac:BuyersItemIdentification>"
+    )
+    xml = etree.fromstring(xml_str)
+    resultado = validar_lineas_factura_v1(xml)
+    
+    assert resultado['valido'] is True
+    assert resultado['datos']['lineas'][0]['codigo_item'] == 'BUY-001'
+

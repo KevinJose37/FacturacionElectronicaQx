@@ -246,11 +246,39 @@ class InvoiceProcessor:
         # 1b. Si es AttachedDocument, extraer el Invoice embebido del CDATA
         from lxml import etree
         tag_local = etree.QName(xml_invoice).localname
+        xml_ar_from_ad = None  # ApplicationResponse embebido en el AD
         if tag_local == 'AttachedDocument':
             ns = {
                 'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
                 'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
             }
+            # Extraer ApplicationResponse del ParentDocumentLineReference
+            xpath_ar = (
+                './/cac:ParentDocumentLineReference'
+                '//cac:Attachment/cac:ExternalReference/cbc:Description'
+            )
+            nodos_ar = xml_invoice.xpath(xpath_ar, namespaces=ns)
+            if nodos_ar and nodos_ar[0].text:
+                try:
+                    xml_ar_from_ad = etree.fromstring(nodos_ar[0].text.strip().encode('utf-8'))
+                    ar_local = etree.QName(xml_ar_from_ad).localname
+                    if ar_local == 'ApplicationResponse':
+                        logger.info(
+                            'ApplicationResponse extraído del AttachedDocument (adjunto=%s).',
+                            adjunto_id,
+                        )
+                    else:
+                        logger.warning(
+                            'Nodo ParentDocumentLineReference no contiene ApplicationResponse (tipo=%s).',
+                            ar_local,
+                        )
+                        xml_ar_from_ad = None
+                except Exception as exc_ar:
+                    logger.warning(
+                        'Error parseando ApplicationResponse embebido: %s', exc_ar,
+                    )
+
+            # Extraer el Invoice principal
             xpath_factura = (
                 './/cac:Attachment/cac:ExternalReference/cbc:Description'
                 '[not(ancestor::cac:ParentDocumentLineReference)]'
@@ -381,6 +409,9 @@ class InvoiceProcessor:
         xml_ar = None
         if ar_ev:
             xml_ar = obtener_xml_s3(ar_ev['uri_almacenamiento'])
+        if xml_ar is None and xml_ar_from_ad is not None:
+            xml_ar = xml_ar_from_ad
+            logger.info('Usando ApplicationResponse embebido del AttachedDocument para validación DIAN.')
 
         res_dian = validar_documento_validacion_dian_v1(xml_invoice, xml_ar)
         ar_adjunto = ar_ev['adjunto_id'] if ar_ev else adjunto_id
@@ -402,7 +433,7 @@ class InvoiceProcessor:
             res_items, res_valor, res_forma, res_medio, res_fiscal,
             res_imp, res_firma, res_qr, res_anexo, res_sw
         ]
-        if ar_ev:
+        if ar_ev or xml_ar_from_ad:
             validaciones_obligatorias.append(res_dian)
         if ad_ev:
             validaciones_obligatorias.append(res_fv)

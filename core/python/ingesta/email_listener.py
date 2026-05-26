@@ -146,12 +146,10 @@ class EmailListener:
                         uids_finales.add(int(u))
             logger.info("Puntero UID=%d. Encontrados %d nuevos correos por secuencia.", ultimo_uid, len(uids_finales))
         else:
-            # Si no hay puntero, traemos los últimos 5 para establecer base
-            status_all, data_all = conn.uid("search", None, "ALL")
-            all_uids = data_all[0].split() if status_all == "OK" and data_all[0] else []
-            for u in all_uids[-5:]:
-                uids_finales.add(int(u))
-            logger.info("BD Limpia: Verificando últimos %d correos para establecer puntero.", len(uids_finales))
+            # BD limpia: no establecemos puntero UID.
+            # Delegamos enteramente a la búsqueda UNSEEN (rama B abajo),
+            # que es filtrada server-side por IMAP y escala a miles de correos.
+            logger.info("BD Limpia: sin puntero UID. Se usará búsqueda UNSEEN.")
 
         # B. Por FLAG (No leídos)
         status_unseen, data_unseen = conn.uid("search", None, "UNSEEN")

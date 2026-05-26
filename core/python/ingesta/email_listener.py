@@ -12,6 +12,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from email.header import decode_header
 from pathlib import Path
 from typing import Optional
  
@@ -167,7 +168,26 @@ class EmailListener:
         # Retornar lista ordenada de bytes
         return [str(u).encode() for u in sorted(list(uids_finales))]
 
-
+    def _decodificar_header(self, raw_header: str | None) -> str:
+        """Decodifica un header de correo con posibles fragmentos MIME encoded."""
+        if not raw_header:
+            return ""
+        try:
+            decoded_parts = decode_header(str(raw_header))
+            header_text = []
+            for part, encoding in decoded_parts:
+                if isinstance(part, bytes):
+                    enc = encoding or "utf-8"
+                    try:
+                        header_text.append(part.decode(enc, errors="replace"))
+                    except LookupError:
+                        header_text.append(part.decode("utf-8", errors="replace"))
+                else:
+                    header_text.append(str(part))
+            return "".join(header_text)
+        except Exception as e:
+            logger.warning("Error decodificando cabecera: %s | %s", raw_header, e)
+            return str(raw_header)
 
     def _extraer_id_mensaje(self, msg: _email.message.Message) -> str:
         """Extrae el Message-ID del correo."""
@@ -793,8 +813,8 @@ class EmailListener:
 
                     # 2. Extraer metadata básica
                     id_mensaje = self._extraer_id_mensaje(msg)
-                    remitente = msg.get("From", "")
-                    asunto = msg.get("Subject", "")
+                    remitente = self._decodificar_header(msg.get("From", ""))
+                    asunto = self._decodificar_header(msg.get("Subject", ""))
                     fecha_envio_raw = msg.get("Date", None)
                     fecha_envio = None
 

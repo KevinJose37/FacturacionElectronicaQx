@@ -107,6 +107,24 @@ class AlertasRepository:
                 except Exception as e:
                     logger.debug("No se pudo vincular alerta a factura automáticamente: %s", e)
 
+            # Validar que factura_id exista antes de insertar (evitar FK violation)
+            if factura_id is not None:
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT 1 FROM facturacion.factura WHERE id_factura = %s",
+                            (factura_id,)
+                        )
+                        if not cur.fetchone():
+                            logger.debug(
+                                "factura_id=%s no existe en BD, alerta se insertará sin FK a factura.",
+                                factura_id,
+                            )
+                            factura_id = None
+                except Exception as e:
+                    logger.debug("No se pudo validar factura_id=%s: %s", factura_id, e)
+                    factura_id = None
+
             with conn.cursor() as cur:
                 cur.execute(
                     """

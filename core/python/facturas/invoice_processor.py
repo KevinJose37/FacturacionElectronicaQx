@@ -169,6 +169,13 @@ class InvoiceProcessor:
             else:
                 ad_ev = ev
 
+        # Promoción: si no hay _invoice explícito pero hay un XML genérico
+        # (AttachedDocument original o XML sin sufijo), promoverlo a invoice_ev.
+        # El pipeline extrae el Invoice embebido del AttachedDocument.
+        if not invoice_ev and ad_ev:
+            invoice_ev = ad_ev
+            ad_ev = None
+
         # Si no hay PDF en los eventos pendientes, buscarlo en la familia completa en la BD
         if not pdf_ev and invoice_ev:
             with self._repo.get_connection() as conn:
@@ -236,9 +243,50 @@ class InvoiceProcessor:
             )
             return False
 
-        # 1b. Verificar que sea una factura electrónica (Invoice)
+        # 1b. Si es AttachedDocument, extraer el Invoice embebido del CDATA
         from lxml import etree
         tag_local = etree.QName(xml_invoice).localname
+        if tag_local == 'AttachedDocument':
+            ns = {
+                'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+                'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+            }
+            xpath_factura = (
+                './/cac:Attachment/cac:ExternalReference/cbc:Description'
+                '[not(ancestor::cac:ParentDocumentLineReference)]'
+            )
+            nodos = xml_invoice.xpath(xpath_factura, namespaces=ns)
+            if nodos and nodos[0].text:
+                try:
+                    xml_invoice = etree.fromstring(nodos[0].text.strip().encode('utf-8'))
+                    tag_local = etree.QName(xml_invoice).localname
+                    logger.info(
+                        'Invoice extraído del AttachedDocument (adjunto=%s).',
+                        adjunto_id,
+                    )
+                except Exception as exc_parse:
+                    logger.error(
+                        'Error parseando Invoice embebido del AttachedDocument %s: %s',
+                        s3_key, exc_parse,
+                    )
+                    self._repo.crear_proceso_ingesta(
+                        conn, adjunto_id, IdTipoProceso.validacion_cufe,
+                        f'Error parseando Invoice embebido: {exc_parse}',
+                        IdEstadoProceso.error,
+                    )
+                    return False
+            else:
+                logger.warning(
+                    'AttachedDocument %s no contiene Invoice embebido.',
+                    s3_key,
+                )
+                self._repo.marcar_evento_procesado(conn, adjunto_id)
+                if ar_ev:
+                    self._repo.marcar_evento_procesado(conn, ar_ev['adjunto_id'])
+                if pdf_ev:
+                    self._repo.marcar_evento_procesado(conn, pdf_ev['adjunto_id'])
+                return True
+
         if tag_local != 'Invoice':
             logger.warning(
                 'Omitiendo documento %s: no es una factura electrónica (tipo=%s).',
@@ -533,7 +581,7 @@ class InvoiceProcessor:
                 return
 
             factura_id = datos_factura.get('id_factura')
-            resultado = asyncio.run(verificar_representacion_grafica(tmp_path, datos_factura, id_factura=factura_id))
+            resultado = asyncio.run(verificar_representacion_grafica(tmp_path, datos_factura, id_factura=factura_id, conn=conn))
             
             aprobado = resultado.get('aprobado', False)
             metodo = resultado.get('metodo', 'DESCONOCIDO')

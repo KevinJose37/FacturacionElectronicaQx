@@ -90,6 +90,7 @@ async def listar_rechazos() -> list:
 
         resultado.append({
             'id': r[0],
+            'db_id': r[6],
             'provider': r[1] or DefaultTextos.sin_nombre,
             'reason': desc,
             'rule': titulo,

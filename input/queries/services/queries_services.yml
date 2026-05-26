@@ -376,7 +376,8 @@ rechazos:
     te.descripcion as motivo_error,
     te.codigo_referencia as codigo_error,
     pi.fecha_inicio as fecha_rechazo,
-    f.id_estado_proceso
+    f.id_estado_proceso,
+    f.id_factura
     FROM facturacion.factura f
     LEFT JOIN facturacion.proceso_ingesta pi ON f.adjunto_id = pi.adjunto_id
       AND pi.id_error IS NOT NULL
@@ -414,3 +415,37 @@ validaciones:
     JOIN facturacion.tipo_proceso tp ON pi.id_proceso = tp.id_tipo_proceso
     GROUP BY tp.codigo_referencia
     ORDER BY (COUNT(*) FILTER (WHERE pi.id_error IS NOT NULL)) DESC
+
+  reglas_con_fechas: >
+    SELECT tp.codigo_referencia as etapa,
+    COUNT(*) FILTER (WHERE pi.id_error IS NULL) as passed,
+    COUNT(*) FILTER (WHERE pi.id_error IS NOT NULL) as failed
+    FROM facturacion.proceso_ingesta pi
+    JOIN facturacion.tipo_proceso tp ON pi.id_proceso = tp.id_tipo_proceso
+    WHERE pi.fecha_inicio >= %s AND pi.fecha_inicio <= %s
+    GROUP BY tp.codigo_referencia
+    ORDER BY (COUNT(*) FILTER (WHERE pi.id_error IS NOT NULL)) DESC
+
+  facturas_por_regla: >
+    SELECT f.numero_factura, f.razon_social_emisor,
+    te.descripcion as motivo_error,
+    pi.fecha_inicio, f.id_factura
+    FROM facturacion.proceso_ingesta pi
+    JOIN facturacion.tipo_proceso tp ON pi.id_proceso = tp.id_tipo_proceso
+    LEFT JOIN facturacion.factura f ON pi.adjunto_id = f.adjunto_id
+    LEFT JOIN facturacion.tipo_error te ON pi.id_error = te.id_tipo_error
+    WHERE tp.codigo_referencia = %s AND pi.id_error IS NOT NULL
+    AND pi.fecha_inicio >= %s AND pi.fecha_inicio <= %s
+    ORDER BY pi.fecha_inicio DESC LIMIT 50
+
+  tendencia_7d: >
+    SELECT tp.codigo_referencia as etapa,
+    pi.fecha_inicio::date as dia,
+    COUNT(*) FILTER (WHERE pi.id_error IS NULL) as passed,
+    COUNT(*) FILTER (WHERE pi.id_error IS NOT NULL) as failed
+    FROM facturacion.proceso_ingesta pi
+    JOIN facturacion.tipo_proceso tp ON pi.id_proceso = tp.id_tipo_proceso
+    WHERE pi.fecha_inicio >= CURRENT_DATE - INTERVAL '7 days'
+    GROUP BY tp.codigo_referencia, pi.fecha_inicio::date
+    ORDER BY tp.codigo_referencia, dia
+

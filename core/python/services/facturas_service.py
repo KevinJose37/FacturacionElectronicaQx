@@ -304,6 +304,9 @@ async def obtener_xml_factura_by_id(id_factura: int) -> tuple[bytes, str] | None
 async def obtener_detalle_verificacion(id_factura: int) -> dict | None:
     """Obtiene el detalle de verificación gráfica y datos XML clave para la revisión manual.
 
+    Devuelve los 13 campos que corresponden a los numerales 1-5, 8-13, 15 y 18
+    del artículo 11 de la Resolución 000165 de 2023.
+
     Args:
         id_factura: ID de la factura.
 
@@ -328,7 +331,20 @@ async def obtener_detalle_verificacion(id_factura: int) -> dict | None:
             f.denominacion,
             auth.numero_resolucion as resolucion_dian,
             (SELECT codigo_forma_pago FROM facturacion.pago_factura WHERE id_factura = f.id_factura LIMIT 1) as forma_pago,
-            (SELECT SUM(valor_impuesto) FROM facturacion.impuesto_factura WHERE id_factura = f.id_factura AND codigo_impuesto = '01') as iva
+            (SELECT SUM(valor_impuesto) FROM facturacion.impuesto_factura WHERE id_factura = f.id_factura AND codigo_impuesto = '01') as iva,
+            f.contenido_qr,
+            f.fecha_generacion,
+            (SELECT STRING_AGG(df.descripcion_item, '; ' ORDER BY df.numero_linea)
+             FROM facturacion.detalle_factura df WHERE df.id_factura = f.id_factura) as descripcion_items,
+            (SELECT fs.razon_social
+             FROM facturacion.software_factura sf
+             JOIN facturacion.producto_software ps ON sf.id_producto_software = ps.id_producto_software
+             JOIN facturacion.fabricante_software fs ON ps.id_fabricante_software = fs.id_fabricante_software
+             WHERE sf.id_factura = f.id_factura LIMIT 1) as fabricante_software,
+            (SELECT ps.nombre_software
+             FROM facturacion.software_factura sf
+             JOIN facturacion.producto_software ps ON sf.id_producto_software = ps.id_producto_software
+             WHERE sf.id_factura = f.id_factura LIMIT 1) as nombre_software
         FROM facturacion.factura f
         LEFT JOIN facturacion.tercero emisor ON f.id_tercero_emisor = emisor.id_tercero
         LEFT JOIN facturacion.tercero adq ON f.id_tercero_adquiriente = adq.id_tercero
@@ -359,20 +375,35 @@ async def obtener_detalle_verificacion(id_factura: int) -> dict | None:
                     if isinstance(parsed, dict):
                         verificacion_ia = parsed
 
+                # Mapear código de forma de pago a texto legible
+                _FORMAS_PAGO = {'1': 'Contado', '2': 'Crédito'}
+                codigo_forma_pago = str(row[13]).strip() if row[13] else ''
+                forma_pago_texto = _FORMAS_PAGO.get(codigo_forma_pago, codigo_forma_pago)
+
+                # Formatear fecha/hora de generación
+                fecha_hora_gen = ''
+                if row[16]:
+                    fecha_hora_gen = row[16].strftime('%Y-%m-%d %H:%M:%S')
+
                 datos_xml = {
-                    'numero_factura': row[2] or '',
-                    'prefijo_facturacion': row[3] or '',
                     'razon_social_emisor': row[4] or '',
                     'nit_emisor': row[5] or '',
                     'razon_social_adquiriente': row[6] or '',
                     'nit_adquiriente': row[7] or '',
-                    'valor_total': str(row[8]) if row[8] is not None else '',
-                    'cufe': row[9] or '',
+                    'numero_factura': row[2] or '',
                     'fecha_expedicion': row[10].strftime('%Y-%m-%d') if row[10] else '',
+                    'descripcion_items': row[17] or '',
+                    'valor_total': str(row[8]) if row[8] is not None else '',
+                    'iva': str(row[14]) if row[14] is not None else '',
+                    'cufe': row[9] or '',
+                    'contenido_qr': row[15] or '',
+                    'fabricante_software': row[18] or '',
+                    'nombre_software': row[19] or '',
+                    'fecha_hora_generacion': fecha_hora_gen,
+                    'forma_pago': forma_pago_texto,
                     'denominacion': row[11] or '',
                     'resolucion_dian': row[12] or '',
-                    'forma_pago': row[13] or '',
-                    'iva': str(row[14]) if row[14] is not None else '',
+                    'prefijo_facturacion': row[3] or '',
                 }
 
                 return {

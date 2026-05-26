@@ -126,6 +126,39 @@ class AlertasRepository:
                     factura_id = None
 
             with conn.cursor() as cur:
+                # ── Dedup guard: skip if an unresolved alert of the same
+                #    type already exists for this factura or adjunto. ──
+                dedup_id = None
+                if factura_id is not None:
+                    cur.execute(
+                        "SELECT id_alerta FROM facturacion.alerta "
+                        "WHERE codigo_tipo_alerta = %s AND factura_id = %s "
+                        "AND resuelta = FALSE LIMIT 1",
+                        (codigo_tipo, factura_id),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        dedup_id = row[0]
+                elif adjunto_id is not None:
+                    cur.execute(
+                        "SELECT id_alerta FROM facturacion.alerta "
+                        "WHERE codigo_tipo_alerta = %s AND adjunto_id = %s "
+                        "AND resuelta = FALSE LIMIT 1",
+                        (codigo_tipo, adjunto_id),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        dedup_id = row[0]
+
+                if dedup_id is not None:
+                    logger.debug(
+                        "Alerta duplicada omitida: tipo=%s factura_id=%s adjunto_id=%s (existente=%s)",
+                        codigo_tipo, factura_id, adjunto_id, dedup_id,
+                    )
+                    if conn_propia:
+                        conn.commit()
+                    return dedup_id
+
                 cur.execute(
                     """
                     INSERT INTO FACTURACION.ALERTA (

@@ -367,7 +367,7 @@ async def obtener_ultimas_facturas(limite: int = 8, filtros: dict = None) -> lis
             'provider': r[1] or DefaultTextos.sin_nombre,
             'type': DefaultTextos.factura_electronica,
             'status': estado,
-            'date': r[3].strftime('%d/%m/%Y %H:%M') if r[3] else '',
+            'date': r[3].strftime('%Y-%m-%d') if r[3] else '',
             'amount': float(r[4]) if r[4] else 0,
             'time': '1.2s',
         })
@@ -508,7 +508,7 @@ async def obtener_eventos_por_minuto(ventana_minutos: int = 10) -> dict:
     resultado = {'events_per_min': epm, 'capacity_pct': pct}
     return resultado
 
-async def obtener_alertas_activas(limite: int = 5) -> list:
+async def obtener_alertas_activas(limite: int = 50) -> list:
     """Obtiene las alertas activas (no resueltas) más recientes con limpieza de errores técnicos."""
     pool = get_pool()
     async with pool.connection() as conn:

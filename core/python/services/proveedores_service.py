@@ -35,10 +35,12 @@ async def listar_proveedores() -> list:
     resultado = []
     for r in filas:
         total = r[3]
-        validadas = r[4]
-        tasa = round((validadas / max(total, 1)) * 100, 1)
+        xml_validadas = r[4]
+        pdf_validadas = r[5]
+        tasa_xml = round((xml_validadas / max(total, 1)) * 100, 1)
+        tasa_pdf = round((pdf_validadas / max(total, 1)) * 100, 1)
 
-        ultima = r[5]
+        ultima = r[6]
         if ultima:
             if ultima.tzinfo is None:
                 ultima = ultima.replace(tzinfo=timezone.utc)
@@ -47,9 +49,9 @@ async def listar_proveedores() -> list:
         else:
             sync_texto = FormatoTiempo.nunca
 
-        if tasa >= umbral_activo:
+        if tasa_xml >= umbral_activo:
             estado = 'active'
-        elif tasa >= umbral_revision:
+        elif tasa_xml >= umbral_revision:
             estado = 'review'
         else:
             estado = 'blocked'
@@ -58,7 +60,8 @@ async def listar_proveedores() -> list:
             'name': r[1] or DefaultTextos.sin_nombre,
             'nit': r[0],
             'invoices': total,
-            'validRate': tasa,
+            'validRateXml': tasa_xml,
+            'validRatePdf': tasa_pdf,
             'status': estado,
             'lastSync': sync_texto,
         })

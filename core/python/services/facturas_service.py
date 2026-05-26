@@ -336,7 +336,10 @@ async def obtener_detalle_verificacion(id_factura: int) -> dict | None:
             f.fecha_generacion,
             (SELECT STRING_AGG(df.descripcion_item, '; ' ORDER BY df.numero_linea)
              FROM facturacion.detalle_factura df WHERE df.id_factura = f.id_factura) as descripcion_items,
-            (SELECT fs.razon_social
+            (SELECT COALESCE(
+                (SELECT pt.razon_social FROM facturacion.proveedor_tecnologico pt WHERE pt.nit_proveedor = fs.numero_documento),
+                CASE WHEN fs.razon_social IN ('31', '6', '13', '21', '22', '41', '42') THEN 'Proveedor Tecnológico (' || fs.numero_documento || ')' ELSE fs.razon_social END
+             )
              FROM facturacion.software_factura sf
              JOIN facturacion.producto_software ps ON sf.id_producto_software = ps.id_producto_software
              JOIN facturacion.fabricante_software fs ON ps.id_fabricante_software = fs.id_fabricante_software
@@ -385,6 +388,16 @@ async def obtener_detalle_verificacion(id_factura: int) -> dict | None:
                 if row[16]:
                     fecha_hora_gen = row[16].strftime('%Y-%m-%d %H:%M:%S')
 
+                import re as _re
+                fabricante_software = row[18] or ''
+                nombre_software = row[19] or ''
+
+                uuid_pattern = _re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', _re.IGNORECASE)
+                if uuid_pattern.match(nombre_software.strip()):
+                    short_uuid = nombre_software.strip().split('-')[0]
+                    fabricante_clean = fabricante_software.split(' / ')[0] if fabricante_software else 'Proveedor'
+                    nombre_software = f"Software de {fabricante_clean} ({short_uuid})"
+
                 datos_xml = {
                     'razon_social_emisor': row[4] or '',
                     'nit_emisor': row[5] or '',
@@ -397,8 +410,8 @@ async def obtener_detalle_verificacion(id_factura: int) -> dict | None:
                     'iva': str(row[14]) if row[14] is not None else '',
                     'cufe': row[9] or '',
                     'contenido_qr': row[15] or '',
-                    'fabricante_software': row[18] or '',
-                    'nombre_software': row[19] or '',
+                    'fabricante_software': fabricante_software,
+                    'nombre_software': nombre_software,
                     'fecha_hora_generacion': fecha_hora_gen,
                     'forma_pago': forma_pago_texto,
                     'denominacion': row[11] or '',

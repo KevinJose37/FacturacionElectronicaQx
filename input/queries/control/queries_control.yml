@@ -35,6 +35,7 @@ control:
                ))
            ))
           )
+      AND (%s::text IS NULL OR UPPER(fc.forma_pago) = UPPER(%s::text))
     ORDER BY f.fecha_creacion DESC
     LIMIT %s OFFSET %s
 
@@ -71,6 +72,7 @@ control:
                ))
            ))
           )
+      AND (%s::text IS NULL OR UPPER(fc.forma_pago) = UPPER(%s::text))
 
   actualizar: >
     UPDATE facturacion.factura_control

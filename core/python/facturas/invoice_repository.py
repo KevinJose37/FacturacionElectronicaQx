@@ -441,8 +441,10 @@ class InvoiceRepository:
                     f.PREFIJO_FACTURACION,
                     f.NUMERO_FACTURA,
                     f.FECHA_GENERACION,
+                    f.FECHA_EXPEDICION,
                     f.VALOR_TOTAL,
                     f.HASH_FIRMA_DIGITAL,
+                    f.CONTENIDO_QR,
                     emisor.NUMERO_DOCUMENTO as NIT_EMISOR,
                     f.RAZON_SOCIAL_EMISOR as NOMBRE_EMISOR,
                     adq.NUMERO_DOCUMENTO as NIT_ADQUIRIENTE,
@@ -452,11 +454,21 @@ class InvoiceRepository:
                     (SELECT CODIGO_MEDIO_PAGO FROM FACTURACION.PAGO_FACTURA WHERE ID_FACTURA = f.ID_FACTURA LIMIT 1) as MEDIO_PAGO,
                     (SELECT STRING_AGG(CODIGO_RESPONSABILIDAD, ', ') FROM FACTURACION.CONDICION_FISCAL_FACTURA WHERE ID_FACTURA = f.ID_FACTURA) as CALIDAD_TRIBUTARIA,
                     (SELECT SUM(VALOR_IMPUESTO) FROM FACTURACION.IMPUESTO_FACTURA WHERE ID_FACTURA = f.ID_FACTURA AND CODIGO_IMPUESTO = '01') as VALOR_IVA,
-                    (SELECT fs.RAZON_SOCIAL || ' / ' || ps.NOMBRE_SOFTWARE 
+                    (SELECT 
+                        COALESCE(
+                            (SELECT pt.RAZON_SOCIAL FROM FACTURACION.PROVEEDOR_TECNOLOGICO pt WHERE pt.NIT_PROVEEDOR = fs.NUMERO_DOCUMENTO),
+                            CASE WHEN fs.RAZON_SOCIAL IN ('31', '6', '13', '21', '22', '41', '42') THEN 'Proveedor Tecnológico (' || fs.NUMERO_DOCUMENTO || ')' ELSE fs.RAZON_SOCIAL END
+                        ) || ' / ' || ps.NOMBRE_SOFTWARE 
                      FROM FACTURACION.SOFTWARE_FACTURA sf 
                      JOIN FACTURACION.PRODUCTO_SOFTWARE ps ON sf.ID_PRODUCTO_SOFTWARE = ps.ID_PRODUCTO_SOFTWARE 
                      JOIN FACTURACION.FABRICANTE_SOFTWARE fs ON ps.ID_FABRICANTE_SOFTWARE = fs.ID_FABRICANTE_SOFTWARE 
                      WHERE sf.ID_FACTURA = f.ID_FACTURA LIMIT 1) as INFORMACION_SOFTWARE,
+                    (SELECT ps.NOMBRE_SOFTWARE 
+                     FROM FACTURACION.SOFTWARE_FACTURA sf 
+                     JOIN FACTURACION.PRODUCTO_SOFTWARE ps ON sf.ID_PRODUCTO_SOFTWARE = ps.ID_PRODUCTO_SOFTWARE 
+                     WHERE sf.ID_FACTURA = f.ID_FACTURA LIMIT 1) as NOMBRE_SOFTWARE,
+                    (SELECT STRING_AGG(DF.DESCRIPCION_ITEM, '; ' ORDER BY DF.NUMERO_LINEA)
+                     FROM FACTURACION.DETALLE_FACTURA DF WHERE DF.ID_FACTURA = f.ID_FACTURA) as DESCRIPCION_ITEMS,
                     (SELECT STRING_AGG(CODIGO_FORMA_PAGO || ' / ' || COALESCE(CODIGO_MEDIO_PAGO, ''), ', ') 
                      FROM FACTURACION.PAGO_FACTURA WHERE ID_FACTURA = f.ID_FACTURA) as PAGOS
                 FROM FACTURACION.FACTURA f
@@ -491,6 +503,8 @@ class InvoiceRepository:
             # Formatear fechas e importes para json
             if datos.get('fecha_generacion'):
                 datos['fecha_generacion'] = datos['fecha_generacion'].isoformat()
+            if datos.get('fecha_expedicion'):
+                datos['fecha_expedicion'] = datos['fecha_expedicion'].isoformat() if hasattr(datos['fecha_expedicion'], 'isoformat') else str(datos['fecha_expedicion'])
             if datos.get('valor_total') is not None:
                 datos['valor_total'] = float(datos['valor_total'])
             
@@ -839,6 +853,17 @@ class InvoiceRepository:
     ) -> int:
         """Inserta o actualiza un fabricante de software."""
         with conn.cursor() as cur:
+            # Consultar si el NIT existe en PROVEEDOR_TECNOLOGICO para usar el nombre corporativo real
+            cur.execute(
+                "SELECT RAZON_SOCIAL FROM FACTURACION.PROVEEDOR_TECNOLOGICO WHERE NIT_PROVEEDOR = %s",
+                (numero_documento,)
+            )
+            row = cur.fetchone()
+            if row:
+                razon_social = row[0]
+            elif razon_social in ('31', '6', '13', '21', '22', '41', '42'):
+                razon_social = f"Proveedor Tecnológico ({numero_documento})"
+
             cur.execute(
                 """
                 INSERT INTO FACTURACION.FABRICANTE_SOFTWARE (

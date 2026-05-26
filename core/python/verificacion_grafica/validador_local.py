@@ -28,6 +28,10 @@ CAMPOS_DESEABLES = _config.get("campos_deseables", [
     "forma_pago",
     "calidad_tributaria",
     "informacion_software",
+    "fecha_expedicion",
+    "descripcion_items",
+    "contenido_qr",
+    "nombre_software",
 ])
 
 
@@ -125,6 +129,33 @@ def comparar_fecha(xml_fecha: str, texto_norm: str) -> bool:
     return False
 
 
+def comparar_qr(qr_url: str, texto_norm: str, cufe: str | None = None) -> bool:
+    """Compara de forma flexible el contenido del QR con el texto del PDF."""
+    if normalizar_texto(qr_url) in texto_norm:
+        return True
+    # Extraer CUFE o UUID del QR y ver si está en el texto
+    hex_matches = re.findall(r'[a-fA-F0-9]{32,}', qr_url)
+    for h in hex_matches:
+        if normalizar_texto(h) in texto_norm:
+            return True
+    if cufe and normalizar_texto(cufe) in texto_norm:
+        return True
+    return False
+
+
+def comparar_nombre_software(xml_nombre: str, texto_norm: str) -> bool:
+    """Compara de forma flexible el nombre del software."""
+    if normalizar_texto(xml_nombre) in texto_norm:
+        return True
+    # Si es un UUID, buscar solo la primera parte (short UUID)
+    uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+    if uuid_pattern.match(xml_nombre.strip()):
+        short_uuid = xml_nombre.strip().split('-')[0]
+        if normalizar_texto(short_uuid) in texto_norm:
+            return True
+    return False
+
+
 def validar_datos_en_texto(
     datos_factura: dict, texto_pdf: str
 ) -> dict:
@@ -151,8 +182,15 @@ def validar_datos_en_texto(
             encontrado = normalizar_moneda(str(valor)) in texto_norm.replace(" ", "")
         elif campo in ("nit_emisor", "nit_adquiriente"):
             encontrado = comparar_nit(str(valor), texto_pdf)
-        elif campo == "fecha_hora_generacion":
+        elif campo in ("fecha_hora_generacion", "fecha_expedicion"):
             encontrado = comparar_fecha(str(valor), texto_norm)
+        elif campo == "descripcion_items":
+            partes = [p.strip() for p in str(valor).split(";") if p.strip()]
+            encontrado = all(buscar_campo_en_texto(p, texto_norm) for p in partes) if partes else False
+        elif campo == "contenido_qr":
+            encontrado = comparar_qr(str(valor), texto_norm, cufe=datos_factura.get("cufe"))
+        elif campo == "nombre_software":
+            encontrado = comparar_nombre_software(str(valor), texto_norm)
         else:
             encontrado = buscar_campo_en_texto(str(valor), texto_norm)
 

@@ -271,7 +271,7 @@ facturas:
         (SELECT STRING_AGG(te.descripcion, '; ') 
          FROM facturacion.proceso_ingesta pi 
          JOIN facturacion.tipo_error te ON pi.id_error = te.id_tipo_error 
-         WHERE pi.adjunto_id = f.adjunto_id AND pi.id_error IS NOT NULL),
+         WHERE pi.adjunto_id = f.adjunto_id AND pi.id_error IS NOT NULL AND f.id_estado_proceso IN (4, 5)),
         ''
     ) as motivo_rechazo_xml,
     COALESCE(f.motivo_rechazo, '') as motivo_rechazo_pdf,
@@ -343,7 +343,8 @@ proveedores:
     MAX(f.razon_social_emisor) as nombre_emisor,
     t.numero_documento as doc_ref,
     COUNT(f.id_factura) as total_facturas,
-    COUNT(f.id_factura) FILTER (WHERE f.id_estado_proceso = 3) as validadas,
+    COUNT(f.id_factura) FILTER (WHERE f.id_estado_proceso = 3) as xml_validadas,
+    COUNT(f.id_factura) FILTER (WHERE f.id_estado_proceso = 3 AND f.verificacion_grafica_estado = 'APROBADA') as pdf_validadas,
     MAX(f.fecha_creacion) as ultima_sync
     FROM facturacion.tercero t
     LEFT JOIN facturacion.factura f ON t.id_tercero = f.id_tercero_emisor

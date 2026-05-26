@@ -25,6 +25,7 @@ async def listar_control(
     page: int = 1,
     size: int = 20,
     busqueda: str | None = None,
+    forma_pago: str | None = None,
 ) -> dict:
     """Lista registros de control de facturas con paginación y filtros.
 
@@ -34,6 +35,7 @@ async def listar_control(
         page: Número de página (1-indexed).
         size: Cantidad de registros por página.
         busqueda: Filtro opcional por tipo de alerta/evento.
+        forma_pago: Filtro opcional por forma de pago (Contado/Crédito).
 
     Returns:
         Diccionario con items paginados y metadata de paginación.
@@ -57,13 +59,13 @@ async def listar_control(
         async with conn.cursor() as cur:
             await cur.execute(
                 _QUERIES['contar'],
-                [fecha_inicio, fecha_fin, busqueda, busqueda, busqueda, busqueda, busqueda],
+                [fecha_inicio, fecha_fin, busqueda, busqueda, busqueda, busqueda, busqueda, forma_pago, forma_pago],
             )
             total_records = (await cur.fetchone())[0]
 
             await cur.execute(
                 _QUERIES['listar'],
-                [fecha_inicio, fecha_fin, busqueda, busqueda, busqueda, busqueda, busqueda, size, offset],
+                [fecha_inicio, fecha_fin, busqueda, busqueda, busqueda, busqueda, busqueda, forma_pago, forma_pago, size, offset],
             )
             filas = await cur.fetchall()
 

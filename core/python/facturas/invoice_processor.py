@@ -479,8 +479,8 @@ class InvoiceProcessor:
                 correo_id=invoice_ev.get('correo_id')
             )
 
-        # 9. Verificación Gráfica del PDF (si existe y se persistió con éxito)
-        if pdf_ev and id_factura > 0:
+        # 9. Verificación Gráfica del PDF (si existe, se persistió con éxito y la factura no tiene fallas de validación de XML)
+        if pdf_ev and id_factura > 0 and not fallas:
             self._ejecutar_verificacion_grafica(conn, cufe, pdf_ev)
 
         if fallas:

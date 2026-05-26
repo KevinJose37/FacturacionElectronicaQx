@@ -51,7 +51,7 @@ dashboard:
     FROM facturacion.alerta a
     LEFT JOIN alerta_con_correo acc ON a.id_alerta = acc.id_alerta
     LEFT JOIN facturacion.correo_entrante ce ON ce.correo_id = acc.correo_id_raiz
-    LEFT JOIN facturacion.factura f ON a.adjunto_id = f.adjunto_id
+    LEFT JOIN facturacion.factura f ON (a.factura_id IS NOT NULL AND f.id_factura = a.factura_id) OR (a.factura_id IS NULL AND f.adjunto_id = a.adjunto_id)
     WHERE a.resuelta = FALSE
     ORDER BY
       CASE a.codigo_prioridad

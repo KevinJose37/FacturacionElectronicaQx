@@ -433,7 +433,7 @@ class InvoiceProcessor:
             res_items, res_valor, res_forma, res_medio, res_fiscal,
             res_imp, res_firma, res_qr, res_anexo, res_sw
         ]
-        if ar_ev or xml_ar_from_ad:
+        if ar_ev or xml_ar_from_ad is not None:
             validaciones_obligatorias.append(res_dian)
         if ad_ev:
             validaciones_obligatorias.append(res_fv)
@@ -628,7 +628,7 @@ class InvoiceProcessor:
                 estado_grafico = 'PENDIENTE'
                 estado_proceso = IdEstadoProceso.procesado
                 
-                campos_fallidos = [c for c, info in campos.items() if not info.get('encontrado')]
+                campos_fallidos = [c for c, info in campos.items() if not (info.get('encontrado') or info.get('presente'))]
                 
                 self._alert_manager.verificacion_grafica_fallida(
                     num_factura=datos_factura.get('numero_factura', 'DESCONOCIDO'),

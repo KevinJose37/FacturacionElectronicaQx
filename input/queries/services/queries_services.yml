@@ -68,7 +68,7 @@ dashboard:
   kpis: >
     SELECT
     COUNT(*) as processed,
-    COUNT(*) FILTER (WHERE id_estado_proceso = 3) as validated,
+    COUNT(*) FILTER (WHERE id_estado_proceso = 3 AND verificacion_grafica_estado = 'APROBADA') as validated,
     COUNT(*) FILTER (WHERE id_estado_proceso IN (4, 5)) as rejected,
     COUNT(*) FILTER (WHERE verificacion_grafica_estado = 'PENDIENTE') as pending_human,
     COUNT(DISTINCT id_tercero_emisor) as providers,
@@ -287,7 +287,7 @@ facturas:
   estadisticas: >
     SELECT
     COUNT(*) as total,
-    COUNT(*) FILTER (WHERE id_estado_proceso = 3) as validadas,
+    COUNT(*) FILTER (WHERE id_estado_proceso = 3 AND verificacion_grafica_estado = 'APROBADA') as validadas,
     COUNT(*) FILTER (WHERE id_estado_proceso IN (1, 2)) as pendientes,
     COUNT(*) FILTER (WHERE id_estado_proceso IN (4, 5)) as rechazadas,
     COALESCE(SUM(valor_total), 0) as monto,

@@ -139,7 +139,7 @@ async def obtener_fecha_mas_antigua() -> str:
     try:
         async with pool.connection() as conn:
             async with conn.cursor() as cur:
-                await cur.execute("SELECT MIN(fecha_creacion) FROM facturacion.factura")
+                await cur.execute("SELECT MIN(fecha_expedicion) FROM facturacion.factura")
                 row = await cur.fetchone()
                 if row and row[0]:
                     return row[0].strftime('%Y-%m-%d')
@@ -509,7 +509,7 @@ async def obtener_eventos_por_minuto(ventana_minutos: int = 10) -> dict:
     return resultado
 
 async def obtener_alertas_activas(limite: int = 50) -> list:
-    """Obtiene las alertas activas (no resueltas) más recientes con limpieza de errores técnicos."""
+    """Obtiene las alertas activas (no resueltas) más recientes resumidas por factura."""
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
@@ -519,7 +519,8 @@ async def obtener_alertas_activas(limite: int = 50) -> list:
             )
             filas = await cur.fetchall()
 
-    resultado = []
+    vistas_facturas = {}
+    alertas_finales = []
     import re
     
     # Patrón para limpiar errores técnicos de base de datos
@@ -529,12 +530,12 @@ async def obtener_alertas_activas(limite: int = 50) -> list:
         # r[0]=id, r[1]=tipo, r[2]=prioridad, r[3]=titulo, r[4]=mensaje, r[5]=fecha, r[6]=remitente, r[7]=asunto
         # r[8]=fecha_correo, r[9]=correo_id, r[10]=id_factura, r[11]=num_factura, r[12]=fecha_factura, r[13]=proveedor
         # r[14]=xml_s3_key, r[15]=pdf_s3_key, r[16]=xml_nombre, r[17]=pdf_nombre
+        id_factura = r[10]
         mensaje_original = r[4]
         remitente = r[6]
         asunto = r[7]
         fecha_correo = r[8].strftime('%d/%m/%Y %H:%M') if r[8] else None
         correo_id = r[9]
-        id_factura = r[10]
         num_factura = r[11]
         fecha_factura = r[12].strftime('%d/%m/%Y') if r[12] else None
         proveedor = r[13]
@@ -555,7 +556,7 @@ async def obtener_alertas_activas(limite: int = 50) -> list:
             match_email = re.search(r'[\w\.-]+@[\w\.-]+', remitente)
             email_limpio = match_email.group(0) if match_email else remitente
 
-        resultado.append({
+        item = {
             'id': r[0],
             'type': r[1],
             'priority': r[2],
@@ -575,9 +576,56 @@ async def obtener_alertas_activas(limite: int = 50) -> list:
                 'numero': num_factura,
                 'fecha': fecha_factura,
                 'proveedor': proveedor
-            } if id_factura and num_factura else None
-        })
-    return resultado
+            } if num_factura else None
+        }
+
+        # Determinación de la clave de agrupación (por número y emisor, o id_factura)
+        clave_factura = None
+        if num_factura and proveedor:
+            clave_factura = (str(num_factura).strip().upper(), str(proveedor).strip().upper())
+        elif id_factura:
+            clave_factura = id_factura
+
+        if clave_factura:
+            if clave_factura in vistas_facturas:
+                # Ya existe una alerta para esta factura, agrupamos
+                grupo = vistas_facturas[clave_factura]
+                
+                # Concatenar el mensaje si es diferente
+                if mensaje_limpio not in grupo['_mensajes_lista']:
+                    grupo['_mensajes_lista'].append(mensaje_limpio)
+                
+                # Mantener la prioridad más crítica
+                prioridades = ['CRITICA', 'ALTA', 'MEDIA', 'BAJA']
+                prio_nueva = item['priority']
+                if prio_nueva in prioridades:
+                    idx_nueva = prioridades.index(prio_nueva)
+                    idx_actual = prioridades.index(grupo['priority'])
+                    if idx_nueva < idx_actual:
+                        grupo['priority'] = prio_nueva
+                
+                # Si la nueva alerta tiene un id_factura válido, nos aseguramos de que el grupo lo conserve
+                if id_factura and not grupo['factura']['id']:
+                    grupo['factura']['id'] = id_factura
+                        
+                grupo['title'] = "Factura con múltiples observaciones"
+            else:
+                # Primera alerta de esta factura
+                item['_mensajes_lista'] = [mensaje_limpio]
+                vistas_facturas[clave_factura] = item
+                alertas_finales.append(item)
+        else:
+            # Alertas del sistema
+            alertas_finales.append(item)
+
+    # Dar formato final de lista a los mensajes agrupados
+    for f_key, grupo in vistas_facturas.items():
+        if len(grupo['_mensajes_lista']) > 1:
+            bullet_points = "\n".join(f"• {m}" for m in grupo['_mensajes_lista'])
+            grupo['message'] = f"Se detectaron múltiples observaciones en esta factura:\n{bullet_points}"
+        grupo.pop('_mensajes_lista', None)
+
+    return alertas_finales
 
 
 
@@ -799,11 +847,59 @@ async def obtener_top_errores_ingesta(fecha_inicio: str | None = None, fecha_fin
 
 
 async def resolver_alerta(id_alerta: int) -> bool:
-    """Marca una alerta como resuelta en la base de datos."""
+    """Marca una alerta (y sus agrupadas de la misma factura) como resueltas en la base de datos."""
     pool = get_pool()
     try:
         async with pool.connection() as conn:
             async with conn.cursor() as cur:
+                # 1. Obtener la factura_id, adjunto_id y metadatos de la factura asociada
+                await cur.execute(
+                    """
+                    SELECT a.factura_id, a.adjunto_id, f.numero_factura, f.id_tercero_emisor
+                    FROM facturacion.alerta a
+                    LEFT JOIN facturacion.factura f ON f.id_factura = a.factura_id
+                    WHERE a.id_alerta = %s
+                    """,
+                    (id_alerta,)
+                )
+                row = await cur.fetchone()
+                if row:
+                    factura_id, adjunto_id, numero_factura, id_tercero_emisor = row
+                    
+                    # Si la alerta tiene factura vinculada con número y emisor, resolvemos todas las alertas
+                    # de cualquier factura con el mismo número y emisor, además del adjunto
+                    if numero_factura and id_tercero_emisor:
+                        await cur.execute(
+                            """
+                            UPDATE facturacion.alerta 
+                            SET resuelta = TRUE 
+                            WHERE id_alerta IN (
+                                SELECT a2.id_alerta 
+                                FROM facturacion.alerta a2
+                                JOIN facturacion.factura f2 ON f2.id_factura = a2.factura_id
+                                WHERE f2.numero_factura = %s AND f2.id_tercero_emisor = %s
+                            ) OR adjunto_id = %s OR factura_id = %s
+                            """,
+                            (numero_factura, id_tercero_emisor, adjunto_id, factura_id)
+                        )
+                        return True
+                    
+                    if factura_id:
+                        # Resolver todas las del mismo factura_id
+                        await cur.execute(
+                            "UPDATE facturacion.alerta SET resuelta = TRUE WHERE factura_id = %s OR adjunto_id = %s",
+                            (factura_id, adjunto_id)
+                        )
+                        return True
+                    elif adjunto_id:
+                        # Resolver todas las del mismo adjunto_id
+                        await cur.execute(
+                            "UPDATE facturacion.alerta SET resuelta = TRUE WHERE adjunto_id = %s",
+                            (adjunto_id,)
+                        )
+                        return True
+                
+                # Fallback standard single alert resolve
                 await cur.execute(
                     "UPDATE facturacion.alerta SET resuelta = TRUE WHERE id_alerta = %s",
                     (id_alerta,)

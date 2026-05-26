@@ -7,7 +7,7 @@ from typing import Optional
 
 from core.python.verificacion_grafica.extractor_texto_pdf import (
     extraer_texto_pdf,
-    renderizar_pdf_a_base64,
+    renderizar_pdf_a_base64_paginas,
 )
 from core.python.verificacion_grafica.validador_local import (
     validar_datos_en_texto,
@@ -89,9 +89,9 @@ async def verificar_representacion_grafica(
 
     # ── Nivel 2: Fallback con IA ──
     try:
-        imagen_b64 = renderizar_pdf_a_base64(ruta_pdf)
+        imagenes_b64 = renderizar_pdf_a_base64_paginas(ruta_pdf)
         resultado_ia = await verificar_con_ia(
-            imagen_b64, datos_factura, campos_fallidos
+            imagenes_b64, datos_factura, campos_fallidos
         )
 
         # Merge local results (for fields that passed level 1) with IA results

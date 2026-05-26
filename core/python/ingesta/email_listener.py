@@ -38,6 +38,9 @@ from utils.factura_filter import FacturaFilter
 from utils.malware_scanner import MalwareScanner
 from utils.s3_utils import subir_archivo_s3
 
+import xml.etree.ElementTree as ET
+import psycopg
+
 load_dotenv()
 
 _CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "settings.yaml"
@@ -572,10 +575,11 @@ class EmailListener:
         # de extracción (xml_utils.extraer_xmls_embebidos).
         TAGS_FACTURA_VALIDOS = {'Invoice', 'AttachedDocument'}
         try:
-            from lxml import etree
-            tree = etree.parse(par.xml_path)
+            tree = ET.parse(par.xml_path)
             root = tree.getroot()
-            tag_local = etree.QName(root).localname
+            tag_local = root.tag
+            if '}' in tag_local:
+                tag_local = tag_local.split('}')[-1]
             if tag_local not in TAGS_FACTURA_VALIDOS:
                 logger.info(
                     "Omitiendo archivo %s: no es una factura electrónica (tipo: %s).",
@@ -802,8 +806,8 @@ class EmailListener:
                 self._validator.temp_root = Path(temp_dir_str)
                 
                 try:
-                    # 1. FETCH del correo y marcarlo como leído inmediatamente para evitar procesamientos concurrentes
-                    status, data = conn.uid("fetch", uid, "(BODY[])")
+                    # 1. FETCH del correo usando PEEK para evitar marcarlo como leído prematuramente
+                    status, data = conn.uid("fetch", uid, "(BODY.PEEK[])")
                     if status != "OK" or not data:
                         logger.error("No se pudo obtener correo UID=%s", uid)
                         return False
@@ -1079,7 +1083,7 @@ class EmailListener:
                     self._attachment_handler = old_handler
                     self._validator.temp_root = old_temp_root
 
-        except ConnectionError as ce:
+        except (ConnectionError, psycopg.Error) as ce:
             logger.error("Falla de infraestructura (reintentable) para correo UID=%s: %s", uid, ce)
             # Intentamos asegurar que el correo permanezca como no leído
             try:

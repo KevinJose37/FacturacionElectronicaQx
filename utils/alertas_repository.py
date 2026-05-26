@@ -91,6 +91,22 @@ class AlertasRepository:
                 conn = self._get_connection()
                 conn_propia = True
 
+            # LÓGICA DE RECUPERACIÓN AUTOMÁTICA DE FACTURA_ID
+            # Si tenemos adjunto_id pero no factura_id, intentamos buscarlo
+            if factura_id is None and adjunto_id is not None:
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT id_factura FROM facturacion.factura WHERE adjunto_id = %s LIMIT 1",
+                            (adjunto_id,)
+                        )
+                        res = cur.fetchone()
+                        if res:
+                            factura_id = res[0]
+                            logger.debug("Viculación automática: Alerta asociada a factura ID=%s por adjunto_id=%s", factura_id, adjunto_id)
+                except Exception as e:
+                    logger.debug("No se pudo vincular alerta a factura automáticamente: %s", e)
+
             with conn.cursor() as cur:
                 cur.execute(
                     """

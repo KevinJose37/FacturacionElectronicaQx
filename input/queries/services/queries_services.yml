@@ -19,10 +19,39 @@
 
 dashboard:
   alertas_activas: >
+    WITH RECURSIVE buscador_raiz AS (
+        SELECT a.id_alerta, ac.adjunto_id, ac.adjunto_padre_id, ac.correo_id
+        FROM facturacion.alerta a
+        JOIN facturacion.adjuntos_correo ac ON a.adjunto_id = ac.adjunto_id
+        WHERE a.resuelta = FALSE
+        UNION ALL
+        SELECT br.id_alerta, p.adjunto_id, p.adjunto_padre_id, p.correo_id
+        FROM facturacion.adjuntos_correo p
+        JOIN buscador_raiz br ON p.adjunto_id = br.adjunto_padre_id
+        WHERE br.correo_id IS NULL
+    ),
+    alerta_con_correo AS (
+        SELECT id_alerta, MAX(correo_id) as correo_id_raiz
+        FROM buscador_raiz
+        WHERE correo_id IS NOT NULL
+        GROUP BY id_alerta
+    )
     SELECT a.id_alerta, a.codigo_tipo_alerta, a.codigo_prioridad, 
-           a.titulo, a.mensaje, a.fecha_creacion, c.remitente, c.asunto
+           a.titulo, a.mensaje, a.fecha_creacion,
+           ce.remitente, ce.asunto, ce.fecha_envio as fecha_correo, ce.correo_id,
+           f.id_factura, f.numero_factura, f.fecha_expedicion, f.razon_social_emisor,
+           (SELECT ac_xml.uri_almacenamiento FROM facturacion.adjuntos_correo ac_xml 
+            WHERE ac_xml.correo_id = ce.correo_id AND ac_xml.id_tipo_archivo = 2 LIMIT 1) as xml_s3_key,
+           (SELECT ac_pdf.uri_almacenamiento FROM facturacion.adjuntos_correo ac_pdf 
+            WHERE ac_pdf.correo_id = ce.correo_id AND ac_pdf.id_tipo_archivo = 3 LIMIT 1) as pdf_s3_key,
+           (SELECT ac_xml.nombre_archivo FROM facturacion.adjuntos_correo ac_xml 
+            WHERE ac_xml.correo_id = ce.correo_id AND ac_xml.id_tipo_archivo = 2 LIMIT 1) as xml_nombre,
+           (SELECT ac_pdf.nombre_archivo FROM facturacion.adjuntos_correo ac_pdf 
+            WHERE ac_pdf.correo_id = ce.correo_id AND ac_pdf.id_tipo_archivo = 3 LIMIT 1) as pdf_nombre
     FROM facturacion.alerta a
-    LEFT JOIN facturacion.correo_entrante c ON a.correo_id = c.correo_id
+    LEFT JOIN alerta_con_correo acc ON a.id_alerta = acc.id_alerta
+    LEFT JOIN facturacion.correo_entrante ce ON ce.correo_id = acc.correo_id_raiz
+    LEFT JOIN facturacion.factura f ON a.adjunto_id = f.adjunto_id
     WHERE a.resuelta = FALSE
     ORDER BY
       CASE a.codigo_prioridad
@@ -34,6 +63,7 @@ dashboard:
       END,
       a.fecha_creacion DESC
     LIMIT %s
+
 
   kpis: >
     SELECT

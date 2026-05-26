@@ -509,14 +509,7 @@ async def obtener_eventos_por_minuto(ventana_minutos: int = 10) -> dict:
     return resultado
 
 async def obtener_alertas_activas(limite: int = 5) -> list:
-    """Obtiene las alertas activas (no resueltas) más recientes.
-
-    Args:
-        limite: Cantidad máxima de alertas a retornar.
-
-    Returns:
-        Lista de diccionarios con los datos de las alertas.
-    """
+    """Obtiene las alertas activas (no resueltas) más recientes con limpieza de errores técnicos."""
     pool = get_pool()
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
@@ -527,42 +520,65 @@ async def obtener_alertas_activas(limite: int = 5) -> list:
             filas = await cur.fetchall()
 
     resultado = []
+    import re
+    
+    # Patrón para limpiar errores técnicos de base de datos
+    patron_tecnico = r'Último error: current transaction is aborted, commands ignored until end of transaction block'
+
     for r in filas:
         # r[0]=id, r[1]=tipo, r[2]=prioridad, r[3]=titulo, r[4]=mensaje, r[5]=fecha, r[6]=remitente, r[7]=asunto
+        # r[8]=fecha_correo, r[9]=correo_id, r[10]=id_factura, r[11]=num_factura, r[12]=fecha_factura, r[13]=proveedor
+        # r[14]=xml_s3_key, r[15]=pdf_s3_key, r[16]=xml_nombre, r[17]=pdf_nombre
         mensaje_original = r[4]
         remitente = r[6]
-        asunto = r[7] or 'Sin Asunto'
+        asunto = r[7]
+        fecha_correo = r[8].strftime('%d/%m/%Y %H:%M') if r[8] else None
+        correo_id = r[9]
+        id_factura = r[10]
+        num_factura = r[11]
+        fecha_factura = r[12].strftime('%d/%m/%Y') if r[12] else None
+        proveedor = r[13]
+        xml_s3_key = r[14]
+        pdf_s3_key = r[15]
+        xml_nombre = r[16]
+        pdf_nombre = r[17]
         
-        # Si existe el remitente (email real), intentamos limpiar el mensaje de alertas de correo
-        mensaje_final = mensaje_original
-        if remitente and ('fue identificado como facturación' in mensaje_original or 'Adjunto incompleto en correo' in mensaje_original):
-            import re
-            
-            # Limpiar el nombre del remitente si viene con formato MIME o caracteres especiales
-            # Ejemplo: "=?iso-8859-1?Q?Iv=E1n... <email>" -> "email"
+        # 1. Limpieza de errores técnicos
+        mensaje_limpio = re.sub(patron_tecnico, '', mensaje_original).strip()
+        
+        # 2. Gestión de metadatos (Filtrar "Sin Asunto")
+        asunto_limpio = asunto if asunto and asunto.lower() != 'sin asunto' else None
+        
+        # Limpieza de remitente
+        email_limpio = None
+        if remitente:
             match_email = re.search(r'[\w\.-]+@[\w\.-]+', remitente)
             email_limpio = match_email.group(0) if match_email else remitente
-            
-            # Construir el nuevo mensaje con Asunto y Remitente limpio
-            if 'fue identificado como facturación' in mensaje_original:
-                patron = r'El correo [^ ]+ fue identificado como facturación'
-                reemplazo = f'El correo con Asunto: "{asunto}" de {email_limpio} fue identificado como facturación'
-                mensaje_final = re.sub(patron, reemplazo, mensaje_original)
-            
-            if 'Adjunto incompleto en correo' in mensaje_original:
-                patron = r'Adjunto incompleto en correo [^:]+:'
-                reemplazo = f'Adjunto incompleto en correo con Asunto: "{asunto}" de {email_limpio}:'
-                mensaje_final = re.sub(patron, reemplazo, mensaje_final)
 
         resultado.append({
             'id': r[0],
             'type': r[1],
             'priority': r[2],
             'title': r[3],
-            'message': mensaje_final,
+            'message': mensaje_limpio,
             'date': r[5].isoformat() if r[5] else '',
+            'email': email_limpio,
+            'asunto': asunto_limpio,
+            'fecha_correo': fecha_correo,
+            'correo_id': correo_id,
+            'xml_s3_key': xml_s3_key,
+            'pdf_s3_key': pdf_s3_key,
+            'xml_nombre': xml_nombre,
+            'pdf_nombre': pdf_nombre,
+            'factura': {
+                'id': id_factura,
+                'numero': num_factura,
+                'fecha': fecha_factura,
+                'proveedor': proveedor
+            } if id_factura and num_factura else None
         })
     return resultado
+
 
 
 async def obtener_valor_proveedor_stats(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion', filtros: dict = None) -> list:

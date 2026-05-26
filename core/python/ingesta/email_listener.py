@@ -367,17 +367,19 @@ class EmailListener:
                 if resultado:
                     resultados.append(resultado)
 
-        for pdf_huerfano in validacion.pdfs_huerfanos:
-            resultado_huerfano = self._registrar_pdf_huerfano(
-                pdf_path=pdf_huerfano,
-                conn_db=conn_db,
-                id_correo=id_correo,
-                id_adjunto_padre=zips_anidados_ids.get(str(validacion.pares[0].zip_origen if validacion.pares else adj_zip.ruta), id_adjunto_zip),
-                fecha_envio=fecha_envio,
-                id_mensaje=id_mensaje,
-            )
-            if resultado_huerfano:
-                resultados.append(resultado_huerfano)
+                # Registrar PDFs huérfanos del último ZIP procesado
+                if hasattr(validacion, 'pdfs_huerfanos') and validacion.pdfs_huerfanos:
+                    for pdf_huerfano in validacion.pdfs_huerfanos:
+                        resultado_huerfano = self._registrar_pdf_huerfano(
+                            pdf_path=pdf_huerfano,
+                            conn_db=conn_db,
+                            id_correo=id_correo,
+                            id_adjunto_padre=zips_anidados_ids.get(str(validacion.pares[0].zip_origen if validacion.pares else adj_zip.ruta), id_adjunto_zip),
+                            fecha_envio=fecha_envio,
+                            id_mensaje=id_mensaje,
+                        )
+                        if resultado_huerfano:
+                            resultados.append(resultado_huerfano)
 
         return resultados
 

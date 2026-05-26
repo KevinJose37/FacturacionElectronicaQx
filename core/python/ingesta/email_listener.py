@@ -548,13 +548,17 @@ class EmailListener:
         Returns:
             dict con IDs registrados, o None si el XML falló.
         """
-        # 0. Verificar que sea una factura electrónica (Invoice)
+        # 0. Verificar que sea una factura electrónica (Invoice o AttachedDocument)
+        # AttachedDocument es el formato estándar colombiano: envuelve el Invoice
+        # dentro de un CDATA.  El worker extrae el Invoice embebido en la fase
+        # de extracción (xml_utils.extraer_xmls_embebidos).
+        TAGS_FACTURA_VALIDOS = {'Invoice', 'AttachedDocument'}
         try:
             from lxml import etree
             tree = etree.parse(par.xml_path)
             root = tree.getroot()
             tag_local = etree.QName(root).localname
-            if tag_local != 'Invoice':
+            if tag_local not in TAGS_FACTURA_VALIDOS:
                 logger.info(
                     "Omitiendo archivo %s: no es una factura electrónica (tipo: %s).",
                     par.xml_path.name, tag_local

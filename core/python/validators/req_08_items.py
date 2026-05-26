@@ -64,16 +64,23 @@ def validar_lineas_factura_v1(xml_invoice: etree._Element | None) -> dict:
                     './cac:Item/cac:StandardItemIdentification/cbc:ID',
                     namespaces=NAMESPACES
                 )
+                # Verificar que el nodo tenga texto real, no solo un tag vacío
+                if codigo_item and not (codigo_item[0].text or '').strip():
+                    codigo_item = []
                 if not codigo_item:
                     codigo_item = linea.xpath(
                         './cac:Item/cac:SellersItemIdentification/cbc:ID',
                         namespaces=NAMESPACES
                     )
+                    if codigo_item and not (codigo_item[0].text or '').strip():
+                        codigo_item = []
                 if not codigo_item:
                     codigo_item = linea.xpath(
                         './cac:Item/cac:BuyersItemIdentification/cbc:ID',
                         namespaces=NAMESPACES
                     )
+                    if codigo_item and not (codigo_item[0].text or '').strip():
+                        codigo_item = []
                 precio_unitario = linea.xpath(
                     './cac:Price/cbc:PriceAmount', namespaces=NAMESPACES
                 )
@@ -144,7 +151,7 @@ def validar_lineas_factura_v1(xml_invoice: etree._Element | None) -> dict:
                     errores.append(f'Línea {idx}: cantidad no numérica ({cantidad_val}).')
 
                 try:
-                    if float(valor_val) <= 0:
+                    if float(valor_val) < 0:
                         errores.append(f'Línea {idx}: valor inválido ({valor_val}).')
                 except Exception:
                     errores.append(f'Línea {idx}: valor no numérico ({valor_val}).')

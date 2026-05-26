@@ -87,9 +87,9 @@ class QueueWorker:
             jobs = [dict(zip(cols, row)) for row in rows]
             return jobs
 
-    # Cooldown en minutos para jobs que retornan retry_later (ej: PDF huérfano
+    # Cooldown en segundos para jobs que retornan retry_later (ej: PDF huérfano
     # esperando que su factura sea procesada).  Evita bucles tight de reintentos.
-    RETRY_LATER_COOLDOWN_MINUTES = 2
+    RETRY_LATER_COOLDOWN_SECONDS = 4
 
     def handle_failed_job(self, conn, adjunto_id: int):
         """Marca un job como fallido (incrementa intentos o lo pone en error)."""
@@ -123,7 +123,7 @@ class QueueWorker:
         UPDATE FACTURACION.EVENTO_INGESTA
         SET ID_ESTADO = %(estado_pendiente)s,
             WORKER_ID = NULL,
-            FECHA_ACTUALIZACION = NOW() + INTERVAL '{self.RETRY_LATER_COOLDOWN_MINUTES} minutes'
+            FECHA_ACTUALIZACION = NOW() + INTERVAL '{self.RETRY_LATER_COOLDOWN_SECONDS} seconds'
         WHERE ADJUNTO_ID = %(adjunto_id)s;
         """
         with conn.cursor() as cur:
@@ -132,8 +132,8 @@ class QueueWorker:
                 'adjunto_id': adjunto_id,
             })
         logger.info(
-            'Job adjunto_id=%s en cooldown por %d minutos (retry_later).',
-            adjunto_id, self.RETRY_LATER_COOLDOWN_MINUTES,
+            'Job adjunto_id=%s en cooldown por %d segundos (retry_later).',
+            adjunto_id, self.RETRY_LATER_COOLDOWN_SECONDS,
         )
 
     def recover_stuck_jobs(self, conn):

@@ -147,6 +147,14 @@ class EmailRepository:
         """Guarda un correo en CORREO_ENTRANTE (sin commit).
         
         Incluye el IMAP UID para seguimiento de puntero.
+        
+        Usa el truco ``xmax = 0`` de PostgreSQL para distinguir filas
+        recién insertadas (xmax=0) de filas actualizadas por ON CONFLICT
+        DO UPDATE (xmax != 0).  Esto es necesario porque RETURNING
+        siempre devuelve la fila en ambos casos.
+        
+        Returns:
+            tuple[int, bool]: (CORREO_ID, es_nuevo).
         """
         if fecha_deteccion is None:
             fecha_deteccion = datetime.now(tz=timezone.utc)
@@ -162,7 +170,7 @@ class EmailRepository:
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (MESSAGE_ID) DO UPDATE SET
                     IMAP_UID = COALESCE(EXCLUDED.IMAP_UID, FACTURACION.CORREO_ENTRANTE.IMAP_UID)
-                RETURNING CORREO_ID
+                RETURNING CORREO_ID, (xmax = 0) AS es_nuevo
                 """,
                 (
                     id_mensaje,
@@ -180,20 +188,26 @@ class EmailRepository:
             resultado = cur.fetchone()
             if resultado:
                 id_correo = resultado[0]
-                logger.debug("Correo guardado: ID=%s mensaje=%s", id_correo, id_mensaje)
-                return id_correo, True
+                es_nuevo = resultado[1]
+                if es_nuevo:
+                    logger.debug("Correo NUEVO guardado: ID=%s mensaje=%s", id_correo, id_mensaje)
+                else:
+                    logger.info(
+                        "Correo DUPLICADO detectado (ON CONFLICT): ID=%s mensaje=%s",
+                        id_correo, id_mensaje,
+                    )
+                return id_correo, es_nuevo
             else:
-                # ON CONFLICT: el correo ya existía. Recuperamos el ID para
-                # permitir trazabilidad del duplicado, pero indicamos es_nuevo=False.
+                # Caso teórico: RETURNING no devolvió nada (no debería ocurrir)
+                logger.error(
+                    "RETURNING vacío para mensaje=%s — recuperando ID manualmente.",
+                    id_mensaje,
+                )
                 cur.execute(
                     "SELECT CORREO_ID FROM FACTURACION.CORREO_ENTRANTE WHERE MESSAGE_ID = %s",
                     (id_mensaje,),
                 )
                 existente = cur.fetchone()
-                logger.debug(
-                    "Correo duplicado detectado (ON CONFLICT): mensaje=%s id_existente=%s",
-                    id_mensaje, existente[0] if existente else None,
-                )
                 return (existente[0] if existente else None), False
 
     def guardar_adjunto_correo(

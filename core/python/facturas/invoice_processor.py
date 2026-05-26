@@ -458,10 +458,13 @@ class InvoiceProcessor:
                 # 3. Vincular a Factura
                 vinculado = self._repo.vincular_pdf_a_factura(conn, cufe, adjunto_id)
                 if not vinculado:
-                    logger.info("PDF huérfano con CUFE %s no tiene factura registrada aún. Reintentando luego.", cufe[:20])
-                    # Dejamos que falle para que intente luego
+                    logger.info(
+                        "PDF huérfano (adjunto=%s) con CUFE %s no tiene factura "
+                        "registrada aún. Se reintentará con cooldown.",
+                        adjunto_id, cufe[:20],
+                    )
                     os.unlink(tmp_path)
-                    return 'fail'
+                    return 'retry_later'
 
                 # 4. Ejecutar Verificación Gráfica
                 self._ejecutar_verificacion_grafica(conn, cufe, pdf_ev, tmp_path)

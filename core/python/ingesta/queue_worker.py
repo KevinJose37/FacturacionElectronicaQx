@@ -39,6 +39,7 @@ class QueueWorker:
             FROM FACTURACION.EVENTO_INGESTA
             WHERE ID_ESTADO = %(estado_pendiente)s
               AND INTENTOS < %(max_intentos)s
+              AND FECHA_ACTUALIZACION <= NOW()
             ORDER BY FECHA_CREACION ASC
             FOR UPDATE SKIP LOCKED
             LIMIT %(batch_size)s
@@ -86,6 +87,10 @@ class QueueWorker:
             jobs = [dict(zip(cols, row)) for row in rows]
             return jobs
 
+    # Cooldown en minutos para jobs que retornan retry_later (ej: PDF huérfano
+    # esperando que su factura sea procesada).  Evita bucles tight de reintentos.
+    RETRY_LATER_COOLDOWN_MINUTES = 2
+
     def handle_failed_job(self, conn, adjunto_id: int):
         """Marca un job como fallido (incrementa intentos o lo pone en error)."""
         query = """
@@ -102,10 +107,34 @@ class QueueWorker:
         with conn.cursor() as cur:
             cur.execute(query, {
                 'max_intentos': QueueWorkerConfig.max_reintentos,
-                'estado_fallido': IdEstadoProceso.fallido,  # Asumimos que 5 es fallido o error
+                'estado_fallido': IdEstadoProceso.fallido,
                 'estado_pendiente': IdEstadoProceso.pendiente,
                 'adjunto_id': adjunto_id,
             })
+
+    def handle_retry_later(self, conn, adjunto_id: int):
+        """Pone un job en cooldown sin incrementar intentos.
+
+        Actualiza FECHA_ACTUALIZACION al futuro para que claim_jobs
+        no lo reclame durante el periodo de cooldown.  El estado
+        vuelve a PENDIENTE y WORKER_ID se libera.
+        """
+        query = f"""
+        UPDATE FACTURACION.EVENTO_INGESTA
+        SET ID_ESTADO = %(estado_pendiente)s,
+            WORKER_ID = NULL,
+            FECHA_ACTUALIZACION = NOW() + INTERVAL '{self.RETRY_LATER_COOLDOWN_MINUTES} minutes'
+        WHERE ADJUNTO_ID = %(adjunto_id)s;
+        """
+        with conn.cursor() as cur:
+            cur.execute(query, {
+                'estado_pendiente': IdEstadoProceso.pendiente,
+                'adjunto_id': adjunto_id,
+            })
+        logger.info(
+            'Job adjunto_id=%s en cooldown por %d minutos (retry_later).',
+            adjunto_id, self.RETRY_LATER_COOLDOWN_MINUTES,
+        )
 
     def recover_stuck_jobs(self, conn):
         """Resetea jobs que quedaron atascados en EN_PROCESO."""
@@ -194,6 +223,12 @@ class QueueWorker:
                                     conn.execute("BEGIN;")
                                     for job in familia:
                                         self.handle_failed_job(conn, job['adjunto_id'])
+                                    conn.commit()
+                                elif result == 'retry_later':
+                                    # Cooldown: no incrementar intentos, solo postergar
+                                    conn.execute("BEGIN;")
+                                    for job in familia:
+                                        self.handle_retry_later(conn, job['adjunto_id'])
                                     conn.commit()
                             except Exception as e:
                                 logger.exception('Error inesperado procesando familia %s: %s', familia_id, e)

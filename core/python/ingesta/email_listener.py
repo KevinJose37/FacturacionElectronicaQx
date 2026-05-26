@@ -221,9 +221,19 @@ class EmailListener:
             # Las correcciones de factura tienen contenido distinto → hash diferente → se procesan.
             sha256_zip = self._repository.calcular_hash_sha256(adj_zip.ruta)
             if self._repository.existe_adjunto_por_hash(conn_db, sha256_zip):
-                logger.debug(
-                    "ZIP con hash ya existente en BD (hash=%s): %s. Omitiendo duplicado.",
-                    sha256_zip[:8], adj_zip.nombre_original,
+                logger.info(
+                    "ZIP omitido por hash duplicado (hash=%s): %s. "
+                    "Este archivo ya fue procesado previamente.",
+                    sha256_zip[:12], adj_zip.nombre_original,
+                )
+                # Registrar en PROCESO_INGESTA para trazabilidad
+                self._repository.crear_proceso_ingesta(
+                    conn=conn_db,
+                    id_proceso=IdTipoProceso.validacion_contenido_zip,
+                    observacion=f"ZIP omitido: hash duplicado ({sha256_zip[:12]}). Archivo ya procesado.",
+                    id_estado=IdEstadoProceso.procesado,
+                    correo_id=id_correo,
+                    id_error=IdTipoError.adjunto_duplicado,
                 )
                 continue
 

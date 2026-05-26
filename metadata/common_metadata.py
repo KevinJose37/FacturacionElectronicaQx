@@ -46,7 +46,7 @@ class DefaultTextos:
     formato_fecha = '%d/%m/%Y'
     """Formato estándar de solo fecha para presentación al usuario. Usado en chat/tools.py."""
 
-    formato_fecha_corto = '%d/%m %H:%M'
+    formato_fecha_corto = '%Y-%m-%d'
     """Formato corto de fecha con hora para tablas y listas. Usado en servicios del frontend."""
 
     formato_hora = '%H:%M:%S'

@@ -171,7 +171,7 @@ dashboard:
     ORDER BY value DESC
 
   ultimas_facturas: >
-    SELECT CASE WHEN COALESCE(f.prefijo_facturacion, '') = '' THEN f.numero_factura ELSE f.prefijo_facturacion || '-' || f.numero_factura END as num,
+    SELECT f.numero_factura as num,
     f.razon_social_emisor,
     ep.descripcion as estado,
     f.fecha_expedicion,
@@ -263,7 +263,7 @@ dashboard:
 
 facturas:
   listar: >
-    SELECT CASE WHEN COALESCE(f.prefijo_facturacion, '') = '' THEN f.numero_factura ELSE f.prefijo_facturacion || '-' || f.numero_factura END as num,
+    SELECT f.numero_factura as num,
     f.razon_social_emisor, ep.descripcion, f.valor_total, f.id_factura,
     f.fecha_expedicion, f.id_estado_proceso,
     ac.uri_almacenamiento as s3_key, ac.nombre_archivo, f.id_factura,
@@ -371,7 +371,7 @@ proveedores:
 
 rechazos:
   listar: >
-    SELECT CASE WHEN COALESCE(f.prefijo_facturacion, '') = '' THEN f.numero_factura ELSE f.prefijo_facturacion || '-' || f.numero_factura END as num,
+    SELECT f.numero_factura as num,
     f.razon_social_emisor,
     te.descripcion as motivo_error,
     te.codigo_referencia as codigo_error,

@@ -9,6 +9,7 @@ import time
 import email as _email
 from datetime import datetime, timezone
 from email.header import decode_header
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 import yaml
@@ -152,25 +153,37 @@ class DianEventListener:
             msg = _email.message_from_string(raw_header)
             subject_raw = msg.get('Subject', '')
             sender = msg.get('From', '')
+            date_raw = msg.get('Date', '')
 
             subject = self._decodificar_asunto(subject_raw)
             logger.info('Evaluando correo: %s | De: %s', subject, sender)
+
+            fecha_envio = None
+            if date_raw:
+                try:
+                    fecha_envio = parsedate_to_datetime(date_raw)
+                except Exception as e:
+                    logger.debug('No se pudo parsear fecha de envío: %s | error: %s', date_raw, e)
 
             res_filtro = self.filter.evaluate(sender, subject)
 
             if not res_filtro.is_dian_event:
                 logger.info('Correo descartado: %s', res_filtro.reason)
-                conn.uid('store', uid, '+FLAGS', '\\Seen')
+                # Solo marcar como leído si realmente parece un correo de evento DIAN (empieza con "Evento")
+                # pero fue descartado por remitente no autorizado, código inválido, etc.
+                # Si no empieza con "Evento", lo dejamos sin leer (UNSEEN) para que el listener principal lo procese.
+                if subject.strip().lower().startswith('evento'):
+                    conn.uid('store', uid, '+FLAGS', '\\Seen')
                 exito = True
             else:
-                exito = await self._registrar_evento(conn, uid, subject, res_filtro)
+                exito = await self._registrar_evento(conn, uid, subject, res_filtro, fecha_envio)
 
         except Exception as e:
             logger.exception('Error procesando correo UID %s: %s', uid, e)
 
         return exito
 
-    async def _registrar_evento(self, conn, uid, subject, res_filtro) -> bool:
+    async def _registrar_evento(self, conn, uid, subject, res_filtro, fecha_envio: datetime | None = None) -> bool:
         """Extrae el número de factura del asunto y persiste el evento DIAN.
 
         Args:
@@ -178,6 +191,7 @@ class DianEventListener:
             uid: UID del correo.
             subject: Asunto decodificado.
             res_filtro: Resultado del filtro con event_code.
+            fecha_envio: Fecha de envío original del correo electrónico.
 
         Returns:
             True si el evento fue registrado o el correo fue correctamente descartado.
@@ -204,8 +218,24 @@ class DianEventListener:
                 row = await cur.fetchone()
 
                 if not row:
-                    logger.warning('Factura [%s] no encontrada.', num_factura)
-                    conn.uid('store', uid, '+FLAGS', '\\Seen')
+                    # Si no existe la factura en BD, verificamos la antigüedad del correo.
+                    # Si tiene menos de 2 horas (7200 segundos), dejamos el correo como UNSEEN (sin leer)
+                    # para permitir que el listener principal procese la factura primero.
+                    # Si tiene más de 2 horas, asumimos que no se procesará y lo marcamos como leído.
+                    es_nuevo = True
+                    if fecha_envio:
+                        if fecha_envio.tzinfo is None:
+                            fecha_envio = fecha_envio.replace(tzinfo=timezone.utc)
+                        diff = datetime.now(timezone.utc) - fecha_envio.astimezone(timezone.utc)
+                        if diff.total_seconds() > 7200:
+                            es_nuevo = False
+                    
+                    if es_nuevo:
+                        logger.warning('Factura [%s] no encontrada en BD. Se deja UNSEEN para reintento.', num_factura)
+                    else:
+                        logger.warning('Factura [%s] no encontrada en BD tras 2 horas. Se marca como LEÍDO (\\\\Seen) para descartar.', num_factura)
+                        conn.uid('store', uid, '+FLAGS', '\\Seen')
+                    
                     exito = True
                     return exito
 
@@ -241,7 +271,7 @@ class DianEventListener:
         conn = None
         try:
             conn = self._connect()
-            status, data = conn.uid('search', None, 'UNSEEN')
+            status, data = conn.uid('search', None, 'UNSEEN SUBJECT "Evento"')
             if status == 'OK':
                 uids = data[0].split()
                 for uid in uids:

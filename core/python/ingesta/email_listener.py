@@ -905,11 +905,14 @@ class EmailListener:
                             imap_uid=int(uid),
                             fecha_envio=fecha_envio,
                         )
-                        # Añadir flag IMAP custom para excluirlo server-side
-                        # SIN marcar como \Seen → sigue visible como no leído
+                        # Añadir flag IMAP custom para excluirlo y marcar como leído (\Seen)
                         try:
-                            conn.uid("store", uid, "+FLAGS", "$NoFactura")
+                            conn.uid("store", uid, "+FLAGS", "($NoFactura \\Seen)")
                         except Exception:
+                            try:
+                                conn.uid("store", uid, "+FLAGS", "\\Seen")
+                            except Exception:
+                                pass
                             logger.debug("Servidor IMAP no soportó flag $NoFactura para UID=%s", uid)
                         return True
 
@@ -1052,10 +1055,14 @@ class EmailListener:
                                         id_correo, e,
                                     )
 
-                            # Marcar con $NoFactura (no leído) para correos rechazados
+                            # Marcar con $NoFactura y como leído (\Seen) para correos rechazados
                             try:
-                                conn.uid("store", uid, "+FLAGS", "$NoFactura")
+                                conn.uid("store", uid, "+FLAGS", "($NoFactura \\Seen)")
                             except Exception:
+                                try:
+                                    conn.uid("store", uid, "+FLAGS", "\\Seen")
+                                except Exception:
+                                    pass
                                 logger.debug("Servidor IMAP no soportó flag $NoFactura para UID=%s", uid)
                             return True
 

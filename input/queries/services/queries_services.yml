@@ -326,6 +326,45 @@ logs:
     COUNT(*) FILTER (WHERE id_estado IN (4, 5)) as warnings
     FROM facturacion.proceso_ingesta WHERE fecha_inicio >= %s
 
+  trail: >
+    WITH target_correos AS (
+      SELECT DISTINCT c.correo_id
+      FROM facturacion.correo_entrante c
+      LEFT JOIN facturacion.adjuntos_correo ac ON c.correo_id = ac.correo_id
+      LEFT JOIN facturacion.factura f ON ac.adjunto_id = f.adjunto_id
+      WHERE f.numero_factura ILIKE %s
+         OR c.remitente ILIKE %s
+         OR c.asunto ILIKE %s
+    )
+    SELECT
+      pi.fecha_inicio,
+      pi.fecha_fin,
+      tp.descripcion as etapa,
+      tp.codigo_referencia as etapa_codigo,
+      tep.codigo_referencia as estado_codigo,
+      te.descripcion as detalle_error,
+      pi.observacion,
+      f.numero_factura,
+      c.correo_id,
+      c.remitente,
+      c.asunto,
+      c.fecha_deteccion,
+      ac.nombre_archivo,
+      ac.adjunto_id
+    FROM facturacion.proceso_ingesta pi
+    JOIN facturacion.tipo_proceso tp ON pi.id_proceso = tp.id_tipo_proceso
+    JOIN facturacion.tipo_estado_proceso tep ON pi.id_estado = tep.id_estado_proceso
+    LEFT JOIN facturacion.tipo_error te ON pi.id_error = te.id_tipo_error
+    LEFT JOIN facturacion.adjuntos_correo ac ON pi.adjunto_id = ac.adjunto_id
+    LEFT JOIN facturacion.factura f ON pi.adjunto_id = f.adjunto_id
+    LEFT JOIN facturacion.correo_entrante c ON pi.correo_id = c.correo_id
+    WHERE pi.correo_id IN (SELECT correo_id FROM target_correos)
+       OR pi.adjunto_id IN (
+         SELECT ac2.adjunto_id FROM facturacion.adjuntos_correo ac2
+         WHERE ac2.correo_id IN (SELECT correo_id FROM target_correos)
+       )
+    ORDER BY pi.fecha_inicio ASC
+
 # Fragmentos de condiciones para logs
 logs_filtros:
   error: "pi.id_error IS NOT NULL"

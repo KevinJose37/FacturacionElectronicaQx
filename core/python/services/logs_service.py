@@ -112,3 +112,80 @@ async def obtener_conteos() -> dict:
         'error': errores,
     }
     return conteos
+
+
+async def obtener_trail(termino: str) -> dict:
+    """Obtiene el trail completo de procesamiento para una factura o correo.
+
+    Busca por número de factura, remitente o asunto, y retorna todos los
+    pasos del pipeline asociados, agrupados por correo.
+
+    Args:
+        termino: Texto de búsqueda (nº factura, email o asunto).
+
+    Returns:
+        Diccionario con metadata del correo y lista de pasos ordenados
+        cronológicamente.
+    """
+    pool = get_pool()
+    patron = f'%{termino}%'
+
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(_QUERIES['trail'], (patron, patron, patron))
+            filas = await cur.fetchall()
+
+    if not filas:
+        return {'correo': None, 'steps': [], 'total': 0}
+
+    # Extraer metadata del correo de la primera fila
+    primera = filas[0]
+    correo_info = {
+        'correo_id': primera[8],
+        'remitente': primera[9] or '',
+        'asunto': primera[10] or '',
+        'fecha_deteccion': primera[11].strftime('%d/%m/%Y %H:%M') if primera[11] else '',
+    }
+
+    # Construir pasos del pipeline
+    steps = []
+    for r in filas:
+        # r[0]=fecha_inicio, r[1]=fecha_fin, r[2]=etapa, r[3]=etapa_codigo,
+        # r[4]=estado_codigo, r[5]=detalle_error, r[6]=observacion,
+        # r[7]=numero_factura, r[8]=correo_id, r[9]=remitente,
+        # r[10]=asunto, r[11]=fecha_deteccion, r[12]=nombre_archivo, r[13]=adjunto_id
+        ts_inicio = r[0].strftime(DefaultTextos.formato_hora) if r[0] else ''
+        ts_fin = r[1].strftime(DefaultTextos.formato_hora) if r[1] else ''
+        duracion_ms = None
+        if r[0] and r[1]:
+            duracion_ms = int((r[1] - r[0]).total_seconds() * 1000)
+
+        status = 'ok'
+        if r[5]:  # tiene error
+            status = 'error'
+        elif r[4] in ('ERROR', 'FALLIDO'):
+            status = 'error'
+        elif r[4] == 'EN_PROCESO':
+            status = 'running'
+        elif r[4] == 'PENDIENTE':
+            status = 'pending'
+
+        steps.append({
+            'ts': ts_inicio,
+            'ts_fin': ts_fin,
+            'duracion_ms': duracion_ms,
+            'etapa': r[2] or '',
+            'etapa_codigo': r[3] or '',
+            'status': status,
+            'error': r[5] or '',
+            'observacion': r[6] or '',
+            'numero_factura': r[7] or '',
+            'nombre_archivo': r[12] or '',
+            'adjunto_id': r[13],
+        })
+
+    return {
+        'correo': correo_info,
+        'steps': steps,
+        'total': len(steps),
+    }

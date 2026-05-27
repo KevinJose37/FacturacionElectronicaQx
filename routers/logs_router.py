@@ -22,3 +22,11 @@ async def obtener_logs(
 
     respuesta = {'stats': stats, 'logs': logs}
     return respuesta
+
+
+@router.get('/trail')
+async def obtener_trail(
+    q: str = Query(..., min_length=2, description='Nº factura, email o asunto'),
+) -> dict:
+    """Obtiene el trail completo de procesamiento para una factura o correo."""
+    return await logs_service.obtener_trail(q)

@@ -49,6 +49,7 @@ class InvoiceRepository:
             dbname=self.config['dbname'],
             user=self.config['user'],
             password=self.config['password'],
+            options='-c timezone=America/Bogota'
         )
 
     # ------------------------------------------------------------------
@@ -273,7 +274,7 @@ class InvoiceRepository:
                     VALUES (%s, %s, %s, %s, %s)
                     RETURNING ID_PROCESO_INGESTA
                     """,
-                    (adjunto_id, id_proceso, id_estado, observacion[:255], id_error),
+                    (adjunto_id, id_proceso, id_estado, observacion, id_error),
                 )
                 resultado = cur.fetchone()
                 return resultado[0] if resultado else -1

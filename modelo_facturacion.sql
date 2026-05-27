@@ -123,7 +123,10 @@ INSERT INTO FACTURACION.TIPO_ERROR (ID_TIPO_ERROR, CODIGO_REFERENCIA, DESCRIPCIO
 (52, 'FECHA_GENERACION_FORMATO_INVALIDO', 'El formato de la fecha de generación es inválido o no se pudo extraer'),
 (53, 'LINEA_SIN_DESCRIPCION',        'Una o más líneas de la factura no tienen descripción del ítem'),
 (54, 'LINEA_VALOR_INVALIDO',         'Una o más líneas tienen valores nulos o inválidos en precios o cantidades'),
-(55, 'LINEA_CANTIDAD_INVALIDA',      'Una o más líneas tienen una cantidad reportada inválida')
+(55, 'LINEA_CANTIDAD_INVALIDA',      'Una o más líneas tienen una cantidad reportada inválida'),
+(56, 'DENOMINACION_INCORRECTA',         'La denominación del documento no corresponde a Factura Electrónica de Venta'),
+(57, 'TIPO_DOCUMENTO_DIAN_INVALIDO',    'El código de tipo de documento (InvoiceTypeCode) es inválido'),
+(58, 'PROFILE_ID_NO_ENCONTRADO',        'No se encontró el nodo cbc:ProfileID para validar la denominación')
 ON CONFLICT DO NOTHING;
 
 
@@ -410,7 +413,7 @@ CREATE TABLE FACTURACION.PROCESO_INGESTA (
     ID_ERROR           INT NULL REFERENCES FACTURACION.TIPO_ERROR(ID_TIPO_ERROR),
     FECHA_INICIO       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     FECHA_FIN          TIMESTAMPTZ NULL,
-    OBSERVACION        VARCHAR(255) NOT NULL,
+    OBSERVACION        TEXT NOT NULL,
     CONSTRAINT CK_PROCESO_TIENE_REFERENCIA CHECK (ADJUNTO_ID IS NOT NULL OR CORREO_ID IS NOT NULL)
 );
 

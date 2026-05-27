@@ -24,13 +24,14 @@ _QUERIES = load_yaml_queries('services/queries_services.yml').get('dashboard', {
 
 
 def _parsear_fechas(fecha_inicio: str | None, fecha_fin: str | None) -> tuple[datetime, datetime]:
-    ahora = datetime.now(tz=timezone.utc)
+    tz_utc5 = timezone(timedelta(hours=-5))
+    ahora = datetime.now(tz=tz_utc5)
     if fecha_inicio and fecha_fin:
         try:
             fi = fecha_inicio.split('T')[0]
             ff = fecha_fin.split('T')[0]
-            dt_inicio = datetime.strptime(fi, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-            dt_fin = datetime.strptime(ff, "%Y-%m-%d").replace(tzinfo=timezone.utc, hour=23, minute=59, second=59)
+            dt_inicio = datetime.strptime(fi, "%Y-%m-%d").replace(tzinfo=tz_utc5)
+            dt_fin = datetime.strptime(ff, "%Y-%m-%d").replace(tzinfo=tz_utc5, hour=23, minute=59, second=59)
             return dt_inicio, dt_fin
         except Exception as e:
             logger.error(f"Error parseando fechas: {e}")
@@ -177,9 +178,11 @@ async def obtener_kpis(fecha_inicio: str | None = None, fecha_fin: str | None = 
             providers = row[4]
             total_value = float(row[5]) if row[5] else 0.0
             avg_time = float(row[6]) if row[6] else 0.0
+            accounts_payable = float(row[7]) if row[7] else 0.0
 
     avg_time_formatted = f"{avg_time:.1f}s"
     total_value_formatted = f"$ {total_value:,.2f}"
+    accounts_payable_formatted = f"$ {accounts_payable:,.2f}"
 
     valores = {
         'processed': {'value': str(processed), 'delta': 0.0, 'spark': [max(0, processed - i) for i in range(12, 0, -1)]},
@@ -203,6 +206,10 @@ async def obtener_kpis(fecha_inicio: str | None = None, fecha_fin: str | None = 
         'providers': {
             'value': str(providers), 'delta': 0.0,
             'spark': [max(0, providers - i) for i in range(12, 0, -1)],
+        },
+        'cuentas_por_pagar': {
+            'value': accounts_payable_formatted, 'delta': 0.0,
+            'spark': [max(0.0, accounts_payable - i * 1000) for i in range(12, 0, -1)],
         },
     }
 
@@ -389,11 +396,12 @@ async def obtener_actividad_reciente(limite: int = 8) -> list:
             await cur.execute(_QUERIES['actividad_reciente'], (limite,))
             filas = await cur.fetchall()
 
-    ahora = datetime.now(tz=timezone.utc)
+    tz_utc5 = timezone(timedelta(hours=-5))
+    ahora = datetime.now(tz=tz_utc5)
     resultado = []
     for r in filas:
         # r[0]=etapa, r[1]=detalle_error, r[2]=fecha_inicio, r[3]=num_factura
-        fecha_log = r[2].replace(tzinfo=timezone.utc) if r[2] and r[2].tzinfo is None else r[2]
+        fecha_log = r[2].replace(tzinfo=tz_utc5) if r[2] and r[2].tzinfo is None else r[2]
         num_factura = f'{r[3]}: ' if len(r) > 3 and r[3] else ''
 
         if fecha_log:

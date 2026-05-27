@@ -932,13 +932,54 @@ class EmailListener:
                             id_origen=self.id_origen,
                             imap_uid=int(uid),
                         )
-                        if not es_correo_nuevo:
-                            # El correo ya está en BD. Marcar como leído en IMAP y saltar.
-                            # No re-procesamos para evitar bucles de rechazo o duplicados.
+                        # Verificar si ya está procesado, descartado o si excedió los intentos
+                        with conn_db.cursor() as cur:
+                            cur.execute(
+                                """
+                                SELECT PROCESADO, MOTIVO_DESCARTE 
+                                FROM FACTURACION.CORREO_ENTRANTE 
+                                WHERE CORREO_ID = %s
+                                """,
+                                (id_correo,),
+                            )
+                            row = cur.fetchone()
+                            procesado = row[0] if row else False
+                            motivo_descarte = row[1] if row else None
+
+                        if procesado or motivo_descarte is not None:
                             logger.info(
-                                "Correo ya existe en BD (ID=%s): %s. Saltando.",
+                                "Correo ya procesado o descartado en BD (ID=%s): %s. Saltando.",
                                 id_correo, id_mensaje,
                             )
+                            conn.uid("store", uid, "+FLAGS", "\\Seen")
+                            return True
+
+                        # Contar intentos fallidos en PROCESO_INGESTA
+                        with conn_db.cursor() as cur:
+                            cur.execute(
+                                """
+                                SELECT COUNT(*) 
+                                FROM FACTURACION.PROCESO_INGESTA 
+                                WHERE CORREO_ID = %s AND ID_ESTADO = %s
+                                """,
+                                (id_correo, IdEstadoProceso.error),
+                            )
+                            intentos_fallidos = cur.fetchone()[0]
+
+                        if intentos_fallidos >= 3:
+                            logger.warning(
+                                "Correo ID=%s (MESSAGE_ID=%s) ha excedido el límite de reintentos (%s fallos). Marcando como leído en IMAP.",
+                                id_correo, id_mensaje, intentos_fallidos,
+                            )
+                            self._repository.crear_proceso_ingesta(
+                                conn=conn_db,
+                                id_proceso=IdTipoProceso.filtro_recepcion,
+                                observacion=f"Excedido límite de reintentos ({intentos_fallidos} fallos). Se descarta.",
+                                id_estado=IdEstadoProceso.fallido,
+                                correo_id=id_correo,
+                                id_error=IdTipoError.error_procesamiento_general,
+                            )
+                            conn_db.commit()
                             conn.uid("store", uid, "+FLAGS", "\\Seen")
                             return True
 
@@ -1048,7 +1089,6 @@ class EmailListener:
                                     "Error al registrar rechazo por fallo de descarga para ID_CORREO=%s: %s",
                                     id_correo, e,
                                 )
-                            conn.uid("store", uid, "+FLAGS", "\\Seen")
                             return False
 
                         # 5d. Clasificar adjuntos por tipo
@@ -1091,7 +1131,7 @@ class EmailListener:
                             self._repository.crear_proceso_ingesta(
                                 conn=conn_db,
                                 id_proceso=IdTipoProceso.filtro_recepcion,
-                                observacion=motivo_sin_pares[:255],
+                                observacion=motivo_sin_pares,
                                 id_estado=IdEstadoProceso.error,
                                 correo_id=id_correo,
                                 id_error=IdTipoError.correo_sin_adjuntos_validos,
@@ -1113,7 +1153,6 @@ class EmailListener:
                                     "Error al registrar rechazo por procesamiento fallido para ID_CORREO=%s: %s",
                                     id_correo, e,
                                 )
-                            conn.uid("store", uid, "+FLAGS", "\\Seen")
                             return False
 
                         # 5g. Publicar eventos en cola

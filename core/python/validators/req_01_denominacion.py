@@ -39,6 +39,7 @@ def validar_denominacion_v1(xml_factura: etree._Element) -> dict:
     resultado_validacion = False
     denominacion = None
     codigo_tipo_documento = None
+    id_error = None
 
     nodos_profile = xml_factura.xpath(XPATH_PROFILE, namespaces=NAMESPACES)
     nodos_type_code = xml_factura.xpath(XPATH_TYPE_CODE, namespaces=NAMESPACES)
@@ -55,6 +56,7 @@ def validar_denominacion_v1(xml_factura: etree._Element) -> dict:
                 f'Denominación incorrecta: "{denominacion}". '
                 f'Debe contener "{DENOMINACION_REQUERIDA}".'
             )
+            id_error = IdTipoError.denominacion_incorrecta
 
         elif not codigo_tipo_documento:
             mensaje = (
@@ -70,19 +72,21 @@ def validar_denominacion_v1(xml_factura: etree._Element) -> dict:
                 f'"{codigo_tipo_documento}" no corresponde a una factura '
                 f'electrónica válida.'
             )
+            id_error = IdTipoError.tipo_documento_dian_invalido
 
         else:
             mensaje = 'Denominación correcta.'
             resultado_validacion = True
     else:
         mensaje = 'No se encontró el nodo cbc:ProfileID para validar la denominación.'
+        id_error = IdTipoError.profile_id_no_encontrado
 
     logger.debug(mensaje)
 
     resultado = {
         'valido': resultado_validacion,
         'mensaje': mensaje,
-        'id_error': IdTipoError.error_procesamiento_general if not resultado_validacion else None,
+        'id_error': id_error,
         'datos': {
             'denominacion': denominacion,
             'codigo_tipo_documento': codigo_tipo_documento,

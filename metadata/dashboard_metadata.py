@@ -16,6 +16,7 @@ class KpiDefiniciones:
         {'key': 'time', 'label': 'Tiempo promedio', 'color': 'purple'},
         {'key': 'total_value', 'label': 'Valor total facturado', 'color': 'turquoise'},
         {'key': 'providers', 'label': 'Proveedores', 'color': 'turquoise'},
+        {'key': 'cuentas_por_pagar', 'label': 'Cuentas por pagar', 'color': 'orange'},
     )
     """Tupla de dicts con key, label y color de cada KPI."""
 

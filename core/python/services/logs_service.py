@@ -124,8 +124,7 @@ async def obtener_trail(termino: str) -> dict:
         termino: Texto de búsqueda (nº factura, email o asunto).
 
     Returns:
-        Diccionario con metadata del correo y lista de pasos ordenados
-        cronológicamente.
+        Diccionario con la lista de trails agrupados por correo y el conteo total.
     """
     pool = get_pool()
     patron = f'%{termino}%'
@@ -136,24 +135,29 @@ async def obtener_trail(termino: str) -> dict:
             filas = await cur.fetchall()
 
     if not filas:
-        return {'correo': None, 'steps': [], 'total': 0}
+        return {'trails': [], 'total': 0}
 
-    # Extraer metadata del correo de la primera fila
-    primera = filas[0]
-    correo_info = {
-        'correo_id': primera[8],
-        'remitente': primera[9] or '',
-        'asunto': primera[10] or '',
-        'fecha_deteccion': primera[11].strftime('%d/%m/%Y %H:%M') if primera[11] else '',
-    }
-
-    # Construir pasos del pipeline
-    steps = []
+    # Agrupar por correo_id
+    trails_dict = {}
     for r in filas:
         # r[0]=fecha_inicio, r[1]=fecha_fin, r[2]=etapa, r[3]=etapa_codigo,
         # r[4]=estado_codigo, r[5]=detalle_error, r[6]=observacion,
         # r[7]=numero_factura, r[8]=correo_id, r[9]=remitente,
         # r[10]=asunto, r[11]=fecha_deteccion, r[12]=nombre_archivo, r[13]=adjunto_id
+        
+        correo_id = r[8]
+        if correo_id not in trails_dict:
+            correo_info = {
+                'correo_id': correo_id,
+                'remitente': r[9] or '',
+                'asunto': r[10] or '',
+                'fecha_deteccion': r[11].strftime('%d/%m/%Y %H:%M') if r[11] else '',
+            }
+            trails_dict[correo_id] = {
+                'correo': correo_info,
+                'steps': []
+            }
+
         ts_inicio = r[0].strftime(DefaultTextos.formato_hora) if r[0] else ''
         ts_fin = r[1].strftime(DefaultTextos.formato_hora) if r[1] else ''
         duracion_ms = None
@@ -170,7 +174,7 @@ async def obtener_trail(termino: str) -> dict:
         elif r[4] == 'PENDIENTE':
             status = 'pending'
 
-        steps.append({
+        trails_dict[correo_id]['steps'].append({
             'ts': ts_inicio,
             'ts_fin': ts_fin,
             'duracion_ms': duracion_ms,
@@ -184,8 +188,13 @@ async def obtener_trail(termino: str) -> dict:
             'adjunto_id': r[13],
         })
 
+    # Convertir dict a lista
+    trails_list = list(trails_dict.values())
+    
+    # Ordenar los grupos por la fecha del primer paso de cada grupo (para que queden cronológicamente ordenados)
+    trails_list.sort(key=lambda t: t['steps'][0]['ts'] if t['steps'] else '', reverse=True)
+
     return {
-        'correo': correo_info,
-        'steps': steps,
-        'total': len(steps),
+        'trails': trails_list,
+        'total': len(filas)
     }

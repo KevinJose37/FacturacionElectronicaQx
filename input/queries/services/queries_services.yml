@@ -68,14 +68,16 @@ dashboard:
   kpis: >
     SELECT
     COUNT(*) as processed,
-    COUNT(*) FILTER (WHERE id_estado_proceso = 3 AND verificacion_grafica_estado = 'APROBADA') as validated,
-    COUNT(*) FILTER (WHERE id_estado_proceso IN (4, 5)) as rejected,
-    COUNT(*) FILTER (WHERE verificacion_grafica_estado = 'PENDIENTE') as pending_human,
-    COUNT(DISTINCT id_tercero_emisor) as providers,
-    COALESCE(SUM(valor_total), 0) as total_value,
-    COALESCE((SELECT AVG(EXTRACT(EPOCH FROM (fecha_fin - fecha_inicio))) FROM facturacion.proceso_ingesta WHERE fecha_fin IS NOT NULL AND fecha_inicio >= %s AND fecha_inicio <= %s), 0.0) as avg_time
-    FROM facturacion.factura
-    WHERE fecha_creacion >= %s AND fecha_creacion <= %s
+    COUNT(*) FILTER (WHERE f.id_estado_proceso = 3 AND f.verificacion_grafica_estado = 'APROBADA') as validated,
+    COUNT(*) FILTER (WHERE f.id_estado_proceso IN (4, 5)) as rejected,
+    COUNT(*) FILTER (WHERE f.verificacion_grafica_estado = 'PENDIENTE') as pending_human,
+    COUNT(DISTINCT f.id_tercero_emisor) as providers,
+    COALESCE(SUM(f.valor_total), 0) as total_value,
+    COALESCE((SELECT AVG(EXTRACT(EPOCH FROM (fecha_fin - fecha_inicio))) FROM facturacion.proceso_ingesta WHERE fecha_fin IS NOT NULL AND fecha_inicio >= %s AND fecha_inicio <= %s), 0.0) as avg_time,
+    COALESCE(SUM(f.valor_total) FILTER (WHERE pf.codigo_forma_pago = '2'), 0.0) as accounts_payable
+    FROM facturacion.factura f
+    LEFT JOIN facturacion.pago_factura pf ON f.id_factura = pf.id_factura
+    WHERE f.fecha_creacion >= %s AND f.fecha_creacion <= %s
 
   etapas_flujo: >
     SELECT
@@ -315,8 +317,9 @@ logs:
     FROM facturacion.proceso_ingesta pi
     JOIN facturacion.tipo_proceso tp ON pi.id_proceso = tp.id_tipo_proceso
     LEFT JOIN facturacion.tipo_error te ON pi.id_error = te.id_tipo_error
+    LEFT JOIN facturacion.adjuntos_correo ac ON pi.adjunto_id = ac.adjunto_id
     LEFT JOIN facturacion.factura f ON pi.adjunto_id = f.adjunto_id
-    LEFT JOIN facturacion.correo_entrante c ON pi.correo_id = c.correo_id
+    LEFT JOIN facturacion.correo_entrante c ON c.correo_id = COALESCE(pi.correo_id, ac.correo_id)
     {where}
     ORDER BY pi.fecha_inicio DESC LIMIT %s
 
@@ -345,7 +348,7 @@ logs:
       te.descripcion as detalle_error,
       pi.observacion,
       f.numero_factura,
-      c.correo_id,
+      COALESCE(pi.correo_id, ac.correo_id) as correo_id,
       c.remitente,
       c.asunto,
       c.fecha_deteccion,
@@ -357,7 +360,7 @@ logs:
     LEFT JOIN facturacion.tipo_error te ON pi.id_error = te.id_tipo_error
     LEFT JOIN facturacion.adjuntos_correo ac ON pi.adjunto_id = ac.adjunto_id
     LEFT JOIN facturacion.factura f ON pi.adjunto_id = f.adjunto_id
-    LEFT JOIN facturacion.correo_entrante c ON pi.correo_id = c.correo_id
+    LEFT JOIN facturacion.correo_entrante c ON c.correo_id = COALESCE(pi.correo_id, ac.correo_id)
     WHERE pi.correo_id IN (SELECT correo_id FROM target_correos)
        OR pi.adjunto_id IN (
          SELECT ac2.adjunto_id FROM facturacion.adjuntos_correo ac2

@@ -44,6 +44,7 @@ class AlertasRepository:
             dbname=self.config['dbname'],
             user=self.config['user'],
             password=self.config.get('password') or os.environ.get('POSTGRES_PASSWORD', ''),
+            options='-c timezone=America/Bogota'
         )
 
     def insertar_alerta(

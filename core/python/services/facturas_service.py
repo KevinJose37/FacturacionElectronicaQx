@@ -443,7 +443,7 @@ async def actualizar_verificacion_grafica(
     # Build motivo_rechazo string from the selected numerals
     motivo_rechazo_texto = None
     if not aprobado and motivos_rechazo:
-        motivo_rechazo_texto = 'Rechazo manual – Incumplimiento representación gráfica: ' + ', '.join(motivos_rechazo)
+        motivo_rechazo_texto = 'Rechazo manual – Incumplimiento representación gráfica: ' + '; '.join(motivos_rechazo)
 
     query_get_adjunto = """
         SELECT adjunto_id 
@@ -489,9 +489,6 @@ async def actualizar_verificacion_grafica(
             if motivo_rechazo_texto:
                 obs_proceso = motivo_rechazo_texto
             
-            if len(obs_proceso) > 255:
-                obs_proceso = obs_proceso[:252] + '...'
-
             await cur.execute(query_update_proceso, [estado_proceso, obs_proceso, adjunto_id])
             if cur.rowcount == 0:
                 query_insert_proceso = """

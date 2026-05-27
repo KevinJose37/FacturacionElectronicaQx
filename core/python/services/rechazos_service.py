@@ -62,6 +62,9 @@ MAPEO_RECHAZOS = {
     'LINEA_SIN_DESCRIPCION': ('Falta Descripción de Ítem', 'Una o más líneas de detalle de la factura no incluyen descripción del ítem.'),
     'LINEA_VALOR_INVALIDO': ('Valor de Ítem Inválido', 'Hay inconsistencias o valores nulos en los precios y totales de las líneas.'),
     'LINEA_CANTIDAD_INVALIDA': ('Cantidad de Ítem Inválida', 'Una o más líneas tienen cantidades reportadas iguales o menores a cero.'),
+    'DENOMINACION_INCORRECTA': ('Denominación Incorrecta', 'La denominación del documento no corresponde expresamente a "Factura Electrónica de Venta" según la resolución.'),
+    'TIPO_DOCUMENTO_DIAN_INVALIDO': ('Tipo de Documento DIAN Inválido', 'El código de tipo de documento (InvoiceTypeCode) no corresponde a una factura electrónica admitida.'),
+    'PROFILE_ID_NO_ENCONTRADO': ('Nodo ProfileID no Encontrado', 'No se localizó el nodo cbc:ProfileID en el XML, requerido para validar su denominación.'),
 }
 
 

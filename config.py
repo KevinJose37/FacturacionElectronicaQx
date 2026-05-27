@@ -79,7 +79,10 @@ def create_postgres_connection(config: dict) -> Any:
     """
     import psycopg2
 
-    conexion = psycopg2.connect(**config)
+    config_copy = config.copy()
+    if 'options' not in config_copy:
+        config_copy['options'] = '-c timezone=America/Bogota'
+    conexion = psycopg2.connect(**config_copy)
     return conexion
 
 

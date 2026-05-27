@@ -1,7 +1,9 @@
 """Servicio de consultas para la página de reglas de validación."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+
+_TZ_BOGOTA = timezone(timedelta(hours=-5))
 
 from config import load_yaml_queries
 from core.python.db import get_pool
@@ -26,8 +28,8 @@ async def obtener_reglas_validacion(fecha_inicio: str | None = None, fecha_fin: 
     
     if fecha_inicio and fecha_fin:
         query = _QUERIES['reglas_con_fechas']
-        dt_inicio = datetime.strptime(fecha_inicio, '%Y-%m-%d').replace(hour=0, minute=0, second=0, tzinfo=timezone.utc)
-        dt_fin = datetime.strptime(fecha_fin, '%Y-%m-%d').replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+        dt_inicio = datetime.strptime(fecha_inicio, '%Y-%m-%d').replace(hour=0, minute=0, second=0, tzinfo=_TZ_BOGOTA)
+        dt_fin = datetime.strptime(fecha_fin, '%Y-%m-%d').replace(hour=23, minute=59, second=59, tzinfo=_TZ_BOGOTA)
         params = (dt_inicio, dt_fin)
     else:
         query = _QUERIES['reglas']
@@ -95,11 +97,11 @@ async def obtener_facturas_fallidas(etapa: str, fecha_inicio: str | None = None,
     pool = get_pool()
 
     if fecha_inicio and fecha_fin:
-        dt_inicio = datetime.strptime(fecha_inicio, '%Y-%m-%d').replace(hour=0, minute=0, second=0, tzinfo=timezone.utc)
-        dt_fin = datetime.strptime(fecha_fin, '%Y-%m-%d').replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+        dt_inicio = datetime.strptime(fecha_inicio, '%Y-%m-%d').replace(hour=0, minute=0, second=0, tzinfo=_TZ_BOGOTA)
+        dt_fin = datetime.strptime(fecha_fin, '%Y-%m-%d').replace(hour=23, minute=59, second=59, tzinfo=_TZ_BOGOTA)
     else:
         # Default to last 30 days
-        dt_fin = datetime.now(tz=timezone.utc)
+        dt_fin = datetime.now(tz=_TZ_BOGOTA)
         dt_inicio = dt_fin.replace(day=1)
 
     query = _QUERIES['facturas_por_regla']

@@ -303,6 +303,16 @@ class IdTipoError:
     linea_cantidad_invalida = 55
     """Una o más líneas tienen una cantidad reportada inválida."""
 
+    denominacion_incorrecta = 56
+    """La denominación del documento no corresponde a Factura Electrónica de Venta."""
+
+    tipo_documento_dian_invalido = 57
+    """El código de tipo de documento (InvoiceTypeCode) es inválido."""
+
+    profile_id_no_encontrado = 58
+    """No se encontró el nodo cbc:ProfileID para validar la denominación."""
+
+
 
 class IdFormaPago:
     """Formas de pago según catálogo DIAN.

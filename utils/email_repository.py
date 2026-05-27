@@ -47,6 +47,7 @@ class EmailRepository:
             dbname=self.config["dbname"],
             user=self.config["user"],
             password=self.config["password"],
+            options="-c timezone=America/Bogota"
         )
 
     def calcular_hash_sha256(self, ruta_archivo: Path) -> str:
@@ -382,9 +383,6 @@ class EmailRepository:
         if adjunto_id is None and correo_id is None:
             logger.error("crear_proceso_ingesta requiere adjunto_id o correo_id")
             return -1
-
-        if observacion and len(observacion) > 255:
-            observacion = observacion[:252] + '...'
 
         try:
             with conn.cursor() as cur:

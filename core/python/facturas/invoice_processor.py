@@ -16,7 +16,7 @@ import logging
 import os
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from typing import Optional
 
@@ -853,14 +853,19 @@ class InvoiceProcessor:
             # Fecha de generación
             d_fecha = res_fecha['datos']
             fecha_gen = None
+            tz_utc5 = timezone(timedelta(hours=-5))
             if d_fecha.get('fecha_generacion') and d_fecha.get('hora_generacion'):
                 try:
                     fecha_str = f"{d_fecha['fecha_generacion']}T{d_fecha['hora_generacion']}"
                     fecha_gen = datetime.fromisoformat(fecha_str)
+                    if fecha_gen.tzinfo is None:
+                        fecha_gen = fecha_gen.replace(tzinfo=tz_utc5)
+                    else:
+                        fecha_gen = fecha_gen.astimezone(tz_utc5)
                 except Exception:
-                    fecha_gen = datetime.now(tz=timezone.utc)
+                    fecha_gen = datetime.now(tz=tz_utc5)
             else:
-                fecha_gen = datetime.now(tz=timezone.utc)
+                fecha_gen = datetime.now(tz=tz_utc5)
 
             # Valor total
             d_valor = res_valor['datos']

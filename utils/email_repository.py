@@ -503,3 +503,121 @@ class EmailRepository:
                 (correo_id,)
             )
             logger.debug("Correo ID=%s marcado como procesado", correo_id)
+
+    def guardar_correo_descartado(
+        self,
+        id_mensaje: str,
+        remitente: str,
+        asunto: Optional[str],
+        motivo: str,
+        imap_uid: Optional[int] = None,
+        fecha_envio: Optional[datetime] = None,
+    ) -> Optional[int]:
+        """Registra un correo descartado (no-factura) en BD para excluirlo de reprocesamiento.
+
+        Usa ON CONFLICT (MESSAGE_ID) DO NOTHING para idempotencia.
+
+        Args:
+            id_mensaje: Message-ID del correo.
+            remitente: Dirección del remitente.
+            asunto: Asunto del correo.
+            motivo: Motivo del descarte (ej: 'NO_ES_FACTURACION').
+            imap_uid: UID IMAP del correo.
+            fecha_envio: Fecha de envío del correo.
+
+        Returns:
+            CORREO_ID si se insertó, None si ya existía.
+        """
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO FACTURACION.CORREO_ENTRANTE (
+                            MESSAGE_ID, REMITENTE, ASUNTO,
+                            FECHA_DETECCION, FECHA_ENVIO,
+                            CONTIENE_ADJUNTOS, ID_ORIGEN, IMAP_UID,
+                            MOTIVO_DESCARTE
+                        )
+                        VALUES (%s, %s, %s, %s, %s, FALSE, 1, %s, %s)
+                        ON CONFLICT (MESSAGE_ID) DO NOTHING
+                        RETURNING CORREO_ID
+                        """,
+                        (
+                            id_mensaje,
+                            remitente,
+                            asunto,
+                            datetime.now(tz=timezone.utc),
+                            fecha_envio,
+                            imap_uid,
+                            motivo,
+                        ),
+                    )
+                    resultado = cur.fetchone()
+                    conn.commit()
+                    if resultado:
+                        logger.debug(
+                            "Correo descartado registrado: ID=%s motivo=%s mensaje=%s",
+                            resultado[0], motivo, id_mensaje,
+                        )
+                        return resultado[0]
+                    else:
+                        logger.debug(
+                            "Correo descartado ya existente en BD: %s", id_mensaje,
+                        )
+                        return None
+        except Exception as err:
+            logger.error(
+                "Error al registrar correo descartado %s: %s", id_mensaje, err,
+            )
+            return None
+
+    def existe_correo_descartado(self, conn: Connection, id_mensaje: str) -> bool:
+        """Verifica si un correo fue descartado previamente.
+
+        Consulta rápida por MESSAGE_ID + MOTIVO_DESCARTE IS NOT NULL.
+        Usado como fallback cuando el flag IMAP custom no funciona.
+
+        Args:
+            conn: Conexión activa.
+            id_mensaje: Message-ID del correo.
+
+        Returns:
+            True si el correo fue descartado.
+        """
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1 FROM FACTURACION.CORREO_ENTRANTE
+                WHERE MESSAGE_ID = %s AND MOTIVO_DESCARTE IS NOT NULL
+                LIMIT 1
+                """,
+                (id_mensaje,),
+            )
+            return cur.fetchone() is not None
+
+    def obtener_message_ids_descartados(self, conn: Connection, imap_uids: list[int]) -> set[int]:
+        """Obtiene los IMAP UIDs que corresponden a correos descartados.
+
+        Consulta batch para excluir UIDs de correos previamente descartados.
+        Usado como fallback cuando el flag IMAP custom no funciona.
+
+        Args:
+            conn: Conexión activa.
+            imap_uids: Lista de UIDs IMAP a verificar.
+
+        Returns:
+            Set de IMAP UIDs que fueron descartados.
+        """
+        if not imap_uids:
+            return set()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT IMAP_UID FROM FACTURACION.CORREO_ENTRANTE
+                WHERE IMAP_UID = ANY(%s) AND MOTIVO_DESCARTE IS NOT NULL
+                """,
+                (imap_uids,),
+            )
+            return {row[0] for row in cur.fetchall()}
+

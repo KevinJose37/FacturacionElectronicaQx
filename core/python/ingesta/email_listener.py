@@ -119,7 +119,12 @@ class EmailListener:
                 time.sleep(self.backoff_base**intento)
 
     def _obtener_uids(self, conn: imaplib.IMAP4_SSL) -> list:
-        """Obtiene UIDs de correos pendientes usando Checkpointing por UID y UNSEEN."""
+        """Obtiene UIDs de correos pendientes usando Checkpointing por UID y UNSEEN.
+
+        Excluye correos previamente descartados (no-factura) mediante:
+        1. Flag IMAP custom ``$NoFactura`` (server-side, eficiente).
+        2. Fallback a consulta BD si el flag IMAP no funciona.
+        """
         # 1. Refrescar estado de la carpeta
         conn.select(self.carpeta)
         
@@ -168,8 +173,60 @@ class EmailListener:
             if count_unseen > 0:
                 logger.info("Encontrados %d correos adicionales marcados como NO LEÍDOS.", count_unseen)
 
+        # C. Excluir correos descartados (no-factura) — Flag IMAP $NoFactura
+        if uids_finales:
+            excluidos = self._excluir_descartados(conn, uids_finales)
+            if excluidos:
+                uids_finales -= excluidos
+                logger.info(
+                    "Excluidos %d correos previamente descartados (no-factura).",
+                    len(excluidos),
+                )
+
         # Retornar lista ordenada de bytes
         return [str(u).encode() for u in sorted(list(uids_finales))]
+
+    def _excluir_descartados(
+        self, conn: imaplib.IMAP4_SSL, uids_candidatos: set[int]
+    ) -> set[int]:
+        """Excluye UIDs de correos previamente descartados.
+
+        Estrategia:
+        1. Buscar via flag IMAP ``$NoFactura`` (eficiente, server-side).
+        2. Si el flag no funciona, fallback a consulta batch en BD.
+
+        Args:
+            conn: Conexión IMAP activa.
+            uids_candidatos: Set de UIDs candidatos a procesar.
+
+        Returns:
+            Set de UIDs a excluir.
+        """
+        # Intento 1: Flag IMAP custom $NoFactura
+        try:
+            status_nf, data_nf = conn.uid("search", None, "KEYWORD $NoFactura")
+            if status_nf == "OK" and data_nf[0]:
+                nofactura_uids = {int(u) for u in data_nf[0].split()}
+                return uids_candidatos & nofactura_uids
+            # Flag soportado pero sin resultados → no hay descartados
+            return set()
+        except Exception:
+            logger.debug(
+                "Flag IMAP $NoFactura no soportado, usando fallback BD."
+            )
+
+        # Intento 2: Fallback a BD
+        try:
+            with self._repository._get_connection() as db:
+                return self._repository.obtener_message_ids_descartados(
+                    db, list(uids_candidatos)
+                )
+        except Exception as err:
+            logger.warning(
+                "Error consultando descartados en BD: %s. No se excluirá ninguno.",
+                err,
+            )
+            return set()
 
     def _decodificar_header(self, raw_header: str | None) -> str:
         """Decodifica un header de correo con posibles fragmentos MIME encoded."""
@@ -839,7 +896,21 @@ class EmailListener:
                     filtro = FacturaFilter(_CONFIG)
                     if not filtro.es_facturacion(parsed):
                         logger.info("Correo ignorado (no es facturación): %s - Asunto: %s", id_mensaje, asunto)
-                        conn.uid("store", uid, "+FLAGS", "\\Seen")
+                        # Registrar en BD como descartado (para exclusión en próximos ciclos)
+                        self._repository.guardar_correo_descartado(
+                            id_mensaje=id_mensaje,
+                            remitente=remitente,
+                            asunto=asunto,
+                            motivo="NO_ES_FACTURACION",
+                            imap_uid=int(uid),
+                            fecha_envio=fecha_envio,
+                        )
+                        # Añadir flag IMAP custom para excluirlo server-side
+                        # SIN marcar como \Seen → sigue visible como no leído
+                        try:
+                            conn.uid("store", uid, "+FLAGS", "$NoFactura")
+                        except Exception:
+                            logger.debug("Servidor IMAP no soportó flag $NoFactura para UID=%s", uid)
                         return True
 
                     # 4. Verificar adjuntos válidos (ZIP, XML o PDF)
@@ -940,7 +1011,11 @@ class EmailListener:
                                         id_correo, e,
                                     )
 
-                            conn.uid("store", uid, "+FLAGS", "\\Seen")
+                            # Marcar con $NoFactura (no leído) para correos rechazados
+                            try:
+                                conn.uid("store", uid, "+FLAGS", "$NoFactura")
+                            except Exception:
+                                logger.debug("Servidor IMAP no soportó flag $NoFactura para UID=%s", uid)
                             return True
 
                         # 5c. Descargar TODOS los adjuntos válidos
@@ -1093,12 +1168,32 @@ class EmailListener:
             return False
         except Exception as exc:
             logger.exception("Error fatal procesando correo UID=%s: %s", uid, exc)
-            # En errores fatales desconocidos, marcamos como visto para evitar bucles infinitos de error
-            # pero notificamos el fallo
+            # Solo marcar como leído si el correo YA está registrado en BD.
+            # Si no está en BD, dejarlo como no leído para reintento automático.
             try:
-                conn.uid("store", uid, "+FLAGS", "\\Seen")
+                with self._repository._get_connection() as check_conn:
+                    with check_conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT 1 FROM FACTURACION.CORREO_ENTRANTE WHERE IMAP_UID = %s",
+                            (int(uid),),
+                        )
+                        if cur.fetchone():
+                            conn.uid("store", uid, "+FLAGS", "\\Seen")
+                            logger.info(
+                                "Correo UID=%s ya registrado en BD, marcado como leído tras error fatal.",
+                                uid,
+                            )
+                        else:
+                            logger.warning(
+                                "Correo UID=%s NO registrado en BD, se deja como no leído para reintento.",
+                                uid,
+                            )
             except Exception:
-                pass
+                # Si no podemos verificar la BD, dejamos el correo como no leído
+                # (es más seguro reintentar que perder datos).
+                logger.warning(
+                    "No se pudo verificar BD para UID=%s, se deja como no leído.", uid,
+                )
             return False
 
     def run(self) -> bool:

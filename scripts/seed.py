@@ -41,17 +41,17 @@ def ejecutar_seed() -> None:
             id_adquiriente = _insertar_adquiriente(cur)
             ids_emisores = _insertar_emisores(cur)
             ids_archivos = _insertar_archivos(cur, 80)
-            ids_correos = _insertar_correos(cur, ids_archivos)
+            ids_correos, ids_adjuntos = _insertar_correos(cur, ids_archivos)
             ids_autorizaciones = _insertar_autorizaciones(cur, ids_emisores)
             ids_facturas = _insertar_facturas(
                 cur, ids_emisores, id_adquiriente, ids_autorizaciones, ids_archivos
             )
             _insertar_detalles_facturas(cur, ids_facturas)
             _insertar_pagos(cur, ids_facturas)
-            ids_procesos = _insertar_procesos_ingesta(cur, ids_correos, ids_archivos, ids_facturas)
+            ids_procesos = _insertar_procesos_ingesta(cur, ids_correos, ids_adjuntos, ids_facturas)
             _insertar_validaciones_dian(cur, ids_facturas)
             _insertar_fabricantes_software(cur, ids_facturas)
-            _insertar_eventos_ingesta(cur)
+            _insertar_eventos_ingesta(cur, ids_adjuntos)
             _insertar_logs_heatmap(cur, ids_procesos)
 
         conn.commit()
@@ -65,19 +65,19 @@ def ejecutar_seed() -> None:
 
 
 def _limpiar_datos(cur) -> None:
-    """Limpia tablas en orden de dependencias."""
+    """Limpia tablas usando TRUNCATE CASCADE para evitar conflictos de FK."""
     tablas = [
         'software_factura', 'producto_software', 'fabricante_software',
         'validacion_dian', 'impuesto_factura', 'impuesto_detalle_factura',
         'detalle_factura', 'pago_factura', 'condicion_fiscal_factura',
         'log_proceso', 'proceso_ingesta', 'evento_ingesta', 'escaneo_seguridad',
         'factura', 'autorizacion_numeracion_dian',
-        'adjunto_correo', 'correo_entrante', 'archivo',
+        'adjuntos_correo', 'correo_entrante', 'archivo',
         'tercero',
     ]
-    for t in tablas:
-        cur.execute(f'DELETE FROM facturacion.{t}')
-    print('Tablas limpiadas.')
+    tablas_str = ', '.join([f'facturacion.{t}' for t in tablas])
+    cur.execute(f'TRUNCATE TABLE {tablas_str} RESTART IDENTITY CASCADE')
+    print('Tablas limpiadas con TRUNCATE CASCADE.')
 
 
 def _insertar_adquiriente(cur) -> int:
@@ -133,9 +133,10 @@ def _insertar_archivos(cur, cantidad: int) -> list:
     return ids
 
 
-def _insertar_correos(cur, ids_archivos: list) -> list:
-    """Inserta correos entrantes ficticios."""
-    ids = []
+def _insertar_correos(cur, ids_archivos: list) -> tuple:
+    """Inserta correos entrantes ficticios y sus adjuntos."""
+    ids_correos = []
+    ids_adjuntos = []
     ahora = datetime.now(tz=timezone.utc)
     for i in range(min(30, len(ids_archivos))):
         fecha = ahora - timedelta(days=random.randint(0, 14), hours=random.randint(0, 23))
@@ -143,14 +144,33 @@ def _insertar_correos(cur, ids_archivos: list) -> list:
         prov = PROVEEDORES[i % len(PROVEEDORES)]
         cur.execute(
             'INSERT INTO facturacion.correo_entrante '
-            '(id_mensaje_email, remitente, destinatario, asunto, fecha_recepcion) '
-            'VALUES (%s, %s, %s, %s, %s) RETURNING id_correo',
-            (msg_id, prov[4], 'facturacion@quipux.co',
-             f'{prov[0]};{prov[2]};FE-{i:04d};01;{prov[3]}', fecha),
+            '(message_id, remitente, asunto, fecha_deteccion, fecha_envio) '
+            'VALUES (%s, %s, %s, %s, %s) RETURNING correo_id',
+            (msg_id, prov[4], f'{prov[0]};{prov[2]};FE-{i:04d};01;{prov[3]}', fecha, fecha),
         )
-        ids.append(cur.fetchone()[0])
-    print(f'{len(ids)} correos insertados.')
-    return ids
+        correo_id = cur.fetchone()[0]
+        ids_correos.append(correo_id)
+
+        # Buscar info del archivo correspondiente para crear el adjunto
+        archivo_id = ids_archivos[i]
+        cur.execute(
+            'SELECT nombre_original, uri_almacenaje, hash_sha256 FROM facturacion.archivo WHERE id_archivo = %s',
+            (archivo_id,)
+        )
+        nombre_original, uri_almacenaje, hash_sha256 = cur.fetchone()
+
+        # Insertar adjunto en la base de datos
+        cur.execute(
+            'INSERT INTO facturacion.adjuntos_correo '
+            '(correo_id, nombre_archivo, id_tipo_archivo, uri_almacenamiento, sha256, archivo_seguro) '
+            'VALUES (%s, %s, 2, %s, %s, TRUE) RETURNING adjunto_id',
+            (correo_id, nombre_original, uri_almacenaje, hash_sha256),
+        )
+        adjunto_id = cur.fetchone()[0]
+        ids_adjuntos.append(adjunto_id)
+
+    print(f'{len(ids_correos)} correos y {len(ids_adjuntos)} adjuntos insertados.')
+    return ids_correos, ids_adjuntos
 
 
 def _insertar_autorizaciones(cur, ids_emisores: list) -> dict:
@@ -178,8 +198,8 @@ def _insertar_facturas(cur, ids_emisores, id_adquiriente, autorizaciones, ids_ar
     """Inserta facturas con estados variados y tipos de documento."""
     ids = []
     ahora = datetime.now(tz=timezone.utc)
-    estados = [7, 7, 7, 7, 6, 8, 10, 7, 9, 7]  # VALIDADO_DIAN, FACTURA_PARSED, RECHAZADO, ERROR, PERSISTIDO
-    tipos_doc = ['FE', 'FE', 'FE', 'FE', 'FE', 'NC', 'NC', 'ND', 'DS', 'FE']  # Distribución realista
+    estados = [3, 3, 3, 3, 2, 4, 4, 3, 3, 3]  # PROCESADO, EN_PROCESO, ERROR
+    tipos_doc = ['01', '01', '01', '01', '01', '91', '91', '92', '01', '01']  # Distribución realista
 
     for i in range(min(40, len(ids_archivos) - 10)):
         id_emisor = ids_emisores[i % len(ids_emisores)]
@@ -196,14 +216,14 @@ def _insertar_facturas(cur, ids_emisores, id_adquiriente, autorizaciones, ids_ar
             '(cufe, prefijo_facturacion, numero_factura, id_tercero_emisor, '
             'id_tercero_adquiriente, id_autorizacion, fecha_generacion, '
             'fecha_expedicion, codigo_moneda, valor_total, '
-            'id_archivo_xml_origen, id_estado_proceso, tipo_documento) '
-            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
+            'adjunto_id, id_estado_proceso, codigo_tipo_documento_dian) '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, %s, %s) '
             'RETURNING id_factura',
             (
                 cufe, f'FE{i % len(ids_emisores)}', f'{1000 + i}',
                 id_emisor, id_adquiriente, id_aut,
                 fecha_gen, fecha_gen, 'COP', monto,
-                id_archivo_xml, estado, tipo_doc,
+                estado, tipo_doc,
             ),
         )
         ids.append(cur.fetchone()[0])
@@ -247,24 +267,24 @@ def _insertar_detalles_facturas(cur, ids_facturas: list) -> None:
 def _insertar_pagos(cur, ids_facturas: list) -> None:
     """Inserta información de pago para cada factura."""
     for id_factura in ids_facturas:
-        forma = random.choice([1, 2])
-        medio = random.choice([1, 2, 3, 4]) if forma == 1 else None
-        plazo = None if forma == 1 else random.choice([30, 60, 90])
+        forma = random.choice(['1', '2'])
+        medio = random.choice(['1', '2', '3', '4']) if forma == '1' else None
+        plazo = None if forma == '1' else random.choice([30, 60, 90])
         cur.execute(
             'INSERT INTO facturacion.pago_factura '
-            '(id_factura, id_forma_pago, id_medio_pago, plazo_en_dias) '
+            '(id_factura, codigo_forma_pago, codigo_medio_pago, plazo_en_dias) '
             'VALUES (%s, %s, %s, %s)',
             (id_factura, forma, medio, plazo),
         )
     print(f'{len(ids_facturas)} pagos insertados.')
 
 
-def _insertar_procesos_ingesta(cur, ids_correos, ids_archivos, ids_facturas) -> None:
+def _insertar_procesos_ingesta(cur, ids_correos, ids_adjuntos, ids_facturas) -> None:
     """Inserta procesos de ingesta con logs."""
     ahora = datetime.now(tz=timezone.utc)
     etapas = [
-        ('RECEPCION', 1), ('VERIFICACION_ADJUNTO', 2), ('ESCANEO', 3),
-        ('EXTRACCION_XML', 5), ('PARSEO', 6), ('VALIDACION_DIAN', 7), ('PERSISTENCIA', 9),
+        ('RECEPCION', 2), ('VERIFICACION_ADJUNTO', 2), ('ESCANEO', 2),
+        ('EXTRACCION_XML', 2), ('PARSEO', 2), ('VALIDACION_DIAN', 2), ('PERSISTENCIA', 3),
     ]
     niveles_log = ['info', 'info', 'info', 'info', 'info', 'warn', 'error']
     fuentes = ['pipeline', 'ocr', 'validator', 'erp', 'queue', 'ai', 'auth', 'scheduler']
@@ -273,7 +293,7 @@ def _insertar_procesos_ingesta(cur, ids_correos, ids_archivos, ids_facturas) -> 
     ids_procesos = []
     for i in range(min(len(ids_correos), len(ids_facturas), 25)):
         id_correo = ids_correos[i % len(ids_correos)]
-        estado_final = random.choice([7, 8, 9, 10])
+        estado_final = random.choice([3, 4, 5])
         clave = hashlib.sha256(f'idem_{i}_{uuid.uuid4()}'.encode()).hexdigest()
         cufe = hashlib.sha256(f'cufe_proc_{i}'.encode()).hexdigest()[:96]
         fecha_inicio = ahora - timedelta(days=random.randint(0, 14), minutes=random.randint(0, 1440))
@@ -285,12 +305,11 @@ def _insertar_procesos_ingesta(cur, ids_correos, ids_archivos, ids_facturas) -> 
 
         cur.execute(
             'INSERT INTO facturacion.proceso_ingesta '
-            '(id_correo, id_archivo_origen, clave_idempotencia, version_motor, '
-            'id_estado_proceso, cufe_detectado, fecha_inicio, fecha_fin) '
-            'VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id_proceso',
+            '(correo_id, adjunto_id, id_proceso, id_estado, observacion, fecha_inicio, fecha_fin) '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id_proceso_ingesta',
             (
-                id_correo, ids_archivos[i % len(ids_archivos)],
-                clave, 'v1.0.0', estado_final, cufe,
+                id_correo, ids_adjuntos[i % len(ids_adjuntos)],
+                24, estado_final, f'Proceso completado con estado {estado_final}',
                 fecha_inicio, fecha_fin,
             ),
         )
@@ -333,10 +352,10 @@ def _insertar_validaciones_dian(cur, ids_facturas: list) -> None:
     """Inserta validaciones DIAN para facturas."""
     total = 0
     for id_factura in ids_facturas:
-        estado = random.choice([7, 7, 7, 8])
-        codigo_resp = 'OK' if estado == 7 else random.choice(['REJECT-01', 'REJECT-02', 'REJECT-03'])
+        estado = random.choice([3, 3, 3, 4])
+        codigo_resp = 'OK' if estado == 3 else random.choice(['REJECT-01', 'REJECT-02', 'REJECT-03'])
         desc_resp = (
-            'Documento validado correctamente' if estado == 7
+            'Documento validado correctamente' if estado == 3
             else random.choice([
                 'CUFE duplicado en sistema DIAN',
                 'Resolución de facturación vencida',
@@ -390,27 +409,30 @@ def _insertar_fabricantes_software(cur, ids_facturas: list) -> None:
     print(f'{len(fabricantes)} fabricantes, {len(ids_prod)} productos de software insertados.')
 
 
-def _insertar_eventos_ingesta(cur) -> None:
+def _insertar_eventos_ingesta(cur, ids_adjuntos: list) -> None:
     """Inserta eventos de ingesta con diferentes estados para la cola."""
     ahora = datetime.now(tz=timezone.utc)
-    estados = ['PENDIENTE', 'PENDIENTE', 'PENDIENTE', 'PROCESADO', 'PROCESADO', 'ERROR']
     total = 0
-    for i in range(18):
-        estado = estados[i % len(estados)]
+    for i, adjunto_id in enumerate(ids_adjuntos[:18]):
+        # Estados: 1 (PENDIENTE), 3 (PROCESADO), 4 (ERROR)
+        estado_id = random.choice([1, 1, 1, 3, 3, 4])
+        intentos = random.randint(0, 3) if estado_id == 4 else 0
         cur.execute(
             'INSERT INTO facturacion.evento_ingesta '
-            '(id_evento, estado, origen, datos_json, intentos) '
-            'VALUES (%s, %s, %s, %s, %s)',
+            '(adjunto_id, fecha_creacion, fecha_actualizacion, id_estado, intentos, version_motor, worker_id) '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s)',
             (
-                str(uuid.uuid4()),
-                estado,
-                'email_listener',
-                f'{{"correo_id": {i + 1}, "asunto": "FE-{i:04d}"}}',
-                random.randint(0, 3) if estado == 'ERROR' else 0,
+                adjunto_id,
+                ahora - timedelta(hours=i),
+                ahora - timedelta(hours=i) + timedelta(minutes=random.randint(1, 10)),
+                estado_id,
+                intentos,
+                '1.0.0',
+                f'worker-{i % 3}',
             ),
         )
         total += 1
-    print(f'{total} eventos de ingesta insertados ({sum(1 for s in estados if s == "PENDIENTE") * 3} pendientes).')
+    print(f'{total} eventos de ingesta insertados.')
 
 
 def _insertar_logs_heatmap(cur, ids_procesos: list) -> None:
@@ -455,7 +477,7 @@ def _insertar_logs_heatmap(cur, ids_procesos: list) -> None:
                     (
                         id_proceso, seq,
                         random.choice(['VALIDACION_DIAN', 'ESCANEO', 'PARSEO']),
-                        random.choice([8, 10]),
+                        random.choice([4, 5]),
                         fecha_log,
                         fecha_log + timedelta(seconds=random.uniform(0.1, 2.0)),
                         '{"fuente": "pipeline", "nivel": "error"}',

@@ -383,6 +383,9 @@ class EmailRepository:
             logger.error("crear_proceso_ingesta requiere adjunto_id o correo_id")
             return -1
 
+        if observacion and len(observacion) > 255:
+            observacion = observacion[:252] + '...'
+
         try:
             with conn.cursor() as cur:
                 cur.execute(
@@ -427,6 +430,9 @@ class EmailRepository:
 
         Si se marca como finalizado (procesado o error), actualiza FECHA_FIN.
         """
+        if resumen_error and len(resumen_error) > 255:
+            resumen_error = resumen_error[:252] + '...'
+
         with conn.cursor() as cur:
             cur.execute(
                 """

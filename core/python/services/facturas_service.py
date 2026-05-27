@@ -488,6 +488,10 @@ async def actualizar_verificacion_grafica(
             obs_proceso = 'Verificacion grafica aprobada manualmente por el usuario.' if aprobado else 'Verificacion grafica rechazada manualmente por el usuario.'
             if motivo_rechazo_texto:
                 obs_proceso = motivo_rechazo_texto
+            
+            if len(obs_proceso) > 255:
+                obs_proceso = obs_proceso[:252] + '...'
+
             await cur.execute(query_update_proceso, [estado_proceso, obs_proceso, adjunto_id])
             if cur.rowcount == 0:
                 query_insert_proceso = """
@@ -500,6 +504,3 @@ async def actualizar_verificacion_grafica(
             await cur.execute(query_resolve_alerta, [id_factura])
             
             return True
-
-
-

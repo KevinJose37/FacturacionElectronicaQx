@@ -38,7 +38,7 @@ def test_validar_denominacion_v1_erronea(xml_denominacion):
     resultado = validar_denominacion_v1(xml)
     
     assert resultado['valido'] is False
-    assert resultado['id_error'] == IdTipoError.error_procesamiento_general
+    assert resultado['id_error'] == IdTipoError.denominacion_incorrecta
     assert 'Denominación incorrecta' in resultado['mensaje']
 
 def test_validar_denominacion_v1_sin_profile():

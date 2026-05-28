@@ -109,3 +109,25 @@ tools:
             type: string
             description: 'Máximo de logs (default "10").'
         required: []
+
+  - type: function
+    function:
+      name: consultar_estadisticas_dashboard
+      description: >
+        Consulta estadísticas agregadas, tendencias y KPIs del dashboard del sistema de facturación.
+        Usar cuando el usuario pregunte por estadísticas globales de impuestos, canales o medios de pago (PSE, transferencia, crédito, contado),
+        el funnel o embudo de ingesta (correos y adjuntos recibidos), las etapas de procesamiento del pipeline o valor total facturado por proveedor.
+      parameters:
+        type: object
+        properties:
+          tipo_estadistica:
+            type: string
+            enum: [formas_pago, medios_pago, impuestos, tipos_documento, funnel_ingesta, etapas_flujo, valor_proveedores]
+            description: "Tipo de indicador o estadística a consultar."
+          fecha_inicio:
+            type: string
+            description: "Fecha de inicio en formato YYYY-MM-DD (opcional)."
+          fecha_fin:
+            type: string
+            description: "Fecha de fin en formato YYYY-MM-DD (opcional)."
+        required: [tipo_estadistica]

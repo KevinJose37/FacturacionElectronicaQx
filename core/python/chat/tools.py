@@ -335,6 +335,84 @@ async def ver_logs_recientes(solo_errores: str = 'false', limite: str = '10') ->
     return resultado
 
 
+async def consultar_estadisticas_dashboard(
+    tipo_estadistica: str,
+    fecha_inicio: str = '',
+    fecha_fin: str = ''
+) -> str:
+    """Consulta estadísticas agregadas y KPIs del dashboard del sistema.
+
+    Args:
+        tipo_estadistica: Tipo de estadística a consultar ('formas_pago', 'medios_pago', 'impuestos', 'tipos_documento', 'funnel_ingesta', 'etapas_flujo', 'valor_proveedores').
+        fecha_inicio: Fecha de inicio en formato YYYY-MM-DD (opcional).
+        fecha_fin: Fecha de fin en formato YYYY-MM-DD (opcional).
+    """
+    from core.python.services import dashboard_service
+
+    f_ini = fecha_inicio or None
+    f_fin = fecha_fin or None
+
+    try:
+        if tipo_estadistica == 'formas_pago':
+            datos = await dashboard_service.obtener_forma_pago_stats(f_ini, f_fin)
+            res = "Conteo de facturas por forma de pago (crédito vs contado):\n"
+            for d in datos:
+                res += f"  - {d['name']}: {d['value']} facturas\n"
+            return res
+
+        elif tipo_estadistica == 'medios_pago':
+            datos = await dashboard_service.obtener_medio_pago_stats(f_ini, f_fin)
+            res = "Conteo de facturas por canal/medio de pago (Preferencias de Canales de Pago):\n"
+            for d in datos:
+                res += f"  - {d['name']}: {d['value']} facturas\n"
+            return res
+
+        elif tipo_estadistica == 'impuestos':
+            datos = await dashboard_service.obtener_impuestos_stats(f_ini, f_fin)
+            res = "Monto acumulado por tipo de impuesto:\n"
+            for d in datos:
+                res += f"  - {d['name']}: ${d['value']:,.2f} COP\n"
+            return res
+
+        elif tipo_estadistica == 'tipos_documento':
+            datos = await dashboard_service.obtener_tipos_documento(f_ini, f_fin)
+            res = "Conteo por tipo de documento contable (FE, NC, ND, DS):\n"
+            for d in datos:
+                res += f"  - {d['name']}: {d['value']} documentos\n"
+            return res
+
+        elif tipo_estadistica == 'funnel_ingesta':
+            datos = await dashboard_service.obtener_funnel_ingesta(f_ini, f_fin)
+            res = (
+                "Embudo de ingesta contable (Funnel):\n"
+                f"  - Correos entrantes recibidos: {datos['correos']}\n"
+                f"  - Documentos adjuntos detectados: {datos['adjuntos']}\n"
+                f"  - Documentos procesados por ingesta: {datos['procesados']}\n"
+                f"  - Facturas validadas exitosamente: {datos['validadas']}\n"
+            )
+            return res
+
+        elif tipo_estadistica == 'etapas_flujo':
+            datos = await dashboard_service.obtener_etapas_flujo(f_ini, f_fin)
+            res = "Conteo y estado de las etapas del pipeline de facturas:\n"
+            for d in datos:
+                res += f"  - Etapa '{d['label']}': {d['count']} facturas (Estado: {d['status'].upper()})\n"
+            return res
+
+        elif tipo_estadistica == 'valor_proveedores':
+            datos = await dashboard_service.obtener_valor_proveedor_stats(f_ini, f_fin)
+            res = "Valor facturado por proveedor:\n"
+            for d in datos:
+                res += f"  - {d['name']}: ${d['value']:,.2f} COP\n"
+            return res
+
+        else:
+            return f"Tipo de estadística desconocido: {tipo_estadistica}. Los disponibles son: formas_pago, medios_pago, impuestos, tipos_documento, funnel_ingesta, etapas_flujo, valor_proveedores."
+    except Exception as e:
+        logger.error("Error al obtener estadísticas del dashboard: %s", e)
+        return f"Error al consultar las estadísticas de '{tipo_estadistica}': {str(e)}"
+
+
 def _build_tool_handlers() -> dict:
     """Construye el mapeo de handlers dinámicamente desde TOOL_DEFINITIONS.
 

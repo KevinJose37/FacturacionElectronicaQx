@@ -52,4 +52,4 @@ async def update_users_me(
     """
     Actualiza los datos del propio usuario (correo, nombre, contraseña).
     """
-    return await usuario_service.update_self_usuario(current_user["id_usuario"], data)
+    return await usuario_service.update_self_usuario(current_user.id_usuario, data)

@@ -12,6 +12,7 @@ from core.python.verificacion_grafica.extractor_texto_pdf import (
 from core.python.verificacion_grafica.validador_local import (
     validar_datos_en_texto,
     CAMPOS_CRITICOS,
+    CAMPOS_DESEABLES,
 )
 from core.python.verificacion_grafica.validador_ia import verificar_con_ia
 
@@ -82,7 +83,7 @@ async def verificar_representacion_grafica(
         )
     else:
         campos_fallidos = [
-            c for c in CAMPOS_CRITICOS if datos_factura.get(c)
+            c for c in (CAMPOS_CRITICOS + CAMPOS_DESEABLES) if datos_factura.get(c)
         ]
         resultado = None
         logger.info("PDF sin texto nativo o con error. Escalando directo a IA.")

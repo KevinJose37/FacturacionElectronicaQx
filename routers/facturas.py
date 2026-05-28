@@ -19,6 +19,9 @@ async def obtener_facturas(
     busqueda: str | None = Query(None, description='Búsqueda por texto'),
     pagina: int = Query(1, ge=1, description='Número de página'),
     por_pagina: int = Query(30, ge=1, le=100, description='Registros por página'),
+    forma_pago: str | None = Query(None, description='Filtro por forma de pago'),
+    fecha_inicio: str | None = Query(None, description='Fecha inicial de emisión'),
+    fecha_fin: str | None = Query(None, description='Fecha final de emisión'),
     current_user: UserInDB = Depends(get_current_active_user),
 ) -> dict:
     """Obtiene listado de facturas con estadísticas."""
@@ -27,11 +30,31 @@ async def obtener_facturas(
         user_id=current_user.id_usuario if hasattr(current_user, 'id_usuario') else 0,
         tipo_acceso='VIEW_INVOICE_LIST',
         tabla_afectada='FACTURA',
-        query_params={'estado': estado, 'busqueda': busqueda, 'pagina': pagina}
+        query_params={
+            'estado': estado,
+            'busqueda': busqueda,
+            'pagina': pagina,
+            'forma_pago': forma_pago,
+            'fecha_inicio': fecha_inicio,
+            'fecha_fin': fecha_fin,
+        }
     )
     stats, facturas = await asyncio.gather(
-        facturas_service.obtener_estadisticas(),
-        facturas_service.listar_facturas(estado, busqueda, pagina, por_pagina),
+        facturas_service.obtener_estadisticas(
+            busqueda=busqueda,
+            forma_pago=forma_pago,
+            fecha_inicio=fecha_inicio,
+            fecha_fin=fecha_fin,
+        ),
+        facturas_service.listar_facturas(
+            estado=estado,
+            busqueda=busqueda,
+            pagina=pagina,
+            por_pagina=por_pagina,
+            forma_pago=forma_pago,
+            fecha_inicio=fecha_inicio,
+            fecha_fin=fecha_fin,
+        ),
     )
 
     respuesta = {'stats': stats, 'invoices': facturas}

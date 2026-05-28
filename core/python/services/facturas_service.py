@@ -18,6 +18,9 @@ async def listar_facturas(
     busqueda: str | None = None,
     pagina: int = 1,
     por_pagina: int = 30,
+    forma_pago: str | None = None,
+    fecha_inicio: str | None = None,
+    fecha_fin: str | None = None,
 ) -> list:
     """Lista facturas con filtros opcionales y paginación.
 
@@ -26,6 +29,9 @@ async def listar_facturas(
         busqueda: Texto libre para buscar en número o proveedor.
         pagina: Número de página (1-indexed).
         por_pagina: Cantidad de registros por página.
+        forma_pago: Filtro por forma de pago (1=Contado, 2=Crédito).
+        fecha_inicio: Fecha de emisión inicial (YYYY-MM-DD).
+        fecha_fin: Fecha de emisión final (YYYY-MM-DD).
 
     Returns:
         Lista de facturas con datos del proveedor.
@@ -60,6 +66,17 @@ async def listar_facturas(
             patron = f'%{busqueda}%'
             params.extend([patron, patron, patron])
 
+    if forma_pago:
+        if forma_pago == 'No determinada':
+            condiciones.append("(pf.codigo_forma_pago IS NULL OR pf.codigo_forma_pago NOT IN ('1', '2'))")
+        else:
+            condiciones.append("pf.codigo_forma_pago = %s")
+            params.append(forma_pago)
+
+    if fecha_inicio and fecha_fin:
+        condiciones.append("f.fecha_expedicion::date BETWEEN %s::date AND %s::date")
+        params.extend([fecha_inicio, fecha_fin])
+
     where = f'WHERE {" AND ".join(condiciones)}' if condiciones else ''
     params.extend([por_pagina, offset])
 
@@ -89,20 +106,65 @@ async def listar_facturas(
             'motivo_rechazo_xml': r[10] or '',
             'motivo_rechazo_pdf': r[11] or '',
             'verificacion_grafica_estado': verif_graf_estado,
+            'forma_pago': r[13],
         })
     return resultado
 
 
-async def obtener_estadisticas() -> dict:
-    """Calcula estadísticas agregadas de facturas.
+async def obtener_estadisticas(
+    busqueda: str | None = None,
+    forma_pago: str | None = None,
+    fecha_inicio: str | None = None,
+    fecha_fin: str | None = None,
+) -> dict:
+    """Calcula estadísticas agregadas de facturas con filtros de búsqueda aplicados.
+
+    Args:
+        busqueda: Texto libre para buscar en número, proveedor o filtros DIAN.
+        forma_pago: Filtro por forma de pago.
+        fecha_inicio: Fecha inicial del rango de emisión.
+        fecha_fin: Fecha final del rango de emisión.
 
     Returns:
         Diccionario con total, validadas, pendientes, rechazadas, monto_total.
     """
     pool = get_pool()
+    condiciones = []
+    params = []
+
+    if busqueda:
+        if busqueda == 'verificacion_manual':
+            condiciones.append("f.verificacion_grafica_estado = 'PENDIENTE'")
+        elif busqueda == 'sin_evento_030':
+            condiciones.append("pf.codigo_forma_pago != '1' AND (fc.eventos_dian_notif IS NULL OR fc.eventos_dian_notif NOT LIKE '%%030%%')")
+        elif busqueda == 'sin_evento_032':
+            condiciones.append("pf.codigo_forma_pago != '1' AND (fc.eventos_dian_notif IS NULL OR fc.eventos_dian_notif NOT LIKE '%%032%%')")
+        elif busqueda == 'sin_evento_033':
+            condiciones.append("pf.codigo_forma_pago != '1' AND (fc.eventos_dian_notif IS NULL OR fc.eventos_dian_notif NOT LIKE '%%033%%')")
+        elif busqueda == 'con_evento_rechazo':
+            condiciones.append("pf.codigo_forma_pago != '1' AND fc.eventos_dian_notif LIKE '%%031%%'")
+        else:
+            condiciones.append(_FILTROS['busqueda'])
+            patron = f'%{busqueda}%'
+            params.extend([patron, patron, patron])
+
+    if forma_pago:
+        if forma_pago == 'No determinada':
+            condiciones.append("(pf.codigo_forma_pago IS NULL OR pf.codigo_forma_pago NOT IN ('1', '2'))")
+        else:
+            condiciones.append("pf.codigo_forma_pago = %s")
+            params.append(forma_pago)
+
+    if fecha_inicio and fecha_fin:
+        condiciones.append("f.fecha_expedicion::date BETWEEN %s::date AND %s::date")
+        params.extend([fecha_inicio, fecha_fin])
+
+    where = f'WHERE {" AND ".join(condiciones)}' if condiciones else ''
+    query = _QUERIES['estadisticas'].format(where=where)
+
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute(_QUERIES['estadisticas'])
+            await cur.execute(query, params)
             row = await cur.fetchone()
 
     estadisticas = {
@@ -110,7 +172,7 @@ async def obtener_estadisticas() -> dict:
         'validadas': row[1],
         'pendientes': row[2],
         'rechazadas': row[3],
-        'monto_total': float(row[4]),
+        'monto_total': float(row[4]) if row[4] is not None else 0.0,
         'pendientes_verificacion_manual': row[5] if len(row) > 5 else 0,
     }
     return estadisticas

@@ -277,11 +277,13 @@ facturas:
         ''
     ) as motivo_rechazo_xml,
     COALESCE(f.motivo_rechazo, '') as motivo_rechazo_pdf,
-    f.verificacion_grafica_estado
+    f.verificacion_grafica_estado,
+    COALESCE(tf.descripcion, pf.codigo_forma_pago, 'No determinada') as forma_pago
     FROM facturacion.factura f
     JOIN facturacion.tipo_estado_proceso ep ON f.id_estado_proceso = ep.id_estado_proceso
     LEFT JOIN facturacion.factura_control fc ON f.id_factura = fc.id_factura
     LEFT JOIN facturacion.pago_factura pf ON f.id_factura = pf.id_factura
+    LEFT JOIN facturacion.tipo_forma_pago tf ON pf.codigo_forma_pago = tf.codigo_forma_pago
     LEFT JOIN facturacion.adjuntos_correo ac ON f.adjunto_id = ac.adjunto_id
     {where}
     ORDER BY f.fecha_creacion DESC LIMIT %s OFFSET %s
@@ -289,12 +291,15 @@ facturas:
   estadisticas: >
     SELECT
     COUNT(*) as total,
-    COUNT(*) FILTER (WHERE id_estado_proceso = 3 AND verificacion_grafica_estado = 'APROBADA') as validadas,
-    COUNT(*) FILTER (WHERE id_estado_proceso IN (1, 2)) as pendientes,
-    COUNT(*) FILTER (WHERE id_estado_proceso IN (4, 5)) as rechazadas,
-    COALESCE(SUM(valor_total), 0) as monto,
-    COUNT(*) FILTER (WHERE verificacion_grafica_estado = 'PENDIENTE') as pending_human
-    FROM facturacion.factura
+    COUNT(*) FILTER (WHERE f.id_estado_proceso = 3 AND f.verificacion_grafica_estado = 'APROBADA') as validadas,
+    COUNT(*) FILTER (WHERE f.id_estado_proceso IN (1, 2)) as pendientes,
+    COUNT(*) FILTER (WHERE f.id_estado_proceso IN (4, 5)) as rechazadas,
+    COALESCE(SUM(f.valor_total), 0) as monto,
+    COUNT(*) FILTER (WHERE f.verificacion_grafica_estado = 'PENDIENTE') as pending_human
+    FROM facturacion.factura f
+    LEFT JOIN facturacion.factura_control fc ON f.id_factura = fc.id_factura
+    LEFT JOIN facturacion.pago_factura pf ON f.id_factura = pf.id_factura
+    {where}
 
 # Fragmentos de condiciones para facturas
 facturas_filtros:

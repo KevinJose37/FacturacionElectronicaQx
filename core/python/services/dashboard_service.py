@@ -162,7 +162,7 @@ async def obtener_kpis(fecha_inicio: str | None = None, fecha_fin: str | None = 
     query = _QUERIES['kpis'].replace('fecha_creacion', col)
     
     subquery, subquery_params = construir_subconsulta_filtros(filtros)
-    query = aplicar_subconsulta(query, 'id_factura', subquery)
+    query = aplicar_subconsulta(query, 'f.id_factura', subquery)
     params = (dt_inicio, dt_fin, dt_inicio, dt_fin)
     if subquery:
         params += tuple(subquery_params)

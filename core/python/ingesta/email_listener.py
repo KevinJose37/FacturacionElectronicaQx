@@ -39,6 +39,7 @@ from utils.malware_scanner import MalwareScanner
 from utils.s3_utils import subir_archivo_s3
 
 import xml.etree.ElementTree as ET
+# pyrefly: ignore [missing-import]
 import psycopg
 
 load_dotenv()

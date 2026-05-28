@@ -876,6 +876,17 @@ class EmailListener:
                     id_mensaje = self._extraer_id_mensaje(msg)
                     remitente = self._decodificar_header(msg.get("From", ""))
                     asunto = self._decodificar_header(msg.get("Subject", ""))
+
+                    # 2.1 Ignorar correos de eventos DIAN (con asunto que contiene/empieza con "Evento")
+                    # para evitar consumirlos o marcarlos como leídos, permitiendo que
+                    # el listener especializado de eventos DIAN los procese.
+                    if "evento" in asunto.lower():
+                        logger.info(
+                            "Correo de evento DIAN ignorado (Subject contiene 'Evento'): %s - Asunto: %s",
+                            id_mensaje, asunto,
+                        )
+                        return True
+
                     fecha_envio_raw = msg.get("Date", None)
                     fecha_envio = None
 

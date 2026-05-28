@@ -51,7 +51,12 @@ class ErroresChat:
     respuesta_inesperada = 'Respuesta inesperada del servicio de IA.'
     """Error 502 cuando la estructura de respuesta del LLM no es la esperada."""
 
-    fallback_sin_respuesta = 'No pude procesar tu consulta.'
+    fallback_sin_respuesta = (
+        'Lo siento, actualmente no puedo procesar esta solicitud específica o realizar esta acción. '
+        'Si es una funcionalidad avanzada que no está contemplada en el menú actual, es muy probable que '
+        'la estemos integrando en futuras versiones de Innti Assistant. Por favor, intenta reformular tu consulta '
+        'o solicita información sobre facturas, proveedores, rechazos o logs del sistema.'
+    )
     """Respuesta por defecto cuando se agotan las iteraciones de tool calling."""
 
 

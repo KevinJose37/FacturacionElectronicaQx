@@ -61,6 +61,13 @@ async def obtener_dashboard(
     # Determine the column to filter by
     columna_fecha = 'fecha_expedicion' if tipo_fecha == 'expedicion' else 'fecha_creacion'
 
+    filtros_sin_proveedores = {k: v for k, v in filtros.items() if k != 'proveedores'}
+    filtros_sin_formas_pago = {k: v for k, v in filtros.items() if k != 'formas_pago'}
+    filtros_sin_medios_pago = {k: v for k, v in filtros.items() if k != 'medios_pago'}
+    filtros_sin_eventos_dian = {k: v for k, v in filtros.items() if k != 'eventos_dian'}
+    filtros_sin_impuestos = {k: v for k, v in filtros.items() if k != 'impuestos'}
+    filtros_sin_errores = {k: v for k, v in filtros.items() if k != 'errores'}
+
     (
         kpis, proveedores_data, tendencia, facturas,
         actividad, alertas, alertas_dian,
@@ -68,21 +75,21 @@ async def obtener_dashboard(
         eventos_min, funnel_ingesta, cuentas_por_pagar, top_errores
     ) = await asyncio.gather(
         dashboard_service.obtener_kpis(fecha_inicio, fecha_fin, columna_fecha, filtros),
-        dashboard_service.obtener_facturas_por_proveedor(fecha_inicio, fecha_fin, columna_fecha=columna_fecha, filtros=filtros),
+        dashboard_service.obtener_facturas_por_proveedor(fecha_inicio, fecha_fin, columna_fecha=columna_fecha, filtros=filtros_sin_proveedores),
         dashboard_service.obtener_tendencia(fecha_inicio, fecha_fin, filtros=filtros),
         dashboard_service.obtener_ultimas_facturas(filtros=filtros),
         dashboard_service.obtener_actividad_reciente(),
         dashboard_service.obtener_alertas_activas(),
         alertas_dian_service.obtener_alertas_dian(),
-        dashboard_service.obtener_valor_proveedor_stats(fecha_inicio, fecha_fin, columna_fecha=columna_fecha, filtros=filtros),
-        dashboard_service.obtener_forma_pago_stats(fecha_inicio, fecha_fin, columna_fecha=columna_fecha, filtros=filtros),
-        dashboard_service.obtener_medio_pago_stats(fecha_inicio, fecha_fin, columna_fecha=columna_fecha, filtros=filtros),
-        dashboard_service.obtener_eventos_dian_stats(fecha_inicio, fecha_fin, columna_fecha=columna_fecha, filtros=filtros),
-        dashboard_service.obtener_impuestos_stats(fecha_inicio, fecha_fin, columna_fecha=columna_fecha, filtros=filtros),
+        dashboard_service.obtener_valor_proveedor_stats(fecha_inicio, fecha_fin, columna_fecha=columna_fecha, filtros=filtros_sin_proveedores),
+        dashboard_service.obtener_forma_pago_stats(fecha_inicio, fecha_fin, columna_fecha=columna_fecha, filtros=filtros_sin_formas_pago),
+        dashboard_service.obtener_medio_pago_stats(fecha_inicio, fecha_fin, columna_fecha=columna_fecha, filtros=filtros_sin_medios_pago),
+        dashboard_service.obtener_eventos_dian_stats(fecha_inicio, fecha_fin, columna_fecha=columna_fecha, filtros=filtros_sin_eventos_dian),
+        dashboard_service.obtener_impuestos_stats(fecha_inicio, fecha_fin, columna_fecha=columna_fecha, filtros=filtros_sin_impuestos),
         dashboard_service.obtener_eventos_por_minuto(),
         dashboard_service.obtener_funnel_ingesta(fecha_inicio, fecha_fin, filtros=filtros),
         dashboard_service.obtener_cuentas_por_pagar(fecha_inicio, fecha_fin, columna_fecha=columna_fecha, filtros=filtros),
-        dashboard_service.obtener_top_errores_ingesta(fecha_inicio, fecha_fin, filtros=filtros),
+        dashboard_service.obtener_top_errores_ingesta(fecha_inicio, fecha_fin, filtros=filtros_sin_errores),
     )
 
     respuesta = {

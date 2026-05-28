@@ -153,8 +153,12 @@ verificacion_grafica:
     - forma_pago
     - medio_pago
     - calidad_tributaria
-    - valor_iva
+    - iva
     - cufe
     - informacion_software
+    - fecha_expedicion
+    - descripcion_items
+    - contenido_qr
+    - nombre_software
   campos_deseables: []
   ia_habilitada: true

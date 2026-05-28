@@ -32,7 +32,8 @@ async def get_user_by_email(correo: str) -> dict | None:
                 "nombre_completo": row[2],
                 "rol": row[3],
                 "activo": row[4],
-                "hash_contrasena": row[5]
+                "hash_contrasena": row[5],
+                "tutorial_visto": row[6]
             }
 
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserInDB:

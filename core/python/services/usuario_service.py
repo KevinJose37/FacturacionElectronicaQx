@@ -29,7 +29,8 @@ async def get_all_usuarios() -> List[UsuarioResponse]:
                     nombre_completo=row[2],
                     rol=row[3],
                     activo=row[4],
-                    fecha_creacion=row[5]
+                    fecha_creacion=row[5],
+                    tutorial_visto=row[6]
                 ) for row in rows
             ]
 
@@ -65,7 +66,7 @@ async def create_usuario(usuario: UsuarioCreate) -> UsuarioCreateResponse:
             
             await cur.execute(
                 queries['insertar'],
-                (usuario.correo, hashed_password, usuario.nombre_completo, usuario.rol, True)
+                (usuario.correo, hashed_password, usuario.nombre_completo, usuario.rol, True, False)
             )
             row = await cur.fetchone()
             
@@ -76,6 +77,7 @@ async def create_usuario(usuario: UsuarioCreate) -> UsuarioCreateResponse:
                 rol=row[3],
                 activo=row[4],
                 fecha_creacion=row[5],
+                tutorial_visto=row[6],
                 contrasena_generada=plain_password
             )
 
@@ -92,7 +94,7 @@ async def update_usuario(id_usuario: int, usuario: UsuarioUpdate) -> UsuarioResp
             
             await cur.execute(
                 queries['actualizar'],
-                (usuario.correo, usuario.nombre_completo, usuario.rol, usuario.activo, id_usuario)
+                (usuario.correo, usuario.nombre_completo, usuario.rol, usuario.activo, usuario.tutorial_visto, id_usuario)
             )
             row = await cur.fetchone()
             
@@ -105,7 +107,8 @@ async def update_usuario(id_usuario: int, usuario: UsuarioUpdate) -> UsuarioResp
                 nombre_completo=row[2],
                 rol=row[3],
                 activo=row[4],
-                fecha_creacion=row[5]
+                fecha_creacion=row[5],
+                tutorial_visto=row[6]
             )
 
 async def delete_usuario(id_usuario: int) -> dict:
@@ -138,7 +141,7 @@ async def update_self_usuario(id_usuario: int, data: UsuarioSelfUpdate) -> dict:
             
             await cur.execute(
                 queries['actualizar_self'],
-                (data.correo, data.nombre_completo, hashed_pw, id_usuario)
+                (data.correo, data.nombre_completo, hashed_pw, data.tutorial_visto, id_usuario)
             )
             row = await cur.fetchone()
             
@@ -148,5 +151,6 @@ async def update_self_usuario(id_usuario: int, data: UsuarioSelfUpdate) -> dict:
             return {
                 "detail": "Datos actualizados exitosamente",
                 "correo_cambiado": data.correo is not None,
-                "password_cambiado": data.contrasena is not None
+                "password_cambiado": data.contrasena is not None,
+                "tutorial_visto": row[6]
             }

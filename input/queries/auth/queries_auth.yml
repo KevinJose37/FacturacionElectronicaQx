@@ -4,5 +4,5 @@
 
 auth:
   buscar_por_correo: >
-    SELECT id_usuario, correo, nombre_completo, rol, activo, hash_contrasena
+    SELECT id_usuario, correo, nombre_completo, rol, activo, hash_contrasena, tutorial_visto
     FROM facturacion.usuario WHERE LOWER(correo) = LOWER(%s)

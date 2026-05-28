@@ -8,6 +8,7 @@ class UsuarioBase(BaseModel):
     correo: str
     nombre_completo: str
     rol: str = "usuario"
+    tutorial_visto: bool = False
 
 class UsuarioCreate(UsuarioBase):
     pass
@@ -17,6 +18,7 @@ class UsuarioUpdate(BaseModel):
     nombre_completo: Optional[str] = None
     rol: Optional[str] = None
     activo: Optional[bool] = None
+    tutorial_visto: Optional[bool] = None
 
 class UsuarioResponse(UsuarioBase):
     id_usuario: int
@@ -30,3 +32,4 @@ class UsuarioSelfUpdate(BaseModel):
     correo: Optional[str] = None
     nombre_completo: Optional[str] = None
     contrasena: Optional[str] = None
+    tutorial_visto: Optional[bool] = None

@@ -13,6 +13,7 @@ class UserBase(BaseModel):
     correo: str
     nombre_completo: str
     rol: str
+    tutorial_visto: bool = False
 
 class UserInDB(UserBase):
     id_usuario: int

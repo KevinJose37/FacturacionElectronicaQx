@@ -6,14 +6,15 @@ usuarios:
         nombre_completo,
         rol,
         activo,
-        fecha_creacion
+        fecha_creacion,
+        tutorial_visto
     FROM facturacion.usuario
     ORDER BY fecha_creacion DESC
 
   insertar: >
-    INSERT INTO facturacion.usuario (correo, hash_contrasena, nombre_completo, rol, activo)
-    VALUES (%s, %s, %s, %s, %s)
-    RETURNING id_usuario, correo, nombre_completo, rol, activo, fecha_creacion
+    INSERT INTO facturacion.usuario (correo, hash_contrasena, nombre_completo, rol, activo, tutorial_visto)
+    VALUES (%s, %s, %s, %s, %s, %s)
+    RETURNING id_usuario, correo, nombre_completo, rol, activo, fecha_creacion, tutorial_visto
 
   actualizar: >
     UPDATE facturacion.usuario
@@ -21,9 +22,10 @@ usuarios:
         correo = COALESCE(%s, correo),
         nombre_completo = COALESCE(%s, nombre_completo),
         rol = COALESCE(%s, rol),
-        activo = COALESCE(%s, activo)
+        activo = COALESCE(%s, activo),
+        tutorial_visto = COALESCE(%s, tutorial_visto)
     WHERE id_usuario = %s
-    RETURNING id_usuario, correo, nombre_completo, rol, activo, fecha_creacion
+    RETURNING id_usuario, correo, nombre_completo, rol, activo, fecha_creacion, tutorial_visto
 
   eliminar: >
     UPDATE facturacion.usuario
@@ -45,6 +47,7 @@ usuarios:
     SET 
         correo = COALESCE(%s, correo),
         nombre_completo = COALESCE(%s, nombre_completo),
-        hash_contrasena = COALESCE(%s, hash_contrasena)
+        hash_contrasena = COALESCE(%s, hash_contrasena),
+        tutorial_visto = COALESCE(%s, tutorial_visto)
     WHERE id_usuario = %s
-    RETURNING id_usuario, correo, nombre_completo, rol, activo, fecha_creacion
+    RETURNING id_usuario, correo, nombre_completo, rol, activo, fecha_creacion, tutorial_visto

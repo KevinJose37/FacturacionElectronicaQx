@@ -21,10 +21,18 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     Retorna un token JWT (Bearer) que debe usarse en las siguientes peticiones.
     """
     user_dict = await get_user_by_email(form_data.username)
-    if not user_dict or not verify_password(form_data.password, user_dict["hash_contrasena"]):
+    
+    if not user_dict:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Usuario o contraseña incorrectos",
+            detail="USER_NOT_FOUND",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if not verify_password(form_data.password, user_dict["hash_contrasena"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="INCORRECT_PASSWORD",
             headers={"WWW-Authenticate": "Bearer"},
         )
     

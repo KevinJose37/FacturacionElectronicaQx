@@ -129,6 +129,57 @@ dashboard:
     LEFT JOIN procesadas p ON d.dia = p.dia
     ORDER BY d.dia
 
+  tendencia_cruzada: >
+    WITH facturas_filtradas AS (
+      SELECT DISTINCT f_fil.id_factura
+      FROM facturacion.factura f_fil
+      LEFT JOIN facturacion.factura_control fc_fil ON f_fil.id_factura = fc_fil.id_factura
+      WHERE columna_fecha_filtro >= %s AND columna_fecha_filtro <= %s
+    ),
+    recibos AS (
+      SELECT fc.fecha_admision_proveedor AS dia, COUNT(*) AS recibidas
+      FROM facturacion.factura_control fc
+      WHERE fc.id_factura IN (SELECT id_factura FROM facturas_filtradas)
+        AND fc.fecha_admision_proveedor IS NOT NULL
+      GROUP BY fc.fecha_admision_proveedor
+    ),
+    compras AS (
+      SELECT f.fecha_expedicion::date AS dia, COUNT(*) AS compradas
+      FROM facturacion.factura f
+      WHERE f.id_factura IN (SELECT id_factura FROM facturas_filtradas)
+        AND f.fecha_expedicion IS NOT NULL
+      GROUP BY f.fecha_expedicion::date
+    ),
+    procesadas AS (
+      SELECT f.fecha_creacion::date AS dia, COUNT(*) AS procesadas
+      FROM facturacion.factura f
+      WHERE f.id_factura IN (SELECT id_factura FROM facturas_filtradas)
+        AND f.fecha_creacion IS NOT NULL
+      GROUP BY f.fecha_creacion::date
+    ),
+    all_dates AS (
+      SELECT MIN(dia) AS min_dia, MAX(dia) AS max_dia FROM (
+        SELECT dia FROM recibos UNION ALL SELECT dia FROM compras UNION ALL SELECT dia FROM procesadas
+      ) t
+    ),
+    dates AS (
+      SELECT generate_series(
+        (SELECT min_dia FROM all_dates),
+        (SELECT max_dia FROM all_dates),
+        '1 day'::interval
+      )::date AS dia
+    )
+    SELECT 
+      d.dia,
+      COALESCE(r.recibidas, 0) AS recibidas,
+      COALESCE(c.compradas, 0) AS compradas,
+      COALESCE(p.procesadas, 0) AS procesadas
+    FROM dates d
+    LEFT JOIN recibos r ON d.dia = r.dia
+    LEFT JOIN compras c ON d.dia = c.dia
+    LEFT JOIN procesadas p ON d.dia = p.dia
+    ORDER BY d.dia
+
   valor_proveedor_stats: >
     SELECT f.razon_social_emisor AS name, SUM(f.valor_total) AS value
     FROM facturacion.factura f

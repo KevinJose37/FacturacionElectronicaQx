@@ -281,8 +281,16 @@ async def obtener_facturas_por_proveedor(fecha_inicio: str | None = None, fecha_
     return resultado
 
 
-async def obtener_tendencia(fecha_inicio: str | None = None, fecha_fin: str | None = None, filtros: dict = None) -> list:
-    """Tendencia de procesamiento de facturas por día.
+async def obtener_tendencia(fecha_inicio: str | None = None, fecha_fin: str | None = None, columna_fecha: str = 'fecha_creacion', filtros: dict = None) -> list:
+    """Tendencia de procesamiento de facturas por día con filtrado cruzado.
+
+    Cuando se filtra por una columna de fecha específica (ej. fecha de procesamiento),
+    primero identifica las facturas que cumplen ese filtro y luego muestra TODAS las
+    fechas de recibo, emisión y procesamiento de esas facturas, sin restringir el
+    rango de las otras líneas de tiempo.
+
+    Args:
+        columna_fecha: 'fecha_creacion' (procesamiento) o 'fecha_expedicion' (emisión).
 
     Returns:
         Lista de datos de tendencia por día.
@@ -292,37 +300,30 @@ async def obtener_tendencia(fecha_inicio: str | None = None, fecha_fin: str | No
     d_fin = dt_fin.date()
 
     pool = get_pool()
-    query = _QUERIES['tendencia']
-    
+
+    # Map columna_fecha to the actual SQL column reference in the query
+    col_map = {
+        'fecha_creacion': 'f_fil.fecha_creacion::date',
+        'fecha_expedicion': 'f_fil.fecha_expedicion::date',
+    }
+    col_sql = col_map.get(columna_fecha, 'f_fil.fecha_creacion::date')
+
+    # Use cross-filtered query
+    query = _QUERIES['tendencia_cruzada'].replace('columna_fecha_filtro', col_sql)
+
     subquery, subquery_params = construir_subconsulta_filtros(filtros)
-    
+
+    # The tendencia_cruzada query takes only (fecha_inicio, fecha_fin) for the
+    # facturas_filtradas CTE. Cross-filter subquery is applied to factura IDs.
     if subquery:
+        # Add cross-filter subquery to the facturas_filtradas CTE
         query = query.replace(
-            "WHERE fc.fecha_admision_proveedor >= %s AND fc.fecha_admision_proveedor <= %s",
-            f"WHERE fc.fecha_admision_proveedor >= %s AND fc.fecha_admision_proveedor <= %s AND fc.id_factura IN ({subquery})"
+            f"WHERE {col_sql} >= %s AND {col_sql} <= %s",
+            f"WHERE {col_sql} >= %s AND {col_sql} <= %s AND f_fil.id_factura IN ({subquery})"
         )
-        query = query.replace(
-            "WHERE f.fecha_expedicion::date >= %s AND f.fecha_expedicion::date <= %s",
-            f"WHERE f.fecha_expedicion::date >= %s AND f.fecha_expedicion::date <= %s AND f.id_factura IN ({subquery})"
-        )
-        query = query.replace(
-            "WHERE f.fecha_creacion::date >= %s AND f.fecha_creacion::date <= %s",
-            f"WHERE f.fecha_creacion::date >= %s AND f.fecha_creacion::date <= %s AND f.id_factura IN ({subquery})"
-        )
-        
-        params = (
-            d_ini, d_fin,
-            d_ini, d_fin,
-        )
-        params += tuple(subquery_params)
-        
-        params += (d_ini, d_fin,)
-        params += tuple(subquery_params)
-        
-        params += (d_ini, d_fin,)
-        params += tuple(subquery_params)
+        params = (d_ini, d_fin) + tuple(subquery_params)
     else:
-        params = (d_ini, d_fin, d_ini, d_fin, d_ini, d_fin, d_ini, d_fin)
+        params = (d_ini, d_fin)
 
     async with pool.connection() as conn:
         async with conn.cursor() as cur:

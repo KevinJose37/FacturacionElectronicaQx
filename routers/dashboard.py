@@ -76,7 +76,7 @@ async def obtener_dashboard(
     ) = await asyncio.gather(
         dashboard_service.obtener_kpis(fecha_inicio, fecha_fin, columna_fecha, filtros),
         dashboard_service.obtener_facturas_por_proveedor(fecha_inicio, fecha_fin, columna_fecha=columna_fecha, filtros=filtros_sin_proveedores),
-        dashboard_service.obtener_tendencia(fecha_inicio, fecha_fin, filtros=filtros),
+        dashboard_service.obtener_tendencia(fecha_inicio, fecha_fin, columna_fecha=columna_fecha, filtros=filtros),
         dashboard_service.obtener_ultimas_facturas(filtros=filtros),
         dashboard_service.obtener_actividad_reciente(),
         dashboard_service.obtener_alertas_activas(),
